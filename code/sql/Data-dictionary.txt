@@ -1,0 +1,3 @@
+# substrate codes
+code 8 (shell) was replace in 2006 with 10 (crushed shell) and 11 (whole shell)
+In some stock assessment database (GDK, GSU, RSU, Cuke) there is als codes 12 (live sponge), 13 (dead sponge), and 14 (coral rubble).
