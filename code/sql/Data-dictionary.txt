@@ -1,3 +1,36 @@
 # substrate codes
 code 8 (shell) was replace in 2006 with 10 (crushed shell) and 11 (whole shell)
 In some stock assessment database (GDK, GSU, RSU, Cuke) there is als codes 12 (live sponge), 13 (dead sponge), and 14 (coral rubble).
+
+
+##Cuke database - done
+Year 2021 has errors in the MaxChartDepth, can not be used in current form to determine elevation at Quad 0
+
+Quad 0 was not collected consistently in Cuke surveys. From years 2017-2023 Quad 0 was collected (though there are either errors or incomplete
+info in the 2020-2023 surveys for MaxChatDepth. Quad ) collected for some transects in 2008, 2010, 2012, 2014, 2015 but not all. No Quad 0 collect in 
+2006, 2007, 2009, 2011, 2013, 2016
+
+MaxChatDepth prior to 2017 is sometimes recorded as top of first quadrat (so can be used) and sometimes it might be the bottom elevation (but we don't know for sure)
+Can only get a reliable bottom depth for surveys 2017 and later
+
+# Multi-species - done
+
+##GSU database - NEED TO DO
+there are skip patterns, but they changed throughout the years. They were standardized at some point though and that information is in the database.
+quadrats are always 1mx1m
+To calculate depth For GSU, pre-2010 actual depth is TideHgt-GageDepth. Post-2009 use ChartDepth.
+
+#RSU database - done
+FOR RES survey use only Loiuse Island and Tofino, Look at papers for skip patterns. 
+For Tofino is Curtis and Leus 2022 Using 1 m2 quadrats, divers recorded the number of RSU, GSU, and PSU as well as habitat characteristics (described below) within every other quadrat along the transect (i.e., data were collected only within every 2nd quadrat).
+For Louise Island "Within each surveyed transect, all urchin species were counted and measured (maximum test diameter, TD, mm), 
+and environmental data (i. e. algal and substrate data) were recorded in every other quadrat. 
+Urchin measurements (TD in mm) were recorded in every fourth quadrat during surveys conducted in February 2004 and all those in 2005 
+(i. e. February and May). During the September 2004 survey, urchins were measured within every other quadrat and this pattern also 
+occurred during all surveys from 2006 onwards (i. e. 2006 through 2013).
+
+For RBB- "1 square metre quadrats along transects" "typically every second quadrat was surveyed" - even with some uncertainty in distance between quadrats it is probably better estimate than modelled slope layer. 
+RBS- "Transects were divided into 1 x 1 metre quadrats placed to the right of the leadline. Every second quadrat was sampled"
+
+
+ABL Database - NEED TO DO!

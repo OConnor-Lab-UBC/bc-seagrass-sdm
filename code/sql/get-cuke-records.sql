@@ -15,9 +15,10 @@ H.TransLen AS Transect_length,
 IsNull(FORMAT (D.QTime,'HH:mm'),FORMAT (H.TimeStart,'HH:mm')) AS Time,
 H.TimeType AS Time_type,
 D.QuadratNum AS Quadrat,
-D.Distance AS Transect_distance_from_start,
 D.GaugeDepthFeet*0.3048 AS Depth_gauge_m,
 D.ChartDepth AS CorDepthM,
+H.MaxChartDepth,
+MaxGageDepth*0.3048 AS Max_gauge_m,
 SubstrateRaw1 AS Substrate1,
 SubstrateRaw2 AS Substrate2,
 CASE WHEN ',' + D.Algae1 + ',' LIKE '%PH%' THEN 1 WHEN ',' + D.Algae2 + ',' LIKE '%PH%' THEN 1 ELSE 0 END AS PH,
@@ -25,5 +26,5 @@ CASE WHEN ',' + D.Algae1 + ',' LIKE '%ZO%' THEN 1 WHEN ',' + D.Algae2 + ',' LIKE
 FROM Shellfish_Bio_Other.dbo.SeaCukeHeaders H
     INNER JOIN 
     Shellfish_Bio_Other.dbo.SeaCukeDensities D ON H.[Key] = D.HKey
-WHERE H.LatDegDeep IS NOT NULL AND H.LongDegDeep IS NOT NULL AND D.ChartDepth IS NOT NULL AND H.Year > 2004 AND D.QuadratNum > 0
-ORDER BY H.Year, H.Transect, D.QuadratNum;
+WHERE H.LatDegDeep IS NOT NULL AND H.LongDegDeep IS NOT NULL AND D.ChartDepth IS NOT NULL AND H.Year > 2004
+ORDER BY H.Year, H.[Key], H.Transect, D.QuadratNum;

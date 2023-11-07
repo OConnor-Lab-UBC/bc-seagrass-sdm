@@ -34,7 +34,7 @@ sub.cat <- read.csv( "./lookup-tbls/SubstrateCategories.csv", header=T, sep="," 
 
 #### Outputs ####
 # Subfolders for outputs
-outdir <- file.path("DataSources", "Data")
+outdir <- file.path("code", "output_data")
 # Create the main directory, and subfolders
 dir.create( outdir, recursive=TRUE )
 # final field names for dive surveys
@@ -70,27 +70,36 @@ if ( any (duplicated(dup_ind)) ){
   rsu_queried <- rsu_queried[!duplicated(rsu_queried),]
 }
 
+rsu_queried %>% 
+  group_by(Survey) %>%
+  summarise(count= n_distinct(Location))
 
-slope <- rsu_queried %>%
-  select(HKey, Quadrat, CorDepthM) 
+# Complicated regarding skip patterns, see data dictionary for details
+rsu_queried <- rsu_queried %>%
+  mutate(Quadrat_distance = case_when(Survey=="RES-H" | Survey == "RES-T" | Survey == "RBB" | Survey == "RBS" ~ 2, #sampled every other quadrat
+                                      Survey=="RES-P" ~ NA)) #no metadata available
 
-# Set start depth as the recorded depth from the previous quadrat, unless the quadrat is number 0
-slope$StartDepth <- ifelse(slope$Quadrat==1, slope$CorDepthM, lag(slope$CorDepthM, n=1))
-slope$EndDepth <- slope$CorDepthM
-
-# Calculate slope for each quadrat using the arc-tangent
-slope$Elev.Diff <- slope$StartDepth-slope$EndDepth
-slope$Slope <- atan2(slope$Elev.Diff,5) 
-slope$Slope <- round(slope$Slope, digits=4)
+## Calculate slope using arc tangent method, make assumption that slope is same on Quadrat 1 as Quadrat 2 (since we don't have starting depth at bottom)
+rsu_queried <- rsu_queried %>%
+  mutate(StartDepth = ifelse(Quadrat==1 | Survey=="RES-P", NA, lag(CorDepthM, n=1)),
+         EndDepth = CorDepthM,
+         Elev.Diff = StartDepth - EndDepth,
+         Slope = atan2(Elev.Diff,5)) %>%
+  mutate(Slope = ifelse(Quadrat==1, lead(Slope, n=1), Slope)) %>%
+  select(-StartDepth,-EndDepth, -Elev.Diff)  
 
 #For records with slope greater than 1.0 or less than -1.0 set slope to either 1.0 or -1.0 to correct for typo or instances where the swell likely exacerbated the difference between two height recordings 
-slope$Slope[slope$Slope > 1.0] <- 1.0
-slope$Slope[slope$Slope < -1.0] <- -1.0 
+rsu_queried$Slope[rsu_queried$Slope > 1.0] <- 1.0
+rsu_queried$Slope[rsu_queried$Slope < -1.0] <- -1.0 
 
-BHM_data$Slope <- abs(BHM_data$Slope) * 180/piBHM_data$Slope <- abs(BHM_data$Slope) * 180/pi
+#change to degrees
+rsu_queried$Slope <- round(abs(rsu_queried$Slope) * 180/pi, digits = 0)
 
-
-
+## Calculate the substrate that represents > 50% for each quad
+# Match substrateID to substrate category
+rsu_queried <- rsu_queried %>% 
+  dplyr::left_join(sub.cat, by=c("Substrate1", "Substrate2")) %>%
+  rename (Substrate = RMSM.Nme) 
 
 ## Melt all species into species column
 # list p/a species. 
@@ -112,8 +121,8 @@ rsu_dat <- rsu_dat[fnames]
 rsu_dat <- rsu_dat[order(rsu_dat$HKey, rsu_dat$Year, rsu_dat$Transect, rsu_dat$Quadrat),]
 
 ## Save files
-save(rsu_dat, file="code/data/rsu_db_data.RData")
-write.csv(rsu_dat, "code/data/rsu_db_quadrat.csv", row.names = F)
+save(rsu_dat, file="code/output_data/rsu_db_data.RData")
+write.csv(rsu_dat, "code/output_data/rsu_db_quadrat.csv", row.names = F)
 
 #---------------------------------------------------------------------#
 #### Get GSU_bio (green sea urchin) presence/absence survey data ####
@@ -162,8 +171,8 @@ gsu_dat <- gsu_dat[fnames]
 gsu_dat <- gsu_dat[order(gsu_dat$HKey, gsu_dat$Year, gsu_dat$Transect, gsu_dat$Quadrat),]
 
 ## Save files
-save(gsu_dat, file="code/data/gsu_db_data.RData")
-write.csv(gsu_dat, "code/data/gsu_db_quadrat.csv", row.names = F)
+save(gsu_dat, file="code/output_data/gsu_db_data.RData")
+write.csv(gsu_dat, "code/output_data/gsu_db_quadrat.csv", row.names = F)
 
 
 #---------------------------------------------------------------------#
@@ -191,6 +200,32 @@ if ( any (duplicated(dup_ind)) ){
   rsc_queried <- rsc_queried[!duplicated(rsc_queried),]
 }
 
+#Years >2016 have Quad0 so know bottom depths, surveys prior we have no start depth of first quadrat of each transect but making assumption it has similar slope as quadrat after it. 
+rsc_queried <- rsc_queried %>%
+  mutate(StartDepth = case_when(Year>2016 & Quadrat==0 ~ CorDepthM,
+                                Year>2016 & Quadrat!=0 ~ lag(CorDepthM, n=1),
+                                Year<2017 & Quadrat==1 ~ NA,
+                                Year<2017 & Quadrat!=1 ~ lag(CorDepthM, n=1)),
+         EndDepth = CorDepthM,
+         Elev.Diff = StartDepth - EndDepth,
+         Slope = atan2(Elev.Diff,5)) %>%
+  mutate(Slope = ifelse(Year<2017 & Quadrat==1, lead(Slope, n=1), Slope)) %>%
+  filter(Quadrat!=0) %>% # Need to remove quad 0 from each transect not all transects have Quad zero and it only has depth recorded
+  select(-StartDepth,-EndDepth, -Elev.Diff)  
+    
+#For records with slope greater than 1.0 or less than -1.0 set slope to either 1.0 or -1.0 to correct for typo or instances where the swell likely exacerbated the difference between two height recordings 
+rsc_queried$Slope[rsc_queried$Slope > 1.0] <- 1.0
+rsc_queried$Slope[rsc_queried$Slope < -1.0] <- -1.0 
+
+#change to degrees
+rsc_queried$Slope <- round(abs(rsc_queried$Slope) * 180/pi, digits = 0)
+
+## Calculate the substrate that represents > 50% for each quad
+# Match substrateID to substrate category
+rsc_queried <- rsc_queried %>% 
+  dplyr::left_join(sub.cat, by=c("Substrate1", "Substrate2")) %>%
+  rename (Substrate = RMSM.Nme) 
+
 ## Melt all invert and algae species into species column
 # list p/a species
 sp_pa_rsc <- c("PH", "ZO")
@@ -211,8 +246,8 @@ rsc_dat <- rsc_dat[fnames]
 rsc_dat <- rsc_dat[order(rsc_dat$HKey, rsc_dat$Year, rsc_dat$Transect, rsc_dat$Quadrat),]
 
 ## Save files
-save(rsc_dat, file="code/data/rsc_db_data.RData")
-write.csv(rsc_dat, "code/data/rsc_db_quadrat.csv", row.names = F)
+save(rsc_dat, file="code/output_data/rsc_db_data.RData")
+write.csv(rsc_dat, "code/output_data/rsc_db_quadrat.csv", row.names = F)
 
 #---------------------------------------------------------------------#
 #### Get Multispecies_bio (multi-species) dive survey data ####
@@ -242,12 +277,13 @@ if ( any (duplicated(dup_ind)) ){
 }
 
 
-## Calculate slope using arc tangent method
+## Calculate slope using arc tangent method, make assumption that slope is same on Quadrat 1 as Quadrat 2 (since we don't have starting depth at bottom)
 multi_queried <- multi_queried %>%
-  mutate(StartDepth = ifelse(Quadrat==1, CorDepthM, lag(CorDepthM, n=1)),
+  mutate(StartDepth = ifelse(Quadrat==1, NA, lag(CorDepthM, n=1)),
          EndDepth = CorDepthM,
          Elev.Diff = StartDepth - EndDepth,
          Slope = atan2(Elev.Diff,Quadrat_distance)) %>%
+  mutate(Slope = ifelse(Quadrat==1, lead(Slope, n=1), Slope)) %>%
   select(-StartDepth,-EndDepth, -Elev.Diff)
   
 #For records with slope greater than 1.0 or less than -1.0 set slope to either 1.0 or -1.0 to correct for typo or instances where the swell likely exacerbated the difference between two height recordings 
@@ -259,7 +295,6 @@ multi_queried$Slope <- round(abs(multi_queried$Slope) * 180/pi, digits = 0)
 
 
 ## Calculate the substrate that represents > 50% for each quad
-
 # Match substrateID to substrate category
 multi_queried <- multi_queried %>% 
   dplyr::left_join(sub.cat, by=c("Substrate1", "Substrate2")) %>%
@@ -289,8 +324,8 @@ multi_dat <- multi_dat[fnames]
 multi_dat <- multi_dat[order(multi_dat$HKey, multi_dat$Year, multi_dat$Transect, multi_dat$Quadrat),]
 
 ## Save files
-save(multi_dat, file="code/data/multispecies_db_data.RData")
-write.csv(multi_dat, "code/data/multispecies_db_quadrat.csv", row.names = F)
+save(multi_dat, file="code/output_data/multispecies_db_data.RData")
+write.csv(multi_dat, "code/output_data/multispecies_db_quadrat.csv", row.names = F)
 
 
 
@@ -305,8 +340,8 @@ write.csv(multi_dat, "code/data/multispecies_db_quadrat.csv", row.names = F)
 
 
 # Load data
-dat <- read.csv("code/ab-data-restricted/Shellfish_Bio_Abalone_HeadersDensity_2005-2021.csv",header=T, fileEncoding="UTF-8-BOM", stringsAsFactors = F)
-algaedat <- read.csv("code/ab-data-restricted/Shellfish_Bio_Abalone_Habitat_2005-2021.csv",header=T, fileEncoding="UTF-8-BOM", stringsAsFactors = F)
+dat <- read.csv("raw_data/ab-data-restricted/Shellfish_Bio_Abalone_HeadersDensity_2005-2021.csv",header=T, fileEncoding="UTF-8-BOM", stringsAsFactors = F)
+algaedat <- read.csv("raw_data/ab-data-restricted/Shellfish_Bio_Abalone_Habitat_2005-2021.csv",header=T, fileEncoding="UTF-8-BOM", stringsAsFactors = F)
 
 # Only one lat/long per site, remove sites with no la/long
 dat <- dat %>%
@@ -372,7 +407,7 @@ dat_sf <- dat %>% st_as_sf(coords = c("Longitude", "Latitude"), crs = "EPSG:4326
 
 # export as shapefile
 # likely to have issues with attribute field names shortening
-st_write(dat_sf, "code/data/ABLBio_quadrat.shp") 
+st_write(dat_sf, "code/output_data/ABLBio_quadrat.shp") 
 
 
 #---------------------------------------------------------------------#
@@ -422,5 +457,5 @@ gdk_dat <- gdk_dat[fnames]
 gdk_dat <- gdk_dat[order(gdk_dat$HKey, gdk_dat$Year, gdk_dat$Transect, gdk_dat$Quadrat),]
 
 ## Save files
-save(gdk_dat, file="code/data/gdk_db_data.RData")
-write.csv(gdk_dat, "code/data/gdk_db_quadrat.csv", row.names = F)
+save(gdk_dat, file="code/output_data/gdk_db_data.RData")
+write.csv(gdk_dat, "code/output_data/gdk_db_quadrat.csv", row.names = F)

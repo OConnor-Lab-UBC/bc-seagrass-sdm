@@ -7,6 +7,7 @@ RMSM.cat,RMSM.Nme,BType1,BType2,Btype description,Substrate1,Substrate2
 2,Mixed,2,b,"Soft surface, overlaying hard substrate",0,6
 3,Sand,3,a,Sand/shell,0,7
 4,Mud,3,b,Mud,0,9
+2,Mixed,2,a,"Soft surface, patchy large particles",0,8
 3,Sand,3,a,Sand/shell,0,10
 2,Mixed,2,b,"Soft surface, overlaying hard substrate",0,11
 4,Mud,3,b,Mud,0,NA

@@ -1,6 +1,7 @@
 SELECT
 H.[Key] AS HKey,
 H.Source AS Survey,
+H.Location,
 H.Year AS Year,
 H.Month AS Month,
 H.Day AS Day,
@@ -78,6 +79,6 @@ FROM Shellfish_Bio_Urchin.dbo.UrchHeaders H
     Shellfish_Bio_Urchin.dbo.UrchDensity D ON H.[Key] = D.HKey
     LEFT JOIN
     Shellfish_Bio_Urchin.dbo.UrchHabitat A ON H.[Key] = A.HKey AND D.QuadratNum = A.QuadratNum
-WHERE H.LatDegStart IS NOT NULL AND H.LongDegStart IS NOT NULL AND D.ChartDepth IS NOT NULL AND H.Year > 2004 AND D.QuadratNum > 0 AND H.Species = '6BC' AND H.TransOrientation != 'U' 
+WHERE H.LatDegStart IS NOT NULL AND H.LongDegStart IS NOT NULL AND D.ChartDepth IS NOT NULL AND H.Year > 2004 AND H.Species = '6BC' AND H.TransOrientation != 'U' 
 ORDER BY H.Year, H.TransectNum, D.QuadratNum;
 
