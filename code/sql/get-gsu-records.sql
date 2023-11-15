@@ -26,8 +26,18 @@ H.TransLen AS Transect_length,
 IsNull(FORMAT (D.QTime,'HH:mm'),FORMAT (H.StartTime,'HH:mm')) AS Time,
 H.TimeType AS Time_type,
 D.QuadratNum AS Quadrat,
+CASE 
+    WHEN H.[Key] IN (11423, 9014, 9005, 10882, 10881, 8705, 8699, 8698, 8697, 8695, 8691, 8610, 8600, 8592) THEN 1
+	WHEN H.SurveyPattern IS NULL THEN NULL
+	WHEN H.SurveyPattern IN ('MCMC', 'MMMM', 'MMM', 'MCMCM', 'MMMM…MCMC', 'MMMM…CCCC', 'MCCC') THEN 1
+	WHEN H.SurveyPattern IN ('MSMS', 'MSCSM', 'MSCS', 'MSCSCS', 'MSCSCSCSCS', '*MSCSCSCSCS', '*MSCSCS', 'MSCSCSCS', '*MMMMMMSCSCS') THEN 2
+	WHEN H.SurveyPattern IN ('*MSSCSSCSSCSSCSS', 'MSSCSSCSSCSS') THEN 3
+	END AS Quadrat_distance,
 D.GageDepth*0.3048 AS Depth_gauge_m,
-D.ChartDepth AS CorDepthM,
+CASE 
+    WHEN H.Year < 2010 THEN (D.GageDepth - D.TideHgt)*0.3048
+    WHEN H.Year > 2009 THEN D.ChartDepth
+    END AS CorDepthM,	
 D.SubStrate1 AS Substrate1,
 D.SubStrate2 AS Substrate2,
 CASE 
@@ -85,7 +95,7 @@ FROM Shellfish_Bio_Urchin.dbo.UrchHeaders H
     Shellfish_Bio_Urchin.dbo.UrchDensity D ON H.[Key] = D.HKey
     LEFT JOIN
     Shellfish_Bio_Urchin.dbo.UrchHabitat A ON H.[Key] = A.HKey AND D.QuadratNum = A.QuadratNum
-WHERE H.LatDegStart IS NOT NULL AND H.LongDegStart IS NOT NULL AND D.ChartDepth IS NOT NULL AND H.Year > 2004 AND D.QuadratNum > 0 AND H.Species = '6BB' AND H.TransOrientation != 'U' 
+WHERE H.LatDegStart IS NOT NULL AND H.LongDegStart IS NOT NULL AND D.ChartDepth IS NOT NULL AND H.Year > 1999 AND H.Species = '6BB' AND H.TransOrientation != 'U' 
 ORDER BY H.Year, H.[Key], D.QuadratNum;
 
 

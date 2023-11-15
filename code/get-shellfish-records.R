@@ -47,9 +47,10 @@ fnames <-  c( "Type", "Source", "Survey", "HKey", "Method",
 #---------------------------------------------------------------------#
 #### Get RSU_bio (red sea urchin) presence/absence survey data #### 
 
-# P/A observations: PH (phyloospadix), ZO (eelgrass) 
-# SQL code has filtered out years 2005 to present and Start Lat and Long are not null and CorDepth is not null
+# P/A observations: PH (phyllospadix), ZO (eelgrass) 
+# SQL code has filtered out years 2000 to present and Start Lat and Long are not null and CorDepth is not null
 # All species observations are converted to presence (1)/ absence (0)
+# Most data pre 2005 only has a starting lat/long and not an ending. May not working to use this earlier data
 
 ##Extract data from SQL Server
 # read SQL query
@@ -84,7 +85,7 @@ rsu_queried <- rsu_queried %>%
   mutate(StartDepth = ifelse(Quadrat==1 | Survey=="RES-P", NA, lag(CorDepthM, n=1)),
          EndDepth = CorDepthM,
          Elev.Diff = StartDepth - EndDepth,
-         Slope = atan2(Elev.Diff,5)) %>%
+         Slope = atan2(Elev.Diff, Quadrat_distance)) %>%
   mutate(Slope = ifelse(Quadrat==1, lead(Slope, n=1), Slope)) %>%
   select(-StartDepth,-EndDepth, -Elev.Diff)  
 
@@ -106,6 +107,10 @@ rsu_queried <- rsu_queried %>%
 sp_pa_rsu <- c("PH", "ZO")
 # melt table for p/a species
 rsu_dat <- melt(rsu_queried, measure.vars=sp_pa_rsu, value.name = "SpNum", variable.name = "Species")
+
+#remove Survey=="RES-P" as don't know their collection methods for algae or much other metadata
+rsu_dat <-rsu_dat %>%
+  filter(Survey!="RES-P")
 
 ## Create new fields and rename
 # Type
@@ -149,6 +154,10 @@ if ( any (duplicated(dup_ind)) ){
   gsu_queried <- gsu_queried[!duplicated(gsu_queried),]
 }
 
+
+
+
+
 ## Melt all invert and algae species into species column
 # List p/a species. 
 sp_pa_gsu <- c("PH", "ZO")
@@ -178,7 +187,7 @@ write.csv(gsu_dat, "code/output_data/gsu_db_quadrat.csv", row.names = F)
 #---------------------------------------------------------------------#
 #### Get Cuke_bio (California sea cucumber) survey data ####
 # P/A observations: PH, ZO 
-# SQL code has filtered out years 2005 to present and Start Lat and Long are not null and CorDepth is not null
+# SQL code has filtered out years 2000 to present and Start Lat and Long are not null and CorDepth is not null
 # All species observations are converted to presence (1)/ absence (0)
 
 ## Extract data from SQL Server
