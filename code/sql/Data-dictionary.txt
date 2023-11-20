@@ -2,24 +2,29 @@
 code 8 (shell) was replace in 2006 with 10 (crushed shell) and 11 (whole shell)
 In some stock assessment database (GDK, GSU, RSU, Cuke) there is als codes 12 (live sponge), 13 (dead sponge), and 14 (coral rubble).
 
+## Slope, need to make sure slope is being done right.
 
-##Cuke database - done
+
+##Cuke database
 Year 2021 has errors in the MaxChartDepth, can not be used in current form to determine elevation at Quad 0
 Quad 0 was not collected consistently in Cuke surveys. From years 2017-2023 Quad 0 was collected (though there are either errors or incomplete
 info in the 2020-2023 surveys for MaxChatDepth. Quad ) collected for some transects in 2008, 2010, 2012, 2014, 2015 but not all. No Quad 0 collect in 
 2006, 2007, 2009, 2011, 2013, 2016
 MaxChatDepth prior to 2017 is sometimes recorded as top of first quadrat (so can be used) and sometimes it might be the bottom elevation (but we don't know for sure)
 Can only get a reliable bottom depth for surveys 2017 and later
+No cuke surveys 2002-2005, surveys in 2000-2001 do not have lat shallow/longshallow
 
-## Multi-species - done
+## Multi-species database
 
-##GSU database - NEED TO DO
+##GSU database
 there are skip patterns, but they changed throughout the years. They were standardized at some point though and that information is in the database.
 quadrats are always 1mx1m
-To calculate depth For GSU, pre-2010 actual depth is TideHgt-GageDepth. Post-2009 use ChartDepth.
+In SQL code added quadrat distance based on skip pattern. Made assumption that ones that are null are likely no skip (Lyanne may check this for me). This pertained to 57 transects from 2000-2003, 2008 and 2010.
+To calculate depth For GSU, pre-2010 actual depth is GageDepth-TideHgt. Post-2009 use ChartDepth. This is done in the SQL query of the database
 
-#RSU database - done
+#RSU database
 FOR RES survey use only Loiuse Island and Tofino, surveys from other RES surveys need to have okay from FN collaborators and there is no metadata.
+Maybe issues with CorDepth tide calculations, waiting to hear from Lyanne
 Skip patterns
 For Tofino is Curtis and Leus 2022 Using 1 m2 quadrats, divers recorded the number of RSU, GSU, and PSU as well as habitat characteristics (described below) within every other quadrat along the transect (i.e., data were collected only within every 2nd quadrat).
 For Louise Island "Within each surveyed transect, all urchin species were counted and measured (maximum test diameter, TD, mm), 
@@ -30,6 +35,11 @@ occurred during all surveys from 2006 onwards (i. e. 2006 through 2013).
 For RBB surveys- "1 square metre quadrats along transects" "typically every second quadrat was surveyed" - even with some uncertainty in distance between quadrats it is probably better estimate than modelled slope layer. 
 RBS surveys- "Transects were divided into 1 x 1 metre quadrats placed to the right of the leadline. Every second quadrat was sampled"
 
+##ABL Database
+Transects follows zig zag pattern and transect is assumed to be about a 20x20m area
+Looking at 95% CI of the depths at quadrats within a transect most quadrats are within 2m (2 SE) of the mean, and a few are within 3m. This makes it more reasonable to amalgamate all quadrats from one transect
+Cannot get slope from this survey as transect is zig zag
+Most common substrate catagory from all quadrats in one transect is taken to be the predominant substrate at that transect. 
 
-ABL Database - NEED TO DO!
-GDK database need to do!
+##GDK database
+# Quadrats are 5 x1 m and depth is measured at the top of the quadrat. Quadrat 0 is the bottom of the first surveyed quadrat. 

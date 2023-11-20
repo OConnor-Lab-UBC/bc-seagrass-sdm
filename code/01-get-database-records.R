@@ -86,15 +86,11 @@ rsu_queried <- rsu_queried %>%
          EndDepth = CorDepthM,
          Elev.Diff = StartDepth - EndDepth,
          Slope = atan2(Elev.Diff, Quadrat_distance)) %>%
-  mutate(Slope = ifelse(Quadrat==1, lead(Slope, n=1), Slope)) %>%
+  mutate(Slope = ifelse(Quadrat==1, lead(Slope, n=1), Slope)) #%>%
   select(-StartDepth,-EndDepth, -Elev.Diff)  
 
-#For records with slope greater than 1.0 or less than -1.0 set slope to either 1.0 or -1.0 to correct for typo or instances where the swell likely exacerbated the difference between two height recordings 
-rsu_queried$Slope[rsu_queried$Slope > 1.0] <- 1.0
-rsu_queried$Slope[rsu_queried$Slope < -1.0] <- -1.0 
-
 #change to degrees
-rsu_queried$Slope <- round(abs(rsu_queried$Slope) * 180/pi, digits = 0)
+rsu_queried$Slope2 <- round(abs(rsu_queried$Slope) * 180/pi, digits = 0)
 
 ## Calculate the substrate that represents > 50% for each quad
 # Match substrateID to substrate category
@@ -154,9 +150,23 @@ if ( any (duplicated(dup_ind)) ){
   gsu_queried <- gsu_queried[!duplicated(gsu_queried),]
 }
 
+## Calculate slope using arc tangent method, make assumption that slope is same on Quadrat 1 as Quadrat 2 (since we don't have starting depth at bottom)
+gsu_queried <- gsu_queried %>%
+  mutate(StartDepth = ifelse(Quadrat==1, NA, lag(CorDepthM, n=1)),
+         EndDepth = CorDepthM,
+         Elev.Diff = StartDepth - EndDepth,
+         Slope = atan2(Elev.Diff, Quadrat_distance)) %>%
+  mutate(Slope = ifelse(Quadrat==1, lead(Slope, n=1), Slope)) %>%
+  select(-StartDepth,-EndDepth, -Elev.Diff)  
 
+#change to degrees
+gsu_queried$Slope <- round(abs(gsu_queried$Slope) * 180/pi, digits = 0)
 
-
+## Calculate the substrate that represents > 50% for each quad
+# Match substrateID to substrate category
+gsu_queried <- gsu_queried %>% 
+  dplyr::left_join(sub.cat, by=c("Substrate1", "Substrate2")) %>%
+  rename (Substrate = RMSM.Nme) 
 
 ## Melt all invert and algae species into species column
 # List p/a species. 
@@ -221,10 +231,6 @@ rsc_queried <- rsc_queried %>%
   mutate(Slope = ifelse(Year<2017 & Quadrat==1, lead(Slope, n=1), Slope)) %>%
   filter(Quadrat!=0) %>% # Need to remove quad 0 from each transect not all transects have Quad zero and it only has depth recorded
   select(-StartDepth,-EndDepth, -Elev.Diff)  
-    
-#For records with slope greater than 1.0 or less than -1.0 set slope to either 1.0 or -1.0 to correct for typo or instances where the swell likely exacerbated the difference between two height recordings 
-rsc_queried$Slope[rsc_queried$Slope > 1.0] <- 1.0
-rsc_queried$Slope[rsc_queried$Slope < -1.0] <- -1.0 
 
 #change to degrees
 rsc_queried$Slope <- round(abs(rsc_queried$Slope) * 180/pi, digits = 0)
@@ -295,10 +301,6 @@ multi_queried <- multi_queried %>%
   mutate(Slope = ifelse(Quadrat==1, lead(Slope, n=1), Slope)) %>%
   select(-StartDepth,-EndDepth, -Elev.Diff)
   
-#For records with slope greater than 1.0 or less than -1.0 set slope to either 1.0 or -1.0 to correct for typo or instances where the swell likely exacerbated the difference between two height recordings 
-multi_queried$Slope[multi_queried$Slope > 1.0] <- 1.0
-multi_queried$Slope[multi_queried$Slope < -1.0] <- -1.0 
-
 #change to degrees
 multi_queried$Slope <- round(abs(multi_queried$Slope) * 180/pi, digits = 0)
 
@@ -339,26 +341,38 @@ write.csv(multi_dat, "code/output_data/multispecies_db_quadrat.csv", row.names =
 
 
 #---------------------------------------------------------------------#
-#### Get ABL_bio dive survey data ####
+#### Get ABL_bio (abalone) dive survey data ####
 # P/A observations: PH, ZO 
 # SQL code has filtered out Start Lat and Long are not null 
 # All species observations are converted to presence (1)/ absence (0)
 # Zostera would be recorded if observed on Ab surveys but Ab surveys are typically in the wrong habitat for Zostera.
 # Phyllospadix when observed on Ab surveys are recorded. It is in shallow exposed areas so divers may not be able to work as shallow as the Phyllospadix band depending on conditions. 
-# This dataset has different spatialization requirements so is kept separate
-
+# This dataset has different spatialization requirements so is kept separate, Transects follows zig zag pattern and transect is assumed to be about a 20x20m area
+# Looking at 95% CI of the depths at quadrats within a transect most quadrats are within 2m (2 SE) of the mean, and a few are within 3m. This makes it more reasonable to amalgamate all quadrats from one transect
+# cannot get slope from this survey as transect is zig zag
 
 # Load data
-dat <- read.csv("raw_data/ab-data-restricted/Shellfish_Bio_Abalone_HeadersDensity_2005-2021.csv",header=T, fileEncoding="UTF-8-BOM", stringsAsFactors = F)
+ABLdat <- read.csv("raw_data/ab-data-restricted/Shellfish_Bio_Abalone_HeadersDensity_Substrate_2005-2021.csv",header=T, fileEncoding="UTF-8-BOM", stringsAsFactors = F)
 algaedat <- read.csv("raw_data/ab-data-restricted/Shellfish_Bio_Abalone_Habitat_2005-2021.csv",header=T, fileEncoding="UTF-8-BOM", stringsAsFactors = F)
 
-# Only one lat/long per site, remove sites with no la/long
-dat <- dat %>%
+# Only one lat/long per site, remove sites with no lat/long
+ABLdat <- ABLdat %>%
   mutate (Latitude = coalesce(LatDeep, LatShallow), Longitude = coalesce(LonDeep, LonShallow))%>%
   tidyr::drop_na (Latitude)
 
-dat<- dat %>% 
-  group_by(HKey) %>% 
+## Calculate the substrate that represents > 50% for each quad
+# Match substrateID to substrate category
+ABLdat <- ABLdat %>% 
+  dplyr::left_join(sub.cat, by=c("Substrate1", "Substrate2")) %>%
+  rename (Substrate = RMSM.Nme) 
+
+#Assign substrate to each quadrat based on most prevalent substrate at site
+ABLsubdat<- ABLdat %>% 
+  group_by(HKey) %>%
+  summarize (Substrate = names(which.max(table(Substrate))))
+
+ABLdat<- ABLdat %>% 
+  group_by(HKey) %>%
   mutate(CorDepthM = mean(CorDepthM))%>%
   ungroup() %>%
   distinct(HKey, .keep_all = TRUE) %>%
@@ -399,24 +413,27 @@ algaedat<- algaedat %>%
 algaedat$PH[algaedat$PH>0]<-1
 algaedat$ZO[algaedat$ZO>0]<-1
 
-dat <- merge(dat, algaedat, by = "HKey")
+ABLdat <- merge(ABLdat, algaedat, by = "HKey")
+ABLdat <- merge(ABLdat, ABLsubdat, by = "HKey")
 
 ## Create new fields and rename
 # Type
-dat$Type <- "Research"
+ABLdat$Type <- "Research"
 # Source
-dat$Source <- "ABL_bio"
+ABLdat$Source <- "ABL_bio"
 # Method
-dat$Method <- "Dive"
+ABLdat$Method <- "Dive"
+#Slope is not possible to calculate from this survey, so will need to use modelled slope
+ABLdat$Slope <- "NA"
 
 # Convert to spdf and export
 # create spatial points
-dat_sf <- dat %>% st_as_sf(coords = c("Longitude", "Latitude"), crs = "EPSG:4326") %>%
+ABLdat_sf <- ABLdat %>% st_as_sf(coords = c("Longitude", "Latitude"), crs = "EPSG:4326") %>%
   st_transform(crs = "EPSG:3005")
 
 # export as shapefile
 # likely to have issues with attribute field names shortening
-st_write(dat_sf, "code/output_data/ABLBio_quadrat.shp") 
+st_write(ABLdat_sf, "code/output_data/ABLBio_quadrat.shp") 
 
 
 #---------------------------------------------------------------------#
@@ -444,6 +461,44 @@ if ( any (duplicated(dup_ind)) ){
   # Remove duplicate records
   gdk_queried <- gdk_queried[!duplicated(gdk_queried),]
 }
+
+#Most transects have a Quad0 so know bottom depths, but some don't so need to find those
+gdk_nozeroquad <- gdk_queried %>%
+  group_by(HKey) %>%
+  filter(!all(0 %in% Quadrat)) %>%
+  ungroup %>%
+  distinct(HKey) %>%
+  pull(HKey)
+
+#errors in database of transect_dist_from_start
+gdk_queried[gdk_queried$HKey=="10491" & gdk_queried$Quadrat== 15, "Transect_dist_from_start"] <- 300
+gdk_queried[gdk_queried$HKey=="10493" & gdk_queried$Quadrat== 15, "Transect_dist_from_start"] <- 215
+gdk_queried[gdk_queried$HKey=="10541" & gdk_queried$Quadrat== 12, "Transect_dist_from_start"] <- 170
+gdk_queried[gdk_queried$HKey=="10545" & gdk_queried$Quadrat== 11, "Transect_dist_from_start"] <- 205
+gdk_queried[gdk_queried$HKey=="10545" & gdk_queried$Quadrat== 12, "Transect_dist_from_start"] <- 225
+gdk_queried[gdk_queried$HKey=="10545" & gdk_queried$Quadrat== 13, "Transect_dist_from_start"] <- 245
+gdk_queried[gdk_queried$HKey=="10545" & gdk_queried$Quadrat== 14, "Transect_dist_from_start"] <- 265
+gdk_queried[gdk_queried$HKey=="10545" & gdk_queried$Quadrat== 15, "Transect_dist_from_start"] <- 285
+gdk_queried[gdk_queried$HKey=="10545" & gdk_queried$Quadrat== 16, "Transect_dist_from_start"] <- 305
+
+gdk_queried <- gdk_queried %>%
+  filter(!HKey %in% 13094:13123) %>% # these only have two quadrats in each transect
+  mutate(StartDepth = ifelse(Quadrat==0 | (Quadrat==1 & HKey %in% gdk_nozeroquad), CorDepthM, lag(CorDepthM, n=1)),
+         EndDepth = CorDepthM,
+         Elev.Diff = StartDepth - EndDepth,
+         Quadrat_distance = ifelse(Quadrat==0 | (Quadrat==1 & HKey %in% gdk_nozeroquad), Transect_dist_from_start, Transect_dist_from_start - lag(Transect_dist_from_start, n = 1)),
+         Slope = atan2(Elev.Diff, Quadrat_distance)) %>%
+  filter(Quadrat!=0) %>% # Need to remove quad 0 from each transect not all transects have Quad zero and it only has depth recorded
+  select(-StartDepth,-EndDepth, -Elev.Diff)  
+
+#change to degrees
+gdk_queried$Slope <- round(abs(gdk_queried$Slope) * 180/pi, digits = 0)
+
+## Calculate the substrate that represents > 50% for each quad
+# Match substrateID to substrate category
+gdk_queried <- gdk_queried %>% 
+  dplyr::left_join(sub.cat, by=c("Substrate1", "Substrate2")) %>%
+  rename (Substrate = RMSM.Nme) 
 
 ## Melt all invert and algae species into species column
 # list p/a species
