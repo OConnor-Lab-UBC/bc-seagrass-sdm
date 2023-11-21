@@ -3,10 +3,10 @@
 # Authors:      Ashley Park
 # Affiliation:  Fisheries and Oceans Canada (DFO) and University of British Columbia
 # Contact:      e-mail: ashley.park@dfo-mpo.gc.ca 
-# Project:      BC seagrass SDM
+# Project:      BC Seagrass SDM
 #
 # Overview:
-# Processing scripts that query and standardize zostera, phyllospadix, depth, and substrate observations from Pacific shellfish databases through SQL Server
+# Processing scripts that query and standardize zostera, phyllospadix, depth, and substrate observations from Pacific shellfish databases through SQL Server and BHM database through MS Access
 
 # Data use:
 # As per the Policy for Scientific Data, DFO scientific data are a public resource and subject to full and open access within two years of being acquired or generated. 
@@ -16,7 +16,7 @@
 # Requirements:
 # r-sql-link-functions.R 
 # Access to shellfish SQL server (VPN connection and access permitted from DFO Shellfish Data Unit)
-
+# Access to benthic habitat mapping access database on DFO Spatial Datasets drive (VPN connection and access permitted from MSEA section)
 ###############################################################################
 
 #### load packages####
@@ -37,15 +37,18 @@ sub.cat <- read.csv( "./lookup-tbls/SubstrateCategories.csv", header=T, sep="," 
 outdir <- file.path("code", "output_data")
 # Create the main directory, and subfolders
 dir.create( outdir, recursive=TRUE )
+
 # final field names for dive surveys
 fnames <-  c( "Type", "Source", "Survey", "HKey", "Method",
-              "Year","Month", "Major_stat_area_code", "Stat_subarea_code", "LatDeep","LonDeep",
+              "Year","Month", "LatDeep","LonDeep",
               "LatShallow","LonShallow", "Transect_length", "Quadrat", "CorDepthM","Substrate", "Slope",
               "SpNum", "Species")  
 
+#species to extract, zostera and phyllospadix
+sp_pa <- c("PH", "ZO")
 
 #---------------------------------------------------------------------#
-#### Get RSU_bio (red sea urchin) presence/absence survey data #### 
+#### Get RSU_bio (red sea urchin) dive survey data #### 
 
 # P/A observations: PH (phyllospadix), ZO (eelgrass) 
 # SQL code has filtered out years 2000 to present and Start Lat and Long are not null and CorDepth is not null
@@ -71,10 +74,6 @@ if ( any (duplicated(dup_ind)) ){
   rsu_queried <- rsu_queried[!duplicated(rsu_queried),]
 }
 
-rsu_queried %>% 
-  group_by(Survey) %>%
-  summarise(count= n_distinct(Location))
-
 # Complicated regarding skip patterns, see data dictionary for details
 rsu_queried <- rsu_queried %>%
   mutate(Quadrat_distance = case_when(Survey=="RES-H" | Survey == "RES-T" | Survey == "RBB" | Survey == "RBS" ~ 2, #sampled every other quadrat
@@ -86,7 +85,7 @@ rsu_queried <- rsu_queried %>%
          EndDepth = CorDepthM,
          Elev.Diff = StartDepth - EndDepth,
          Slope = atan2(Elev.Diff, Quadrat_distance)) %>%
-  mutate(Slope = ifelse(Quadrat==1, lead(Slope, n=1), Slope)) #%>%
+  mutate(Slope = ifelse(Quadrat==1, lead(Slope, n=1), Slope)) %>%
   select(-StartDepth,-EndDepth, -Elev.Diff)  
 
 #change to degrees
@@ -99,10 +98,7 @@ rsu_queried <- rsu_queried %>%
   rename (Substrate = RMSM.Nme) 
 
 ## Melt all species into species column
-# list p/a species. 
-sp_pa_rsu <- c("PH", "ZO")
-# melt table for p/a species
-rsu_dat <- melt(rsu_queried, measure.vars=sp_pa_rsu, value.name = "SpNum", variable.name = "Species")
+rsu_dat <- melt(rsu_queried, measure.vars=sp_pa, value.name = "SpNum", variable.name = "Species")
 
 #remove Survey=="RES-P" as don't know their collection methods for algae or much other metadata
 rsu_dat <-rsu_dat %>%
@@ -126,7 +122,7 @@ save(rsu_dat, file="code/output_data/rsu_db_data.RData")
 write.csv(rsu_dat, "code/output_data/rsu_db_quadrat.csv", row.names = F)
 
 #---------------------------------------------------------------------#
-#### Get GSU_bio (green sea urchin) presence/absence survey data ####
+#### Get GSU_bio (green sea urchin) dive survey data ####
 # P/A observations: PH, ZO 
 # SQL code has filtered out years 2005 to present and Start Lat and Long are not null and CorDepth is not null
 # All species observations are converted to presence (1)/ absence (0)
@@ -169,10 +165,7 @@ gsu_queried <- gsu_queried %>%
   rename (Substrate = RMSM.Nme) 
 
 ## Melt all invert and algae species into species column
-# List p/a species. 
-sp_pa_gsu <- c("PH", "ZO")
-# melt table for p/a species
-gsu_dat <- melt(gsu_queried, measure.vars=sp_pa_gsu, value.name = "SpNum", variable.name = "Species")
+gsu_dat <- melt(gsu_queried, measure.vars=sp_pa, value.name = "SpNum", variable.name = "Species")
 
 ## Create new fields and rename
 # Type
@@ -180,7 +173,7 @@ gsu_dat$Type <- "Research"
 # Source
 gsu_dat$Source <- "GSU_bio"
 # GSU doesn't have a consistently filled transect field in database
-gsu_dat$Transect <- ""
+gsu_dat$Transect <- "NA"
 # Method
 gsu_dat$Method <- "Dive"
 # Rename
@@ -195,7 +188,7 @@ write.csv(gsu_dat, "code/output_data/gsu_db_quadrat.csv", row.names = F)
 
 
 #---------------------------------------------------------------------#
-#### Get Cuke_bio (California sea cucumber) survey data ####
+#### Get Cuke_bio (California sea cucumber) dive survey data ####
 # P/A observations: PH, ZO 
 # SQL code has filtered out years 2000 to present and Start Lat and Long are not null and CorDepth is not null
 # All species observations are converted to presence (1)/ absence (0)
@@ -242,10 +235,7 @@ rsc_queried <- rsc_queried %>%
   rename (Substrate = RMSM.Nme) 
 
 ## Melt all invert and algae species into species column
-# list p/a species
-sp_pa_rsc <- c("PH", "ZO")
-# melt table for p/a species
-rsc_dat <- melt(rsc_queried, measure.vars=sp_pa_rsc, value.name = "SpNum", variable.name = "Species")
+rsc_dat <- melt(rsc_queried, measure.vars=sp_pa, value.name = "SpNum", variable.name = "Species")
 
 ## Create new fields and rename
 # Type
@@ -313,10 +303,7 @@ multi_queried <- multi_queried %>%
   
 
 ## Melt all invert and algae species into species column
-# list p/a species
-sp_pa_multi <- c("PH", "ZO")
-# melt table for p/a species
-multi_dat <- melt(multi_queried, measure.vars=sp_pa_multi, value.name = "SpNum", variable.name = "Species")
+multi_dat <- melt(multi_queried, measure.vars=sp_pa, value.name = "SpNum", variable.name = "Species")
 
 ## Create new fields and rename
 # Type
@@ -324,7 +311,7 @@ multi_dat$Type <- "Research"
 # Source
 multi_dat$Source <- "Multispecies_bio"
 # No time type in multispecies db
-multi_dat$Time_type <- ""
+multi_dat$Time_type <- "NA"
 # Method
 multi_dat$Method <- "Dive"
 
@@ -433,11 +420,11 @@ ABLdat_sf <- ABLdat %>% st_as_sf(coords = c("Longitude", "Latitude"), crs = "EPS
 
 # export as shapefile
 # likely to have issues with attribute field names shortening
-st_write(ABLdat_sf, "code/output_data/ABLBio_quadrat.shp") 
+st_write(ABLdat_sf, "code/output_data/ABLBio_quadrat.shp", append=FALSE) 
 
 
 #---------------------------------------------------------------------#
-#### Get GDK_bio (geoduck) survey data ####
+#### Get GDK_bio (geoduck) dive survey data ####
 # P/A observations: PH, ZO 
 # SQL code has filtered out years 2005 to present and Start Lat and Long are not null and CorDepth is not null
 # All species observations are converted to presence (1)/ absence (0)
@@ -481,6 +468,7 @@ gdk_queried[gdk_queried$HKey=="10545" & gdk_queried$Quadrat== 14, "Transect_dist
 gdk_queried[gdk_queried$HKey=="10545" & gdk_queried$Quadrat== 15, "Transect_dist_from_start"] <- 285
 gdk_queried[gdk_queried$HKey=="10545" & gdk_queried$Quadrat== 16, "Transect_dist_from_start"] <- 305
 
+# Calculate slope using arc tangent method
 gdk_queried <- gdk_queried %>%
   filter(!HKey %in% 13094:13123) %>% # these only have two quadrats in each transect
   mutate(StartDepth = ifelse(Quadrat==0 | (Quadrat==1 & HKey %in% gdk_nozeroquad), CorDepthM, lag(CorDepthM, n=1)),
@@ -501,10 +489,7 @@ gdk_queried <- gdk_queried %>%
   rename (Substrate = RMSM.Nme) 
 
 ## Melt all invert and algae species into species column
-# list p/a species
-sp_pa_gdk <- c("PH", "ZO")
-# melt table for p/a species
-gdk_dat <- melt(gdk_queried, measure.vars=sp_pa_gdk, value.name = "SpNum", variable.name = "Species")
+gdk_dat <- melt(gdk_queried, measure.vars=sp_pa, value.name = "SpNum", variable.name = "Species")
 
 ## Create new fields and rename
 # Type
@@ -523,3 +508,134 @@ gdk_dat <- gdk_dat[order(gdk_dat$HKey, gdk_dat$Year, gdk_dat$Transect, gdk_dat$Q
 ## Save files
 save(gdk_dat, file="code/output_data/gdk_db_data.RData")
 write.csv(gdk_dat, "code/output_data/gdk_db_quadrat.csv", row.names = F)
+
+
+
+#### Get BHM (Benthic Habitat Mapping) dive survey data ####
+# P/A observations: PH (phyllospadix), ZO (eelgrass) 
+# All species observations are converted to presence (1)/ absence (0)
+
+# Connect to mdb
+bhm_mdb <- mdb_connection("//dcbcpbsna01a/Spatial_Datasets/Dive_Surveys/Database/BHM_DiveSurveys_CURRENT_Nov2022.mdb")
+
+# Load queries
+bhm_sql <- readLines("code/sql/get-bhm-records-quads.sql")
+bhm_sql <- paste(bhm_sql, collapse = "\n ")
+bhm_spp_sql <- readLines("code/sql/get-bhm-records-spp.sql")
+bhm_spp_sql <- paste(bhm_spp_sql, collapse = "\n ")
+
+# Run queries
+bhm_quads <- DBI::dbGetQuery( bhm_mdb, bhm_sql )
+bhm_spp <- DBI::dbGetQuery( bhm_mdb, bhm_spp_sql )
+
+
+#edit quads table to calculate quadat distance
+bhm_quads <- bhm_quads %>%
+  mutate(Quadrat_distance = case_when(Quadrat==1 ~ 5,#the slope of first quadrat on transect is always 5
+                                      QuadratSkipping==1 ~ 5, #sampled every  quadrat
+                                      QuadratSkipping==2 ~ 10, #sampled every other quadrat
+                                      QuadratSkipping==3 ~ 15)) ##sampled every 3rd quadrat
+
+## Edit species table ###
+bhm_spp$SpType <- toupper(bhm_spp$SpType) # capitalize
+
+#create unique species codes
+bhm_spp$Species <- paste0(bhm_spp$SpType,"_",bhm_spp$SpeciesCode)
+
+bhm_spp$Species[bhm_spp$Species=="A_ZO"] <- "ZO" 
+bhm_spp$Species[bhm_spp$Species=="A_PH"] <- "PH" 
+
+sppQuad <- reshape2::dcast( bhm_spp, HKey+Quadrat~Species, fun=length, value.var = "Species" )
+sppQuad <- sppQuad %>% select(HKey, Quadrat, ZO, PH)
+
+#join species data to quads
+bhm_queried <- bhm_quads %>% 
+  left_join(sppQuad, by = join_by(HKey, Quadrat)) %>% 
+  mutate(ZO = ifelse(is.na(ZO), 0, ZO), 
+         PH = ifelse(is.na(PH), 0, PH))
+
+#change to zero/one
+bhm_queried$ZO[bhm_queried$ZO > 0] <- 1 
+bhm_queried$PH[bhm_queried$PH > 0] <- 1 
+ 
+# Calculate slope using arc tangent method 
+bhm_queried <- bhm_queried %>%
+  mutate(StartDepth = ifelse(Quadrat==0, CorDepthM, lag(CorDepthM, n=1)),
+         EndDepth = CorDepthM,
+         Elev.Diff = StartDepth - EndDepth,
+         Slope = atan2(Elev.Diff, Quadrat_distance)) %>%
+  filter(Quadrat!=0) %>% # Need to remove quad 0 from each transect 
+  select(-StartDepth,-EndDepth, -Elev.Diff)  
+
+#change to degrees
+bhm_queried$Slope <- round(abs(bhm_queried$Slope) * 180/pi, digits = 0)
+
+## Calculate the substrate that represents > 50% for each quad
+# Match substrateID to substrate category
+bhm_queried <- bhm_queried %>% 
+  dplyr::left_join(sub.cat, by=c("Substrate1", "Substrate2")) %>%
+  rename (Substrate = RMSM.Nme) 
+
+## Melt all invert and algae species into species column
+bhm_dat <- melt(bhm_queried, measure.vars=sp_pa, value.name = "SpNum", variable.name = "Species")
+
+## Create new fields and rename
+# Type
+bhm_dat$Type <- "Research"
+# Source
+bhm_dat$Source <- "BHM"
+# Method
+bhm_dat$Method <- "Dive"
+
+# Rename
+bhm_dat <- bhm_dat[fnames]
+
+# Order rows
+bhm_dat <- bhm_dat[order(bhm_dat$HKey, bhm_dat$Year, bhm_dat$Transect, bhm_dat$Quadrat),]
+
+
+## Save files
+save(bhm_dat, file="code/output_data/bhm_db_data.RData")
+write.csv(bhm_dat, "code/output_data/bhm_db_quadrat.csv", row.names = F)
+
+#### Get Hilo (Gulf Islands High and low current) dive survey data ####
+
+#load data
+hilo_queried <- read.csv("raw_data/hilo/HiLo_quadrats.csv",header=T, stringsAsFactors = F)
+
+# change lat long into decimal degrees
+hilo_queried <- hilo_queried %>%
+  mutate(LonShallow = (-1)*abs(Long_deg_s+(Long_min_s/60)),
+         LatShallow = (Lat_deg_s+(Lat_min_s/60)),
+         LonDeep = (-1)*abs(Long_deg_d+(Long_min_d/60)),
+         LatDeep = (Lat_deg_d+(Lat_min_d/60)))
+
+## Calculate the substrate that represents > 50% for each quad
+# Match substrateID to substrate category
+hilo_queried <- hilo_queried %>% 
+  dplyr::left_join(sub.cat, by=c("Substrate1", "Substrate2")) %>%
+  rename (Substrate = RMSM.Nme) 
+
+## Melt all invert and algae species into species column
+hilo_dat <- melt(hilo_queried, measure.vars=sp_pa, value.name = "SpNum", variable.name = "Species")
+
+## Create new fields and rename
+# Type
+hilo_dat$Type <- "Research"
+# Source
+hilo_dat$Source <- "MSEA"
+# Method
+hilo_dat$Method <- "Dive"
+# Slope is not possible to determine from the method of this survey because don't know distance between quadrats
+hilo_dat$Slope <- "NA"
+# transect length is not possible to determine from the method of this survey 
+hilo_dat$Transect_length <- "NA"
+
+# Rename
+hilo_dat <- hilo_dat[fnames]
+# Order rows
+hilo_dat <- hilo_dat[order(hilo_dat$HKey, hilo_dat$Transect, hilo_dat$Quadrat),]
+
+## Save files
+save(hilo_dat, file="code/output_data/hilo_db_quadrat.RData")
+write.csv(hilo_dat, "code/output_data/hilo_db_quadrat.csv", row.names = F)
