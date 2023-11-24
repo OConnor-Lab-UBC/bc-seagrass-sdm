@@ -2,8 +2,6 @@
 code 8 (shell) was replace in 2006 with 10 (crushed shell) and 11 (whole shell)
 In some stock assessment database (GDK, GSU, RSU, Cuke) there is als codes 12 (live sponge), 13 (dead sponge), and 14 (coral rubble).
 
-## Slope, need to make sure slope is being done right.
-
 
 ##Cuke database
 Year 2021 has errors in the MaxChartDepth, can not be used in current form to determine elevation at Quad 0
@@ -43,3 +41,7 @@ Most common substrate catagory from all quadrats in one transect is taken to be 
 
 ##GDK database
 # Quadrats are 5 x1 m and depth is measured at the top of the quadrat. Quadrat 0 is the bottom of the first surveyed quadrat. 
+
+#HiLo
+Dive surveys in Gulf Islands to measure diversity in high and low current areas. Three transects per site going from deep to shallow. Three quadrats per transects at depths of 50, 30, and 10 ft. 
+It is not possible to calculate slope from this dataset. 

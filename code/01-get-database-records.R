@@ -117,9 +117,6 @@ rsu_dat <- rsu_dat[fnames]
 # Order rows
 rsu_dat <- rsu_dat[order(rsu_dat$HKey, rsu_dat$Year, rsu_dat$Transect, rsu_dat$Quadrat),]
 
-## Save files
-save(rsu_dat, file="code/output_data/rsu_db_data.RData")
-write.csv(rsu_dat, "code/output_data/rsu_db_quadrat.csv", row.names = F)
 
 #---------------------------------------------------------------------#
 #### Get GSU_bio (green sea urchin) dive survey data ####
@@ -173,7 +170,7 @@ gsu_dat$Type <- "Research"
 # Source
 gsu_dat$Source <- "GSU_bio"
 # GSU doesn't have a consistently filled transect field in database
-gsu_dat$Transect <- "NA"
+gsu_dat$Transect <- NA
 # Method
 gsu_dat$Method <- "Dive"
 # Rename
@@ -182,9 +179,6 @@ gsu_dat <- gsu_dat[fnames]
 # Order rows
 gsu_dat <- gsu_dat[order(gsu_dat$HKey, gsu_dat$Year, gsu_dat$Transect, gsu_dat$Quadrat),]
 
-## Save files
-save(gsu_dat, file="code/output_data/gsu_db_data.RData")
-write.csv(gsu_dat, "code/output_data/gsu_db_quadrat.csv", row.names = F)
 
 
 #---------------------------------------------------------------------#
@@ -250,9 +244,6 @@ rsc_dat <- rsc_dat[fnames]
 # Order rows
 rsc_dat <- rsc_dat[order(rsc_dat$HKey, rsc_dat$Year, rsc_dat$Transect, rsc_dat$Quadrat),]
 
-## Save files
-save(rsc_dat, file="code/output_data/rsc_db_data.RData")
-write.csv(rsc_dat, "code/output_data/rsc_db_quadrat.csv", row.names = F)
 
 #---------------------------------------------------------------------#
 #### Get Multispecies_bio (multi-species) dive survey data ####
@@ -311,7 +302,7 @@ multi_dat$Type <- "Research"
 # Source
 multi_dat$Source <- "Multispecies_bio"
 # No time type in multispecies db
-multi_dat$Time_type <- "NA"
+multi_dat$Time_type <- NA
 # Method
 multi_dat$Method <- "Dive"
 
@@ -320,10 +311,6 @@ multi_dat <- multi_dat[fnames]
 
 # Order rows
 multi_dat <- multi_dat[order(multi_dat$HKey, multi_dat$Year, multi_dat$Transect, multi_dat$Quadrat),]
-
-## Save files
-save(multi_dat, file="code/output_data/multispecies_db_data.RData")
-write.csv(multi_dat, "code/output_data/multispecies_db_quadrat.csv", row.names = F)
 
 
 
@@ -411,7 +398,7 @@ ABLdat$Source <- "ABL_bio"
 # Method
 ABLdat$Method <- "Dive"
 #Slope is not possible to calculate from this survey, so will need to use modelled slope
-ABLdat$Slope <- "NA"
+ABLdat$Slope <- NA
 
 # Convert to spdf and export
 # create spatial points
@@ -505,9 +492,6 @@ gdk_dat <- gdk_dat[fnames]
 # Order rows
 gdk_dat <- gdk_dat[order(gdk_dat$HKey, gdk_dat$Year, gdk_dat$Transect, gdk_dat$Quadrat),]
 
-## Save files
-save(gdk_dat, file="code/output_data/gdk_db_data.RData")
-write.csv(gdk_dat, "code/output_data/gdk_db_quadrat.csv", row.names = F)
 
 
 
@@ -594,9 +578,7 @@ bhm_dat <- bhm_dat[fnames]
 bhm_dat <- bhm_dat[order(bhm_dat$HKey, bhm_dat$Year, bhm_dat$Transect, bhm_dat$Quadrat),]
 
 
-## Save files
-save(bhm_dat, file="code/output_data/bhm_db_data.RData")
-write.csv(bhm_dat, "code/output_data/bhm_db_quadrat.csv", row.names = F)
+
 
 #### Get Hilo (Gulf Islands High and low current) dive survey data ####
 
@@ -627,15 +609,25 @@ hilo_dat$Source <- "MSEA"
 # Method
 hilo_dat$Method <- "Dive"
 # Slope is not possible to determine from the method of this survey because don't know distance between quadrats
-hilo_dat$Slope <- "NA"
+hilo_dat$Slope <- NA
 # transect length is not possible to determine from the method of this survey 
-hilo_dat$Transect_length <- "NA"
+hilo_dat$Transect_length <- NA
 
 # Rename
 hilo_dat <- hilo_dat[fnames]
 # Order rows
 hilo_dat <- hilo_dat[order(hilo_dat$HKey, hilo_dat$Transect, hilo_dat$Quadrat),]
 
+####Combine datasets ####
+all_dat <- bind_rows(rsu_dat, gsu_dat, rsc_dat, multi_dat, gdk_dat, bhm_dat, hilo_dat)
+
+#need to make new HKey incase there is overlap in HKey between source types
+all_dat <- all_dat %>% 
+  mutate (HKey = paste0(Source,"_",HKey))
+
 ## Save files
-save(hilo_dat, file="code/output_data/hilo_db_quadrat.RData")
-write.csv(hilo_dat, "code/output_data/hilo_db_quadrat.csv", row.names = F)
+save(all_dat, file="code/output_data/seagrass_data.RData")
+
+
+
+#when spatializing need to remember to not aggregate by years
