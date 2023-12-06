@@ -11,6 +11,7 @@ info in the 2020-2023 surveys for MaxChatDepth. Quad ) collected for some transe
 MaxChatDepth prior to 2017 is sometimes recorded as top of first quadrat (so can be used) and sometimes it might be the bottom elevation (but we don't know for sure)
 Can only get a reliable bottom depth for surveys 2017 and later
 No cuke surveys 2002-2005, surveys in 2000-2001 do not have lat shallow/longshallow
+Divers record every 5 x 4 m strip quadrat.  No skips
 
 ## Multi-species database
 

@@ -40,12 +40,12 @@ dir.create( outdir, recursive=TRUE )
 
 # final field names for dive surveys
 fnames <-  c( "Type", "Source", "Survey", "HKey", "Method",
-              "Year","Month", "LatDeep","LonDeep",
+              "Year","Month", "Day", "LatDeep","LonDeep",
               "LatShallow","LonShallow", "Transect_length", "Quadrat", "CorDepthM","Substrate", "Slope",
-              "SpNum", "Species")  
+              "PH", "ZO")  
 
 #species to extract, zostera and phyllospadix
-sp_pa <- c("PH", "ZO")
+#sp_pa <- c("PH", "ZO")
 
 #---------------------------------------------------------------------#
 #### Get RSU_bio (red sea urchin) dive survey data #### 
@@ -61,26 +61,26 @@ rsu_sql <- readLines("code/sql/get-rsu-records.sql")
 # Load query
 rsu_sql <- paste(rsu_sql, collapse = "\n ")
 # Run query
-rsu_queried <- DBI::dbGetQuery( sf_db_connection(), rsu_sql )
+rsu_dat <- DBI::dbGetQuery( sf_db_connection(), rsu_sql )
 
 ## Check for duplicates of species records 
-dup_ind <- paste(rsu_queried$HKey, rsu_queried$Transect, rsu_queried$Quadrat, sep="-")
+dup_ind <- paste(rsu_dat$HKey, rsu_dat$Transect, rsu_dat$Quadrat, sep="-")
 if ( any (duplicated(dup_ind)) ){
   inds <- c(which(duplicated(dup_ind, fromLast = FALSE)), 
             which(duplicated(dup_ind, fromLast = TRUE))) %>% sort()
   # show duplicated records
-  print( rsu_queried[inds,] )
+  print( rsu_dat[inds,] )
   # Remove duplicate records
-  rsu_queried <- rsu_queried[!duplicated(rsu_queried),]
+  rsu_dat <- rsu_dat[!duplicated(rsu_dat),]
 }
 
 # Complicated regarding skip patterns, see data dictionary for details
-rsu_queried <- rsu_queried %>%
+rsu_dat <- rsu_dat %>%
   mutate(Quadrat_distance = case_when(Survey=="RES-H" | Survey == "RES-T" | Survey == "RBB" | Survey == "RBS" ~ 2, #sampled every other quadrat
                                       Survey=="RES-P" ~ NA)) #no metadata available
 
 ## Calculate slope using arc tangent method, make assumption that slope is same on Quadrat 1 as Quadrat 2 (since we don't have starting depth at bottom)
-rsu_queried <- rsu_queried %>%
+rsu_dat <- rsu_dat %>%
   mutate(StartDepth = ifelse(Quadrat==1 | Survey=="RES-P", NA, lag(CorDepthM, n=1)),
          EndDepth = CorDepthM,
          Elev.Diff = StartDepth - EndDepth,
@@ -89,16 +89,16 @@ rsu_queried <- rsu_queried %>%
   select(-StartDepth,-EndDepth, -Elev.Diff)  
 
 #change to degrees
-rsu_queried$Slope2 <- round(abs(rsu_queried$Slope) * 180/pi, digits = 0)
+rsu_dat$Slope <- round(abs(rsu_dat$Slope) * 180/pi, digits = 0)
 
 ## Calculate the substrate that represents > 50% for each quad
 # Match substrateID to substrate category
-rsu_queried <- rsu_queried %>% 
+rsu_dat <- rsu_dat %>% 
   dplyr::left_join(sub.cat, by=c("Substrate1", "Substrate2")) %>%
   rename (Substrate = RMSM.Nme) 
 
 ## Melt all species into species column
-rsu_dat <- melt(rsu_queried, measure.vars=sp_pa, value.name = "SpNum", variable.name = "Species")
+# rsu_dat <- melt(rsu_dat, measure.vars=sp_pa, value.name = "SpNum", variable.name = "Species")
 
 #remove Survey=="RES-P" as don't know their collection methods for algae or much other metadata
 rsu_dat <-rsu_dat %>%
@@ -130,21 +130,21 @@ gsu_sql <- readLines("code/sql/get-gsu-records.sql")
 # Load query
 gsu_sql <- paste(gsu_sql, collapse = "\n ")
 # Run query
-gsu_queried <- DBI::dbGetQuery( sf_db_connection(), gsu_sql )
+gsu_dat <- DBI::dbGetQuery( sf_db_connection(), gsu_sql )
 
 ## Check for duplicates of species records from a single finishing event
-dup_ind <- paste(gsu_queried$HKey, gsu_queried$Transect, gsu_queried$Quadrat, sep="-")
+dup_ind <- paste(gsu_dat$HKey, gsu_dat$Transect, gsu_dat$Quadrat, sep="-")
 if ( any (duplicated(dup_ind)) ){
   inds <- c(which(duplicated(dup_ind, fromLast = FALSE)), 
             which(duplicated(dup_ind, fromLast = TRUE))) %>% sort()
   # show duplicated records
-  print( gsu_queried[inds,] )
+  print( gsu_dat[inds,] )
   # Remove duplicate records
-  gsu_queried <- gsu_queried[!duplicated(gsu_queried),]
+  gsu_dat <- gsu_dat[!duplicated(gsu_dat),]
 }
 
 ## Calculate slope using arc tangent method, make assumption that slope is same on Quadrat 1 as Quadrat 2 (since we don't have starting depth at bottom)
-gsu_queried <- gsu_queried %>%
+gsu_dat <- gsu_dat %>%
   mutate(StartDepth = ifelse(Quadrat==1, NA, lag(CorDepthM, n=1)),
          EndDepth = CorDepthM,
          Elev.Diff = StartDepth - EndDepth,
@@ -153,16 +153,16 @@ gsu_queried <- gsu_queried %>%
   select(-StartDepth,-EndDepth, -Elev.Diff)  
 
 #change to degrees
-gsu_queried$Slope <- round(abs(gsu_queried$Slope) * 180/pi, digits = 0)
+gsu_dat$Slope <- round(abs(gsu_dat$Slope) * 180/pi, digits = 0)
 
 ## Calculate the substrate that represents > 50% for each quad
 # Match substrateID to substrate category
-gsu_queried <- gsu_queried %>% 
+gsu_dat <- gsu_dat %>% 
   dplyr::left_join(sub.cat, by=c("Substrate1", "Substrate2")) %>%
   rename (Substrate = RMSM.Nme) 
 
 ## Melt all invert and algae species into species column
-gsu_dat <- melt(gsu_queried, measure.vars=sp_pa, value.name = "SpNum", variable.name = "Species")
+#gsu_dat <- melt(gsu_dat, measure.vars=sp_pa, value.name = "SpNum", variable.name = "Species")
 
 ## Create new fields and rename
 # Type
@@ -193,21 +193,21 @@ rsc_sql <- readLines("code/sql/get-cuke-records.sql")
 # Load query
 rsc_sql <- paste(rsc_sql, collapse = "\n ")
 # Run query
-rsc_queried <- DBI::dbGetQuery( sf_db_connection(), rsc_sql )
+rsc_dat <- DBI::dbGetQuery( sf_db_connection(), rsc_sql )
 
 ## Check for duplicates of species records from a single finishing event
-dup_ind <- paste(rsc_queried$HKey, rsc_queried$Transect, rsc_queried$Quadrat, sep="-")
+dup_ind <- paste(rsc_dat$HKey, rsc_dat$Transect, rsc_dat$Quadrat, sep="-")
 if ( any (duplicated(dup_ind)) ){
   inds <- c(which(duplicated(dup_ind, fromLast = FALSE)), 
             which(duplicated(dup_ind, fromLast = TRUE))) %>% sort()
   # show duplicated records
-  print( rsc_queried[inds,] )
+  print( rsc_dat[inds,] )
   # Remove duplicate records
-  rsc_queried <- rsc_queried[!duplicated(rsc_queried),]
+  rsc_dat <- rsc_dat[!duplicated(rsc_dat),]
 }
 
 #Years >2016 have Quad0 so know bottom depths, surveys prior we have no start depth of first quadrat of each transect but making assumption it has similar slope as quadrat after it. 
-rsc_queried <- rsc_queried %>%
+rsc_dat <- rsc_dat %>%
   mutate(StartDepth = case_when(Year>2016 & Quadrat==0 ~ CorDepthM,
                                 Year>2016 & Quadrat!=0 ~ lag(CorDepthM, n=1),
                                 Year<2017 & Quadrat==1 ~ NA,
@@ -220,16 +220,16 @@ rsc_queried <- rsc_queried %>%
   select(-StartDepth,-EndDepth, -Elev.Diff)  
 
 #change to degrees
-rsc_queried$Slope <- round(abs(rsc_queried$Slope) * 180/pi, digits = 0)
+rsc_dat$Slope <- round(abs(rsc_dat$Slope) * 180/pi, digits = 0)
 
 ## Calculate the substrate that represents > 50% for each quad
 # Match substrateID to substrate category
-rsc_queried <- rsc_queried %>% 
+rsc_dat <- rsc_dat %>% 
   dplyr::left_join(sub.cat, by=c("Substrate1", "Substrate2")) %>%
   rename (Substrate = RMSM.Nme) 
 
 ## Melt all invert and algae species into species column
-rsc_dat <- melt(rsc_queried, measure.vars=sp_pa, value.name = "SpNum", variable.name = "Species")
+#rsc_dat <- melt(rsc_dat, measure.vars=sp_pa, value.name = "SpNum", variable.name = "Species")
 
 ## Create new fields and rename
 # Type
@@ -259,22 +259,22 @@ multi_sql <- readLines("code/sql/get-multispecies-records.sql")
 # Load query
 multi_sql <- paste(multi_sql, collapse = "\n ")
 # Run query
-multi_queried <- DBI::dbGetQuery( sf_db_connection(), multi_sql )
+multi_dat <- DBI::dbGetQuery( sf_db_connection(), multi_sql )
 
 ## Check for duplicates of species records from a single sampling event
-dup_ind <- paste(multi_queried$HKey, multi_queried$Transect, multi_queried$Quadrat, sep="-")
+dup_ind <- paste(multi_dat$HKey, multi_dat$Transect, multi_dat$Quadrat, sep="-")
 if ( any (duplicated(dup_ind)) ){
   inds <- c(which(duplicated(dup_ind, fromLast = FALSE)), 
             which(duplicated(dup_ind, fromLast = TRUE))) %>% sort()
   # show duplicated records
-  print( multi_queried[inds,] )
+  print( multi_dat[inds,] )
   # Remove duplicate records
-  multi_queried <- multi_queried[!duplicated(multi_queried),]
+  multi_dat <- multi_dat[!duplicated(multi_dat),]
 }
 
 
 ## Calculate slope using arc tangent method, make assumption that slope is same on Quadrat 1 as Quadrat 2 (since we don't have starting depth at bottom)
-multi_queried <- multi_queried %>%
+multi_dat <- multi_dat %>%
   mutate(StartDepth = ifelse(Quadrat==1, NA, lag(CorDepthM, n=1)),
          EndDepth = CorDepthM,
          Elev.Diff = StartDepth - EndDepth,
@@ -283,18 +283,18 @@ multi_queried <- multi_queried %>%
   select(-StartDepth,-EndDepth, -Elev.Diff)
   
 #change to degrees
-multi_queried$Slope <- round(abs(multi_queried$Slope) * 180/pi, digits = 0)
+multi_dat$Slope <- round(abs(multi_dat$Slope) * 180/pi, digits = 0)
 
 
 ## Calculate the substrate that represents > 50% for each quad
 # Match substrateID to substrate category
-multi_queried <- multi_queried %>% 
+multi_dat <- multi_dat %>% 
   dplyr::left_join(sub.cat, by=c("Substrate1", "Substrate2")) %>%
   rename (Substrate = RMSM.Nme) 
   
 
 ## Melt all invert and algae species into species column
-multi_dat <- melt(multi_queried, measure.vars=sp_pa, value.name = "SpNum", variable.name = "Species")
+#multi_dat <- melt(multi_dat, measure.vars=sp_pa, value.name = "SpNum", variable.name = "Species")
 
 ## Create new fields and rename
 # Type
@@ -423,21 +423,21 @@ gdk_sql <- readLines("code/sql/get-geoduck-records.sql")
 # Load query
 gdk_sql <- paste(gdk_sql, collapse = "\n ")
 # Run query
-gdk_queried <- DBI::dbGetQuery( sf_db_connection(), gdk_sql )
+gdk_dat <- DBI::dbGetQuery( sf_db_connection(), gdk_sql )
 
 ## Check for duplicates of species records from a single finishing event
-dup_ind <- paste(gdk_queried$HKey, gdk_queried$Transect, gdk_queried$Quadrat, sep="-")
+dup_ind <- paste(gdk_dat$HKey, gdk_dat$Transect, gdk_dat$Quadrat, sep="-")
 if ( any (duplicated(dup_ind)) ){
   inds <- c(which(duplicated(dup_ind, fromLast = FALSE)), 
             which(duplicated(dup_ind, fromLast = TRUE))) %>% sort()
   # show duplicated records
-  print( gdk_queried[inds,] )
+  print( gdk_dat[inds,] )
   # Remove duplicate records
-  gdk_queried <- gdk_queried[!duplicated(gdk_queried),]
+  gdk_dat <- gdk_dat[!duplicated(gdk_dat),]
 }
 
 #Most transects have a Quad0 so know bottom depths, but some don't so need to find those
-gdk_nozeroquad <- gdk_queried %>%
+gdk_nozeroquad <- gdk_dat %>%
   group_by(HKey) %>%
   filter(!all(0 %in% Quadrat)) %>%
   ungroup %>%
@@ -445,18 +445,18 @@ gdk_nozeroquad <- gdk_queried %>%
   pull(HKey)
 
 #errors in database of transect_dist_from_start
-gdk_queried[gdk_queried$HKey=="10491" & gdk_queried$Quadrat== 15, "Transect_dist_from_start"] <- 300
-gdk_queried[gdk_queried$HKey=="10493" & gdk_queried$Quadrat== 15, "Transect_dist_from_start"] <- 215
-gdk_queried[gdk_queried$HKey=="10541" & gdk_queried$Quadrat== 12, "Transect_dist_from_start"] <- 170
-gdk_queried[gdk_queried$HKey=="10545" & gdk_queried$Quadrat== 11, "Transect_dist_from_start"] <- 205
-gdk_queried[gdk_queried$HKey=="10545" & gdk_queried$Quadrat== 12, "Transect_dist_from_start"] <- 225
-gdk_queried[gdk_queried$HKey=="10545" & gdk_queried$Quadrat== 13, "Transect_dist_from_start"] <- 245
-gdk_queried[gdk_queried$HKey=="10545" & gdk_queried$Quadrat== 14, "Transect_dist_from_start"] <- 265
-gdk_queried[gdk_queried$HKey=="10545" & gdk_queried$Quadrat== 15, "Transect_dist_from_start"] <- 285
-gdk_queried[gdk_queried$HKey=="10545" & gdk_queried$Quadrat== 16, "Transect_dist_from_start"] <- 305
+gdk_dat[gdk_dat$HKey=="10491" & gdk_dat$Quadrat== 15, "Transect_dist_from_start"] <- 300
+gdk_dat[gdk_dat$HKey=="10493" & gdk_dat$Quadrat== 15, "Transect_dist_from_start"] <- 215
+gdk_dat[gdk_dat$HKey=="10541" & gdk_dat$Quadrat== 12, "Transect_dist_from_start"] <- 170
+gdk_dat[gdk_dat$HKey=="10545" & gdk_dat$Quadrat== 11, "Transect_dist_from_start"] <- 205
+gdk_dat[gdk_dat$HKey=="10545" & gdk_dat$Quadrat== 12, "Transect_dist_from_start"] <- 225
+gdk_dat[gdk_dat$HKey=="10545" & gdk_dat$Quadrat== 13, "Transect_dist_from_start"] <- 245
+gdk_dat[gdk_dat$HKey=="10545" & gdk_dat$Quadrat== 14, "Transect_dist_from_start"] <- 265
+gdk_dat[gdk_dat$HKey=="10545" & gdk_dat$Quadrat== 15, "Transect_dist_from_start"] <- 285
+gdk_dat[gdk_dat$HKey=="10545" & gdk_dat$Quadrat== 16, "Transect_dist_from_start"] <- 305
 
 # Calculate slope using arc tangent method
-gdk_queried <- gdk_queried %>%
+gdk_dat <- gdk_dat %>%
   filter(!HKey %in% 13094:13123) %>% # these only have two quadrats in each transect
   mutate(StartDepth = ifelse(Quadrat==0 | (Quadrat==1 & HKey %in% gdk_nozeroquad), CorDepthM, lag(CorDepthM, n=1)),
          EndDepth = CorDepthM,
@@ -467,16 +467,16 @@ gdk_queried <- gdk_queried %>%
   select(-StartDepth,-EndDepth, -Elev.Diff)  
 
 #change to degrees
-gdk_queried$Slope <- round(abs(gdk_queried$Slope) * 180/pi, digits = 0)
+gdk_dat$Slope <- round(abs(gdk_dat$Slope) * 180/pi, digits = 0)
 
 ## Calculate the substrate that represents > 50% for each quad
 # Match substrateID to substrate category
-gdk_queried <- gdk_queried %>% 
+gdk_dat <- gdk_dat %>% 
   dplyr::left_join(sub.cat, by=c("Substrate1", "Substrate2")) %>%
   rename (Substrate = RMSM.Nme) 
 
 ## Melt all invert and algae species into species column
-gdk_dat <- melt(gdk_queried, measure.vars=sp_pa, value.name = "SpNum", variable.name = "Species")
+#gdk_dat <- melt(gdk_dat, measure.vars=sp_pa, value.name = "SpNum", variable.name = "Species")
 
 ## Create new fields and rename
 # Type
@@ -500,7 +500,7 @@ gdk_dat <- gdk_dat[order(gdk_dat$HKey, gdk_dat$Year, gdk_dat$Transect, gdk_dat$Q
 # All species observations are converted to presence (1)/ absence (0)
 
 # Connect to mdb
-bhm_mdb <- mdb_connection("//dcbcpbsna01a/Spatial_Datasets/Dive_Surveys/Database/BHM_DiveSurveys_CURRENT_Nov2022.mdb")
+bhm_mdb <- mdb_connection("//dcbcpbsna01a/Spatial_Datasets/Dive_Surveys/Database/BHM_DiveSurveys_CURRENT_Nov2023.mdb")
 
 # Load queries
 bhm_sql <- readLines("code/sql/get-bhm-records-quads.sql")
@@ -533,17 +533,17 @@ sppQuad <- reshape2::dcast( bhm_spp, HKey+Quadrat~Species, fun=length, value.var
 sppQuad <- sppQuad %>% select(HKey, Quadrat, ZO, PH)
 
 #join species data to quads
-bhm_queried <- bhm_quads %>% 
+bhm_dat <- bhm_quads %>% 
   left_join(sppQuad, by = join_by(HKey, Quadrat)) %>% 
   mutate(ZO = ifelse(is.na(ZO), 0, ZO), 
          PH = ifelse(is.na(PH), 0, PH))
 
 #change to zero/one
-bhm_queried$ZO[bhm_queried$ZO > 0] <- 1 
-bhm_queried$PH[bhm_queried$PH > 0] <- 1 
+bhm_dat$ZO[bhm_dat$ZO > 0] <- 1 
+bhm_dat$PH[bhm_dat$PH > 0] <- 1 
  
 # Calculate slope using arc tangent method 
-bhm_queried <- bhm_queried %>%
+bhm_dat <- bhm_dat %>%
   mutate(StartDepth = ifelse(Quadrat==0, CorDepthM, lag(CorDepthM, n=1)),
          EndDepth = CorDepthM,
          Elev.Diff = StartDepth - EndDepth,
@@ -552,16 +552,16 @@ bhm_queried <- bhm_queried %>%
   select(-StartDepth,-EndDepth, -Elev.Diff)  
 
 #change to degrees
-bhm_queried$Slope <- round(abs(bhm_queried$Slope) * 180/pi, digits = 0)
+bhm_dat$Slope <- round(abs(bhm_dat$Slope) * 180/pi, digits = 0)
 
 ## Calculate the substrate that represents > 50% for each quad
 # Match substrateID to substrate category
-bhm_queried <- bhm_queried %>% 
+bhm_dat <- bhm_dat %>% 
   dplyr::left_join(sub.cat, by=c("Substrate1", "Substrate2")) %>%
   rename (Substrate = RMSM.Nme) 
 
 ## Melt all invert and algae species into species column
-bhm_dat <- melt(bhm_queried, measure.vars=sp_pa, value.name = "SpNum", variable.name = "Species")
+#bhm_dat <- melt(bhm_dat, measure.vars=sp_pa, value.name = "SpNum", variable.name = "Species")
 
 ## Create new fields and rename
 # Type
@@ -583,10 +583,10 @@ bhm_dat <- bhm_dat[order(bhm_dat$HKey, bhm_dat$Year, bhm_dat$Transect, bhm_dat$Q
 #### Get Hilo (Gulf Islands High and low current) dive survey data ####
 
 #load data
-hilo_queried <- read.csv("raw_data/hilo/HiLo_quadrats.csv",header=T, stringsAsFactors = F)
+hilo_dat <- read.csv("raw_data/hilo/HiLo_quadrats.csv",header=T, stringsAsFactors = F)
 
 # change lat long into decimal degrees
-hilo_queried <- hilo_queried %>%
+hilo_dat <- hilo_dat %>%
   mutate(LonShallow = (-1)*abs(Long_deg_s+(Long_min_s/60)),
          LatShallow = (Lat_deg_s+(Lat_min_s/60)),
          LonDeep = (-1)*abs(Long_deg_d+(Long_min_d/60)),
@@ -594,12 +594,12 @@ hilo_queried <- hilo_queried %>%
 
 ## Calculate the substrate that represents > 50% for each quad
 # Match substrateID to substrate category
-hilo_queried <- hilo_queried %>% 
+hilo_dat <- hilo_dat %>% 
   dplyr::left_join(sub.cat, by=c("Substrate1", "Substrate2")) %>%
   rename (Substrate = RMSM.Nme) 
 
 ## Melt all invert and algae species into species column
-hilo_dat <- melt(hilo_queried, measure.vars=sp_pa, value.name = "SpNum", variable.name = "Species")
+#hilo_dat <- melt(hilo_dat, measure.vars=sp_pa, value.name = "SpNum", variable.name = "Species")
 
 ## Create new fields and rename
 # Type
@@ -619,15 +619,15 @@ hilo_dat <- hilo_dat[fnames]
 hilo_dat <- hilo_dat[order(hilo_dat$HKey, hilo_dat$Transect, hilo_dat$Quadrat),]
 
 ####Combine datasets ####
-all_dat <- bind_rows(rsu_dat, gsu_dat, rsc_dat, multi_dat, gdk_dat, bhm_dat, hilo_dat)
+dat <- bind_rows(rsu_dat, gsu_dat, rsc_dat, multi_dat, gdk_dat, bhm_dat, hilo_dat)
 
 #need to make new HKey incase there is overlap in HKey between source types
-all_dat <- all_dat %>% 
+dat <- dat %>% 
   mutate (HKey = paste0(Source,"_",HKey))
 
 ## Save files
-save(all_dat, file="code/output_data/seagrass_data.RData")
+save(dat, file="code/output_data/seagrass_data.RData")
 
 
 
-#when spatializing need to remember to not aggregate by years
+
