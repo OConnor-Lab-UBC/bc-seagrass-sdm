@@ -95,7 +95,7 @@ FROM Shellfish_Bio_Urchin.dbo.UrchHeaders H
     Shellfish_Bio_Urchin.dbo.UrchDensity D ON H.[Key] = D.HKey
     LEFT JOIN
     Shellfish_Bio_Urchin.dbo.UrchHabitat A ON H.[Key] = A.HKey AND D.QuadratNum = A.QuadratNum
-WHERE H.LatDegStart IS NOT NULL AND H.LongDegStart IS NOT NULL AND D.ChartDepth IS NOT NULL AND H.Year > 1999 AND H.Species = '6BB' AND H.TransOrientation != 'U' 
+WHERE H.LatDegStart IS NOT NULL AND H.LongDegStart IS NOT NULL AND D.ChartDepth IS NOT NULL AND H.Year > 1992 AND H.Species = '6BB' AND H.TransOrientation != 'U' 
 ORDER BY H.Year, H.[Key], D.QuadratNum;
 
 

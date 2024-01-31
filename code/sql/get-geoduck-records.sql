@@ -25,5 +25,5 @@ CASE WHEN ',' + D.Algae + ',' LIKE '%ZO%' THEN 1 ELSE 0 END AS ZO
 FROM Shellfish_Bio_Other.dbo.GeoduckHeaders H
     INNER JOIN 
     Shellfish_Bio_Other.dbo.GeoduckDensity D ON H.[Key] = D.HKey
-WHERE H.LatDegSt IS NOT NULL AND H.LongDegSt IS NOT NULL AND D.DepthCorM IS NOT NULL AND H.Year > 1999
+WHERE H.LatDegSt IS NOT NULL AND H.LongDegSt IS NOT NULL AND D.DepthCorM IS NOT NULL AND H.Year > 1992
 ORDER BY H.Year, H.[Key], D.QuadratNum;

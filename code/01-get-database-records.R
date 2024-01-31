@@ -13,6 +13,8 @@
 # As per the Application for Access to Shellfish Data Holdings, data collected two years prior to today should not be included in data pulls to allow the Principle Investigator a two year period to analyze and report findings. 
 # Exceptions to the use of data collected in the last two years may be made if the user has met the conditions outlined in the Application for Access or has discussed the use of the data with the Principle Investigator for the survey
 
+#Script built in R 4.3.2
+
 # Requirements:
 # r-sql-link-functions.R 
 # Access to shellfish SQL server (VPN connection and access permitted from DFO Shellfish Data Unit)
@@ -44,8 +46,6 @@ fnames <-  c( "Type", "Source", "Survey", "HKey", "Method",
               "LatShallow","LonShallow", "Transect_length", "Quadrat", "CorDepthM","Substrate", "Slope",
               "PH", "ZO")  
 
-#species to extract, zostera and phyllospadix
-#sp_pa <- c("PH", "ZO")
 
 #---------------------------------------------------------------------#
 #### Get RSU_bio (red sea urchin) dive survey data #### 
@@ -100,7 +100,7 @@ rsu_dat <- rsu_dat %>%
 ## Melt all species into species column
 # rsu_dat <- melt(rsu_dat, measure.vars=sp_pa, value.name = "SpNum", variable.name = "Species")
 
-#remove Survey=="RES-P" as don't know their collection methods for algae or much other metadata
+#remove Survey=="RES-P" as don't know their collection methods for algae or much other metadata and have not gotten first nation approval to share data
 rsu_dat <-rsu_dat %>%
   filter(Survey!="RES-P")
 
@@ -206,7 +206,7 @@ if ( any (duplicated(dup_ind)) ){
   rsc_dat <- rsc_dat[!duplicated(rsc_dat),]
 }
 
-#Years >2016 have Quad0 so know bottom depths, surveys prior we have no start depth of first quadrat of each transect but making assumption it has similar slope as quadrat after it. 
+#Years >2016 have Quad0 so know bottom depths, surveys prior we often have no start depth of first quadrat of each transect but making assumption it has similar slope as quadrat after it. 
 rsc_dat <- rsc_dat %>%
   mutate(StartDepth = case_when(Year>2016 & Quadrat==0 ~ CorDepthM,
                                 Year>2016 & Quadrat!=0 ~ lag(CorDepthM, n=1),
@@ -628,6 +628,26 @@ dat <- dat %>%
 ## Save files
 save(dat, file="code/output_data/seagrass_data.RData")
 
+
+
+
+
+# make shapefile of dat to further explore any issues 
+
+# Convert to spdf and export
+# create spatial points
+# dat_sf <- dat %>% 
+#   mutate(Latitude = case_when(!is.na(LatDeep) ~ LatDeep,
+#                                is.na(LatDeep) ~ LatShallow),
+#          Longitude = case_when(!is.na(LonDeep) ~ LonDeep,
+#                               is.na(LonDeep) ~ LonShallow)) %>%
+#   filter(!is.na(Latitude))  %>%
+#   st_as_sf(coords = c("Longitude", "Latitude"), crs = "EPSG:4326") %>%
+#   st_transform(crs = "EPSG:3005")
+# 
+# # export as shapefile
+# # likely to have issues with attribute field names shortening
+# st_write(dat_sf, "code/output_data/dat_transect.shp", append=FALSE) 
 
 
 

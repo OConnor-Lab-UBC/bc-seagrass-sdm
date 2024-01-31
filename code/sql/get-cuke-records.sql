@@ -26,5 +26,5 @@ CASE WHEN ',' + D.Algae1 + ',' LIKE '%ZO%' THEN 1 WHEN ',' + D.Algae2 + ',' LIKE
 FROM Shellfish_Bio_Other.dbo.SeaCukeHeaders H
     INNER JOIN 
     Shellfish_Bio_Other.dbo.SeaCukeDensities D ON H.[Key] = D.HKey
-WHERE H.LatDegDeep IS NOT NULL AND H.LongDegDeep IS NOT NULL AND D.ChartDepth IS NOT NULL AND H.Year > 1999
+WHERE H.LatDegDeep IS NOT NULL AND H.LongDegDeep IS NOT NULL AND D.ChartDepth IS NOT NULL AND H.Year > 1992
 ORDER BY H.Year, H.[Key], H.Transect, D.QuadratNum;
