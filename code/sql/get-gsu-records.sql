@@ -39,7 +39,11 @@ CASE
     WHEN H.Year > 2009 THEN D.ChartDepth
     END AS CorDepthM,	
 D.SubStrate1 AS Substrate1,
+D.PctSub1 AS PctSubstrate1,
 D.SubStrate2 AS Substrate2,
+D.PctSub2 AS PctSubstrate2,
+D.SubStrate3 AS Substrate3,
+D.PctSub3 AS PctSubstrate3,
 CASE 
     WHEN ',' + D.Algae + ',' LIKE '%PH%' THEN 1 
 	WHEN ',' + D.Algae2 + ',' LIKE '%PH%' THEN 1

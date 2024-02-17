@@ -20,6 +20,7 @@ D.DepthGauge *0.3048 AS Depth_gauge_m,
 D.DepthCorM AS CorDepthM,
 D.Substrate1,
 D.Substrate2,
+D.Substrate3,
 CASE WHEN ',' + D.Algae + ',' LIKE '%PH%' THEN 1 ELSE 0 END AS PH, 
 CASE WHEN ',' + D.Algae + ',' LIKE '%ZO%' THEN 1 ELSE 0 END AS ZO
 FROM Shellfish_Bio_Other.dbo.GeoduckHeaders H

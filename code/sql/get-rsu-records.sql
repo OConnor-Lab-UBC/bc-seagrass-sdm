@@ -1,6 +1,8 @@
 SELECT
 H.[Key] AS HKey,
 H.Source AS Survey,
+H.DiverLeft,
+H.DiverRight,
 H.Location,
 H.Year AS Year,
 H.Month AS Month,
@@ -31,7 +33,11 @@ D.QuadratNum AS Quadrat,
 D.GageDepth*0.3048 AS Depth_gauge_m,
 D.ChartDepth AS CorDepthM,
 D.SubStrate1 AS Substrate1,
+D.PctSub1 AS PctSubstrate1,
 D.SubStrate2 AS Substrate2,
+D.PctSub2 AS PctSubstrate2,
+D.SubStrate3 AS Substrate3,
+D.PctSub3 AS PctSubstrate3,
 CASE 
   	WHEN ',' + A.CanopySpecies1 + ',' LIKE '%PH%' THEN 1
 	WHEN ',' + A.CanopySpecies2 + ',' LIKE '%PH%' THEN 1

@@ -1,0 +1,45 @@
+
+Updated Substrate catagories as was getting a catagory of rock for areas that were predominantly sand
+
+Previous catagories:
+
+RMSM.catRMSM.NmeBType1	BType2	Btype descriptionSubstrate1	Substrate2
+3	Sand	3	a	Sand/shell		7	0
+1	Rock	1	b	Bedrock dominant	7	1
+1	Rock	1	b	Bedrock dominant	7	2
+1	Rock	1	b	Bedrock dominant	7	3
+1	Rock	1	b	Bedrock dominant	7	4
+2	Mixed	2	b	Soft surface, overlaying hard substrate	7	5
+2	Mixed	2	b	Soft surface, overlaying hard substrate	7	6
+
+
+New catagories:
+
+3	Sand	3	a	Sand/shell		7	0
+3	Sand	3	a	Sand/shell, some rock	7	1
+3	Sand	3	a	Sand/shell, some rock	7	2
+3	Sand	3	a	Sand/shell, some rock	7	3
+3	Sand	3	a	Sand/shell, some rock	7	4
+3	Sand	3	a	Sand/shell		7	5
+3	Sand	3	a	Sand/shell		7	6
+
+
+Added to Btype descroption for sites that have any soft substrate (sand, mud or shell) with bedrock dominant that it was changed to "bedrock dominanry, soft present"
+and where sand was dominant but had some rock to "Sand/shell, some rock"
+
+Updated Substrate catagories as was getting a catagory of rock for areas that were predominantly crushed shell
+
+Previous catagories:
+
+RMSM.catRMSM.NmeBType1	BType2	Btype descriptionSubstrate1	Substrate2
+1	Rock	1	b	Bedrock dominant	10	1
+1	Rock	1	b	Bedrock dominant	10	2
+1	Rock	1	b	Bedrock dominant	10	3
+1	Rock	1	b	Bedrock dominant	10	4
+
+New catagories:
+2	Mixed	2	b	Soft surface, overlaying hard substrate	10	1
+2	Mixed	2	b	Soft surface, overlaying hard substrate	10	2
+2	Mixed	2	b	Soft surface, overlaying hard substrate	10	3
+2	Mixed	2	b	Soft surface, overlaying hard substrate	10	4
+

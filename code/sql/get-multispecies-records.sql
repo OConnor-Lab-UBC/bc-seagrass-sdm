@@ -25,7 +25,11 @@ SELECT
 		WHEN H.QuadratSkipping = 4 THEN 125
 		END AS Transect_length,
 	cast(D.SubCode1 AS INTEGER) AS Substrate1,
+	D.Sub1Pct AS PctSubstrate1,
 	cast(D.SubCode2 AS INTEGER) AS Substrate2,
+	D.Sub2Pct AS PctSubstrate2,
+	cast(D.SubCode3 AS INTEGER) AS Substrate3,
+	D.Sub3Pct AS PctSubstrate3,
 	CASE WHEN ',' + Q.ALGAE + ',' LIKE '%, PH,%' THEN 1 ELSE 0 END AS PH,
 	CASE WHEN ',' + Q.ALGAE + ',' LIKE '%, ZO,%' THEN 1 ELSE 0 END AS ZO
 FROM SFBioSQL.dbo.vw_ms1_headers H

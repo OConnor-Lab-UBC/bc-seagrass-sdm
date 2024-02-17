@@ -23,7 +23,7 @@ To calculate depth For GSU, pre-2010 actual depth is GageDepth-TideHgt. Post-200
 
 #RSU database
 FOR RES survey use only Loiuse Island and Tofino, surveys from other RES surveys need to have okay from FN collaborators and there is no metadata.
-Maybe issues with CorDepth tide calculations, waiting to hear from Lyanne
+Until 2019, depths were corrected using predictions exported from Nobeltec Tides & Currents Pro (NTC). Substantial differences are known to exist between predictions made by version 3.7 of NTC, in use after 2014, and modern predictions on tides.gc.ca (checked 2020-07), in some cases. As of 2022, water levels are extracted from the CHS API. 
 Skip patterns
 For Tofino is Curtis and Leus 2022 Using 1 m2 quadrats, divers recorded the number of RSU, GSU, and PSU as well as habitat characteristics (described below) within every other quadrat along the transect (i.e., data were collected only within every 2nd quadrat).
 For Louise Island "Within each surveyed transect, all urchin species were counted and measured (maximum test diameter, TD, mm), 

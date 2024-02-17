@@ -6,7 +6,12 @@
 # Project:      BC Seagrass SDM
 #
 # Overview:
-# Processing scripts that query and standardize zostera, phyllospadix, depth, and substrate observations from Pacific shellfish databases through SQL Server and BHM database through MS Access
+# Processing scripts that query and standardize zostera, phyllospadix, depth, and substrate observations from Pacific shellfish databases through SQL Server and BHM database through MS Access. 
+# Data range is 1993-2023 to correspond with ROMs hindcast (1993-2022)
+# Calculate slope based off quadrat size, quadrat skipping, and depth observations
+# Clean data to remove where divers may have miss identified eelgrass and surfgrass for each other (based on substrate observations)
+# For more information of survey protocols see Data-dictionary.txt 
+
 
 # Data use:
 # As per the Policy for Scientific Data, DFO scientific data are a public resource and subject to full and open access within two years of being acquired or generated. 
@@ -44,7 +49,7 @@ dir.create( outdir, recursive=TRUE )
 fnames <-  c( "Type", "Source", "Survey", "HKey", "Method",
               "Year","Month", "Day", "LatDeep","LonDeep",
               "LatShallow","LonShallow", "Transect_length", "Quadrat", "CorDepthM","Substrate", "Slope",
-              "PH", "ZO")  
+              "PH", "ZO", "Identification")  
 
 
 #---------------------------------------------------------------------#
@@ -111,6 +116,13 @@ rsu_dat$Type <- "Research"
 rsu_dat$Source <- "RSU_bio"
 # Method
 rsu_dat$Method <- "Dive"
+
+## remove where phyllo and zostera are likely mis identified based on substrate type
+rsu_dat <- rsu_dat %>%
+  mutate(Identification = case_when((ZO == 1 & Btype.description == "Bedrock dominant" &(Substrate3 != 7 & Substrate3 != 9) %>% replace_na(TRUE)) ~ "Remove",
+                                    Substrate != "Rock" & Substrate != "Mixed" & PH == 1 & Btype.description != "Sand/shell, some rock" ~ "Remove",
+                                    .default = "Keep"))
+                                  
 # Rename
 rsu_dat <- rsu_dat[fnames]
 
@@ -173,6 +185,13 @@ gsu_dat$Source <- "GSU_bio"
 gsu_dat$Transect <- NA
 # Method
 gsu_dat$Method <- "Dive"
+
+## remove where phyllo and zostera are likely mis identified based on substrate type
+gsu_dat <- gsu_dat %>%
+  mutate(Identification = case_when((ZO == 1 & Btype.description == "Bedrock dominant" &(Substrate3 != 7 & Substrate3 != 9) %>% replace_na(TRUE)) ~ "Remove",
+                                    Substrate != "Rock" & Substrate != "Mixed" & PH == 1 & Btype.description != "Sand/shell, some rock" ~ "Remove",
+                                    .default = "Keep"))
+
 # Rename
 gsu_dat <- gsu_dat[fnames]
 
@@ -238,6 +257,13 @@ rsc_dat$Type <- "Research"
 rsc_dat$Source <- "Cuke_bio"
 # Method
 rsc_dat$Method <- "Dive"
+
+## remove where phyllo and zostera are likely mis identified based on substrate type
+rsc_dat <- rsc_dat %>%
+  mutate(Identification = case_when((ZO == 1 & Btype.description == "Bedrock dominant" &(Substrate3 != 7 & Substrate3 != 9 & Substrate3 != 10) %>% replace_na(TRUE)) ~ "Remove",
+                                    Substrate != "Rock" & Substrate != "Mixed" & PH == 1 & Btype.description != "Sand/shell, some rock" & Substrate3 != 3 ~ "Remove",
+                                    .default = "Keep"))
+
 # Rename
 rsc_dat <- rsc_dat[fnames]
 
@@ -305,6 +331,12 @@ multi_dat$Source <- "Multispecies_bio"
 multi_dat$Time_type <- NA
 # Method
 multi_dat$Method <- "Dive"
+
+## remove where phyllo and zostera are likely mis identified based on substrate type
+multi_dat <- multi_dat %>%
+  mutate(Identification = case_when(ZO == 1 & Btype.description == "Bedrock dominant"  ~ "Remove",
+                                    Substrate != "Rock" & Substrate != "Mixed" & PH == 1 & Btype.description != "Sand/shell, some rock" ~ "Remove",
+                                    .default = "Keep"))
 
 # Rename
 multi_dat <- multi_dat[fnames]
@@ -400,6 +432,10 @@ ABLdat$Method <- "Dive"
 #Slope is not possible to calculate from this survey, so will need to use modelled slope
 ABLdat$Slope <- NA
 
+## remove where phyllo and zostera are likely mis identified based on substrate type
+ABLdat <- ABLdat %>%
+  filter(!(ZO == 1 & Substrate == "Rock"))
+
 # Convert to spdf and export
 # create spatial points
 ABLdat_sf <- ABLdat %>% st_as_sf(coords = c("Longitude", "Latitude"), crs = "EPSG:4326") %>%
@@ -486,6 +522,12 @@ gdk_dat$Source <- "GDK_bio"
 # Method
 gdk_dat$Method <- "Dive"
 
+## remove where phyllo and zostera are likely mis identified based on substrate type
+gdk_dat <- gdk_dat %>%
+  mutate(Identification = case_when(ZO == 1 & Btype.description == "Bedrock dominant" &(Substrate3 != 7 & Substrate3 != 10) %>% replace_na(TRUE)  ~ "Remove",
+                                    Substrate != "Rock" & Substrate != "Mixed" & PH == 1 ~ "Remove",
+                                    .default = "Keep"))
+
 # Rename
 gdk_dat <- gdk_dat[fnames]
 
@@ -571,6 +613,11 @@ bhm_dat$Source <- "BHM"
 # Method
 bhm_dat$Method <- "Dive"
 
+## remove where phyllo and zostera are likely mis identified based on substrate type
+bhm_dat <- bhm_dat %>%
+  mutate(Identification = case_when(ZO == 1 & Btype.description == "Bedrock dominant" &(Substrate3 != 7 & Substrate3 != 9 & Substrate3 != 10) %>% replace_na(TRUE)  ~ "Remove",
+                                    Substrate != "Rock" & Substrate != "Mixed" & PH == 1 & Btype.description != "Sand/shell, some rock" &(Substrate3 != 2 & Substrate3 != 4) %>% replace_na(TRUE) ~ "Remove",
+                                    .default = "Keep"))
 # Rename
 bhm_dat <- bhm_dat[fnames]
 
@@ -613,6 +660,12 @@ hilo_dat$Slope <- NA
 # transect length is not possible to determine from the method of this survey 
 hilo_dat$Transect_length <- NA
 
+## remove where phyllo and zostera are likely mis identified based on substrate type
+hilo_dat <- hilo_dat %>%
+  mutate(Identification = case_when(ZO == 1 & Btype.description == "Bedrock dominant"  ~ "Remove",
+                                    Substrate != "Rock" & Substrate != "Mixed" & PH == 1 ~ "Remove",
+                                    .default = "Keep"))
+
 # Rename
 hilo_dat <- hilo_dat[fnames]
 # Order rows
@@ -625,6 +678,7 @@ dat <- bind_rows(rsu_dat, gsu_dat, rsc_dat, multi_dat, gdk_dat, bhm_dat, hilo_da
 dat <- dat %>% 
   mutate (HKey = paste0(Source,"_",HKey))
 
+
 ## Save files
 save(dat, file="code/output_data/seagrass_data.RData")
 
@@ -636,18 +690,18 @@ save(dat, file="code/output_data/seagrass_data.RData")
 
 # Convert to spdf and export
 # create spatial points
-# dat_sf <- dat %>% 
-#   mutate(Latitude = case_when(!is.na(LatDeep) ~ LatDeep,
-#                                is.na(LatDeep) ~ LatShallow),
-#          Longitude = case_when(!is.na(LonDeep) ~ LonDeep,
-#                               is.na(LonDeep) ~ LonShallow)) %>%
-#   filter(!is.na(Latitude))  %>%
-#   st_as_sf(coords = c("Longitude", "Latitude"), crs = "EPSG:4326") %>%
-#   st_transform(crs = "EPSG:3005")
-# 
-# # export as shapefile
-# # likely to have issues with attribute field names shortening
-# st_write(dat_sf, "code/output_data/dat_transect.shp", append=FALSE) 
+dat_sf <- dat %>%
+  mutate(Latitude = case_when(!is.na(LatDeep) ~ LatDeep,
+                               is.na(LatDeep) ~ LatShallow),
+         Longitude = case_when(!is.na(LonDeep) ~ LonDeep,
+                              is.na(LonDeep) ~ LonShallow)) %>%
+  filter(!is.na(Latitude))  %>%
+  st_as_sf(coords = c("Longitude", "Latitude"), crs = "EPSG:4326") %>%
+  st_transform(crs = "EPSG:3005")
+
+# export as shapefile
+# likely to have issues with attribute field names shortening
+st_write(dat_sf, "code/output_data/dat_transect.shp", append=FALSE)
 
 
 
