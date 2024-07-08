@@ -72,14 +72,14 @@ depth_dist <- 5
 # If presence/absence is coded using species codes, SpNum == FALSE
 # If presence/absence is coded using a numeric column (0/1), SpNum == TRUE
 # Name of column in dataset with 0/1 values must be named: 'SpNum'
-SpNum <- FALSE
+#SpNum <- FALSE
 
 # Name of column with species names
-spNames <- "Species"
+#spNames <- "Species"
 
 # Species of interest
 # if all species are needed = 'all'
-spp <- 'all'
+#spp <- 'all'
 
 
 #----------------------------------------------------------------------------#
@@ -111,7 +111,7 @@ cliffs <- cliffs%>% filter(Transect_length < 41) #this is the cliffs data set to
 #find remaining transects that only have one xy coodinate per transect
 missing_startorend <- which( !complete.cases(dat[, c("LonShallow","LatShallow","LonDeep","LatDeep")]) )
 single_xy <- dat[c(missing_startorend),]
-unique(single_xy$Source) #RSU, GSU, Cuke and BHM surveys
+unique(single_xy$Source) #RSU, GSU, Cuke, GDK, and BHM surveys
 dat <- dat[-c(missing_startorend),] #remove those from dat
 
 #likely can only spatialize if have deep end coordinate and transect length is <200m (otherwise other points of land may confuse spatialization)
@@ -206,7 +206,7 @@ for (i in 1:nrow(trans)){
       st_as_sf(coords = c("lon","lat"), crs = "EPSG:4326") %>%
       st_transform(crs = "EPSG:3005") %>%
       group_by() %>% 
-      summarize() %>%
+      dplyr::summarize() %>%
       st_cast("LINESTRING")
     # hkey
     hkey <- as.character( trans[i, "HKey"] )
@@ -240,7 +240,7 @@ for( i in 1:nrow(sl)){
   # Set seed for consistent results
   set.seed(42)
   # Regularly sample points along line
-  pts <- st_line_sample(sl[i,], n = npts, type = "regular") # 20 becasue 20 m bathy layer
+  pts <- st_line_sample(sl[i,], n = npts, type = "regular") 
   ckey <- as.character(hkey)
   spdf.list[[ckey]] <-
     data.frame(st_coordinates(st_as_sf(pts, crs =	"EPSG:3005")),
@@ -305,8 +305,6 @@ ptsdat<- cbind(st_drop_geometry(spdf), st_coordinates(st_as_sf(spdf, coords = c(
 qdat <- dat[dat$HKey %in% unique(ptsdat$HKey),]
 
 
-###NEED TO START EDITING FROM THIS POINT
-
 # Match pts to quadrats by depth
 matchSpatial <- function( x ){  
   # require
@@ -316,14 +314,15 @@ matchSpatial <- function( x ){
   pts <- ptsdat[ptsdat$HKey == x,]
   # match
   matchdepth <- find.matches(quad$CorDepthM, pts$bathy, tol=1000, maxmatch=1)
-  # merge quad and pts based of matchdepth
-  mdat <- data.frame( quad, pts[matchdepth$matches, c("x", "y", "bathy")],
+  # merge quad and pts based off matchdepth
+  mdat <- data.frame( quad, pts[matchdepth$matches, c("X", "Y", "bathy")],
                       ID = paste(quad$HKey, matchdepth$matches, sep="_"))
-  # Calulcate difference between quadrat depth and bathy
+  # Calculate difference between quadrat depth and bathy
   mdat$depthdiff <- abs( mdat$CorDepthM - mdat$bathy )
   # return
   return( mdat )
 }
+
 # Run getDist in parallel
 cl <- parallel::makeCluster( parallel::detectCores() - 1 )
 ## make variables available to cluster
@@ -378,18 +377,17 @@ cat( paste0( length(unique(rem_depthdiff$QID)),
 
 
 # Remove NAs in x and y's (usually due to NAs present in CorDepthM)
-rem_naxy <- dsp[!complete.cases(dsp[, c("x","y")]),]
+rem_naxy <- dsp[!complete.cases(dsp[, c("X","Y")]),]
 if( nrow(rem_naxy) > 0 ) rem_naxy$reason <- "NA values in x,y points along transects"
 removed_quadrats <- rbind(removed_quadrats, rem_naxy)
-csp <- dsp[complete.cases(dsp[, c("x","y")]),]
+csp <- dsp[complete.cases(dsp[, c("X","Y")]),]
 # Number of transects removed
 cat( length(unique(dsp$QID))-length(unique(csp$QID)), 
      "quadrats removed because NA values in quadrat x and y","\n\n")
 
 
 # Quadrats removed
-write.csv( removed_quadrats, file = file.path("Data",projdir,"Output/Quadrats_Removed.csv") )
-
+write.csv( removed_quadrats, file="code/output_data/Quadrats_Removed.csv") 
 
 # Mean number of quadrats aggregated into a single spatial point
 nquads <- aggregate( Quadrat ~ ID, data= csp, function(x) length(unique(x)))
@@ -398,71 +396,53 @@ cat( round( mean(nquads$Quadrat), 1 ), "quadrats per spatial point on average",
 names(nquads)[2] <- "NumQuadrats"
 
 # Quadrats retained
-write.csv( csp, 
-           file = file.path("Data",projdir, 
-                            paste0("Output/SpatializedQuadrats_MeltedDataframe_",
-                                   filename,".csv")) )
+#select 
+csp<-csp %>% select("Survey","Year","Month","Day","HKey","ID" , "X", "Y",
+             "LonDeep","LatDeep","LonShallow","LatShallow", "CorDepthM", 
+             "bathy", "depthdiff", "Slope", "Substrate", "PH", "ZO")
+
+write.csv( csp, file="code/output_data/SpatializedQuadrats_notaggregated.csv") 
+
+
+# Convert to spdf and export
+csp <- csp %>%
+  st_as_sf(coords = c("X", "Y"), crs = "EPSG:3005") 
+
+# export as shapefile
+# likely to have issues with attribute field names shortening
+st_write(csp, "code/output_data/SpatializedQuadrats_notaggregated.shp", append=FALSE)
 
 
 
 #----------------------------------------------------------------------------#
-# Aggregate presence / absence by spatial points
-# Create species by site matrix to fill in absences
 
-# Remove empty records with no species names
-names(csp)[names(csp) == spNames] <- "Species"
-csp <- csp[csp$Species != "",]
-
-# Set value variables for dcast()
-if( SpNum ) {
-  value.var <- "SpNum"
-} else {
-  csp$presence <- 1
-  value.var <- "presence"
-}
-
-# Create to species by site matrix where site is a spatial point
-spcast <- dcast(ID ~ Species, value.var = value.var, fun = mean, data=csp)
-spcast[is.na(spcast)] <- 0
-
-# Subset just species of interest
-if ( spp == "all" ){
-  spint <- spcast
-} else {
-  spint <- spcast[, c("ID", spp)]
-}
-
-# Species prevalence
-if ( length(spp) > 1 | spp == "all" ){
-  prev <- round( apply(spint[,-1], 2, function(x) 100*(length(x[x > 0])/length(x)) ),2)
-} else {
-  prev  <- round( 100*(length(spint[,-1][spint[,-1] > 0])/length(spint[,-1])) ,2)
-}
-cat( "\n\n")
-cat( "#----------------------------------------------------------------------#\n")
-cat( "Species prevalence:\n")
-prev
-
-# Merge with nquads
-spint <- merge( nquads, spint,  by= "ID" )
+# Aggregate presence / absence by spatial points, want to test both if need to aggregate, look at spatial autocorrelation
 
 # Transect attributes
 att <- csp[!duplicated(csp$ID),]
-att <- att[c("Survey","Year","Month","Day","HKey","ID" ,"x","y",
+att <- att[c("Survey","Year","Month","Day","HKey","ID" ,"X","Y",
              "LonDeep","LatDeep","LonShallow","LatShallow")]
 # Quadrat attributes - Mean depth from quadrats aggregated to spatialised points
-mean_att <- aggregate( . ~ ID, mean, data = csp[c("ID", "CorDepthM", "bathy", "depthdiff")])
-names(mean_att) <- c("ID", "mean_CorDepthM", "mean_bathy", "mean_depthdiff")
+mean_att <- aggregate( . ~ ID, mean, data = csp[c("ID", "CorDepthM", "bathy", "depthdiff", "Slope", "PH", "ZO")])
+names(mean_att) <- c("ID", "mean_CorDepthM", "mean_bathy", "mean_depthdiff", "mean_slope", "PH", "ZO")
+
+#Quadrat attributes - most common substrate
+Mode <- function(x) {
+  ux <- unique(x)
+  ux[which.max(tabulate(match(x, ux)))]
+}
+
+mode_att <- aggregate( . ~ ID, Mode, data = csp[c("ID", "Substrate")])
 
 # Add back attributes
 att <- merge(att, mean_att, by="ID")
-spat <- merge(att, spint, by="ID")
+spat <- merge(att, mode_att, by="ID")
+spat <- merge(spat, nquads, by="ID")
 spat <- spat[order(spat$HKey),]
 
 # Ensure presence/absence
-if( SpNum ) {
-  spat[spp][spat[spp] > 0] <- 1
-} 
+spat$PH[spat$PH > 0] <- 1
+spat$ZO[spat$ZO > 0] <- 1
 
 # check
 cat( "\n\n")
@@ -474,23 +454,16 @@ cat( "\n\n")
 
 
 #----------------------------------------------------------------------------#
-# Convert to spdf and export
-
 # export as csv
-write.csv( spat,
-           file = file.path("Data",projdir,
-                            paste0("Output/SpatializedQuadrats_SitesvSpeciesMatrix_",
-                                   filename,".csv")) )
+write.csv( spat, file="code/output_data/SpatializedQuadrats_SitesvSpeciesMatrix_aggregated.csv") 
 
-# as spdf
-coordinates(spat) <- ~x+y
-proj4string(spat) <- geoCRS
+# Convert to spdf and export
+spat <- spat %>%
+  st_as_sf(coords = c("X", "Y"), crs = "EPSG:3005") 
 
 # export as shapefile
 # likely to have issues with attribute field names shortening
-writeOGR(spat, dsn=file.path("Data",projdir,"Output"), 
-         layer=paste0("SpatializedQuadrats_SitesvSpeciesMatrix_",filename),
-         driver="ESRI Shapefile", overwrite_layer = T)
+st_write(spat, "code/output_data/SpatializedQuadrats_aggregated.shp", append=FALSE)
 
 
 

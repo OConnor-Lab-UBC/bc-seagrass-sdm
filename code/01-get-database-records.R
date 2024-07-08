@@ -18,7 +18,7 @@
 # As per the Application for Access to Shellfish Data Holdings, data collected two years prior to today should not be included in data pulls to allow the Principle Investigator a two year period to analyze and report findings. 
 # Exceptions to the use of data collected in the last two years may be made if the user has met the conditions outlined in the Application for Access or has discussed the use of the data with the Principle Investigator for the survey
 
-#Script built in R 4.3.2
+#Script built in R 4.4.0
 
 # Requirements:
 # r-sql-link-functions.R 
@@ -542,7 +542,7 @@ gdk_dat <- gdk_dat[order(gdk_dat$HKey, gdk_dat$Year, gdk_dat$Transect, gdk_dat$Q
 # All species observations are converted to presence (1)/ absence (0)
 
 # Connect to mdb
-bhm_mdb <- mdb_connection("//dcbcpbsna01a/Spatial_Datasets/Dive_Surveys/Database/BHM_DiveSurveys_CURRENT_Nov2023.mdb")
+bhm_mdb <- mdb_connection("//dcbcpbsna01a/Spatial_Datasets/Dive_Surveys/Database/BHM_DiveSurveys_CLEAN_March2024.mdb")
 
 # Load queries
 bhm_sql <- readLines("code/sql/get-bhm-records-quads.sql")
