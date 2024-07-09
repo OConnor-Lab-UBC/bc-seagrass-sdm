@@ -30,13 +30,13 @@
 #
 # 2) Lat and long must be decimal degrees represented with fields:  
 #     LonShallow, LatShallow, LonDeep, LatDeep
-#
-# 3) When presence/absence are represented by 0/1 values, 
-#    the field containing 0/1 values must be named 'SpNum'
 
 
-#when spatializing need to remember to not aggregate by years
-#what to do with substrate and slope when aggregating
+
+#when spatializing need to decide what to do with aggregating. This code provides out of quadrats aggregated to 20 m and notaggregated
+#First test sdmTMB with data not aggregating
+
+#have not finished code to include cliffs and one coord transects
 #there are a lot of transects from earlier surveys with no lat/long shallow, need to figure out how to make line without having datapoint
 ###############################################################################
 
@@ -46,10 +46,8 @@ library(sf)
 library(tidyverse)
 library(terra)
 library(matrixStats)
-# library(raster)
 library(geosphere)
 library(Hmisc)
-# library(reshape2)
 
 #load_data####
 load("code/output_data/seagrass_data.RData")
@@ -66,7 +64,7 @@ bathy <- vrt("raw_data/Bathymetry/Coastwide_20m_mosaic.tif")
 #----------------------------------------------------------------------------#
 # Remove quadrats with depth difference > depth_dist
 # between corrected quadrat depth and depth from bathymetry raster
-depth_dist <- 5
+#depth_dist <- 5
 
 # How are the species data represented?
 # If presence/absence is coded using species codes, SpNum == FALSE
@@ -97,30 +95,42 @@ dat <- left_join(dat, qCnt, by="HKey")
 # Find transects which don't have x,y values for either the start or end and remove
 missing_both <- which( apply(is.na(dat[c("LonShallow","LatShallow","LonDeep","LatDeep")]), 1, all) )
 no_xy <- dat[missing_both,]
-dat <- dat[-c(missing_both),]
 
-#find transects that have same lat and lon and identify which ones may be cliff sites
-same_startend <- which( paste0(dat$LonDeep, dat$LatDeep) == paste0(dat$LonShallow, dat$LatShallow) )
-
-# Find transects which only have a single x,y value and they are short transects, so likely cliffs
-missing_startorend_cliffs <- which( !complete.cases(dat[, c("LonShallow","LatShallow","LonDeep","LatDeep")]) & dat$Transect_length < 40)
-cliffs <- dat[c(same_startend, missing_startorend_cliffs),]
-dat <- dat[-c(same_startend, missing_startorend_cliffs),] #remove all potential cliffs from database
-cliffs <- cliffs%>% filter(Transect_length < 41) #this is the cliffs data set to be spatialized separately
-
-#find remaining transects that only have one xy coodinate per transect
+#find transects that only have one xy coodinate per transect
 missing_startorend <- which( !complete.cases(dat[, c("LonShallow","LatShallow","LonDeep","LatDeep")]) )
 single_xy <- dat[c(missing_startorend),]
 unique(single_xy$Source) #RSU, GSU, Cuke, GDK, and BHM surveys
-dat <- dat[-c(missing_startorend),] #remove those from dat
+
+#find transects that have same lat and lon 
+same_startend <- which( paste0(dat$LonDeep, dat$LatDeep) == paste0(dat$LonShallow, dat$LatShallow))
+same_xy <- dat[c(same_startend),]
+
+#make cliffs dataset
+cliffs <- dat[c(missing_startorend, same_startend),]
+cliffs <- cliffs%>% filter(Transect_length < 41) #this is the cliffs data set to be spatialized separately and retain all quadrats
+unique(cliffs$HKey) #1497 transects are cliffs
+
+#clean up dat
+dat <- dat[-c(missing_startorend, same_startend, missing_both),] #remove those from dat
+
+single_xy <- single_xy%>% filter(Transect_length > 40) #remove cliffs from single_xy
+unique(single_xy$HKey) #2006 transects have single xy
+same_xy <- same_xy%>% filter(Transect_length > 40) #remove cliffs from same_xy 
+unique(same_xy$HKey) #58 transects have same xy
+
 
 #likely can only spatialize if have deep end coordinate and transect length is <200m (otherwise other points of land may confuse spatialization)
-single_xy <- single_xy %>% 
+single_xy_tospatialize <- single_xy %>% 
   filter(Transect_length < 201,
          !is.na(LatDeep),
          !is.na(LonDeep))
-### for a later date to figure out if possible to spatialize these!
+unique(single_xy_tospatialize$HKey) #1666 transects have single xy that can be spatialized
 
+#get seperate dataframe of where we can extract some quadrats at the one point
+single_xy_topoint <- single_xy %>% 
+  filter(Transect_length > 200|Transect_length < 201 & is.na(LatDeep)) %>%
+  rbind(same_xy) # add in same_xy transects
+ unique(single_xy_topoint$HKey) #396 transects have single xy we can get quadrats from one point
 
 
 # Create transect dataset with filtered dat dataset
@@ -129,8 +139,8 @@ trans <- dat[!duplicated(dat$HKey),
                "LonShallow","LatShallow","LonDeep","LatDeep")]
 
 
-## add this in the future but not just for point
-single_xy_trans <- single_xy[!duplicated(single_xy$HKey),
+# Create transect dataset with filtered single_xy to spatialize dataset
+single_xy_trans <- single_xy_tospatialize[!duplicated(single_xy_tospatialize$HKey),
                              c("Survey","Year","Month","Day","HKey",
                                "LonShallow","LatShallow","LonDeep","LatDeep")]
 
@@ -255,7 +265,7 @@ spdf<- spdf %>%
 
 
 #----------------------------------------------------------------------------#
-# Add points with only a single start or end x,y
+# Add points with only a single x,y at end
 # 
 # if( nrow(single_xy_trans) > 0 ){
 #   # Create featureID and re-assgin row names
@@ -281,6 +291,7 @@ spdf<- spdf %>%
 #   spdf <- bind(spdf,single_spdf)
 # }
 # 
+
 
 #----------------------------------------------------------------------------#
 # Extract depth from bathymetry raster at spdf points
@@ -336,9 +347,31 @@ parallel::stopCluster( cl )
 spatialised <- do.call("rbind", spatialised.list)
 
 
+# get cliff sites
+cliffs<- cliffs %>%
+  mutate(LatDeep = case_when(!is.na(LatDeep) ~ LatDeep,
+                             is.na(LatDeep) ~ LatShallow),
+         LonDeep = case_when(!is.na(LonDeep) ~ LonDeep,
+                             is.na(LonDeep) ~ LonShallow))%>%
+  filter(!is.na(LatDeep))
+
+cliffs.sf<- cliffs %>% 
+  st_as_sf(coords = c("LonDeep", "LatDeep"), crs = 	"EPSG:4326") %>%
+  st_transform(crs = "EPSG:3005")
+
+cliffs.spdf<- cbind(cliffs, st_coordinates(st_as_sf(cliffs.sf, coords = c("x", "y"), crs = "EPSG:3005")))
+cliffs.spdf$bathy <- NA
+cliffs.spdf$ID <- NA
+cliffs.spdf$depthdiff <- NA
+
+spatialised<- spatialised%>%
+  rbind(cliffs.spdf) # add in cliffs to spatialized
+
+#add in sites single xy that are just one point
+
 
 #----------------------------------------------------------------------------#
-# Clean up - Remove points that are likely incorrect
+# Clean up - Remove points that are likely incorrect, need to test with cliffs and single xy
 
 # check depth diff
 cat( "\n")
@@ -417,55 +450,55 @@ st_write(csp, "code/output_data/SpatializedQuadrats_notaggregated.shp", append=F
 #----------------------------------------------------------------------------#
 
 # Aggregate presence / absence by spatial points, want to test both if need to aggregate, look at spatial autocorrelation
+# 
+# # Transect attributes
+# att <- csp[!duplicated(csp$ID),]
+# att <- att[c("Survey","Year","Month","Day","HKey","ID" ,"X","Y",
+#              "LonDeep","LatDeep","LonShallow","LatShallow")]
+# # Quadrat attributes - Mean depth from quadrats aggregated to spatialised points
+# mean_att <- aggregate( . ~ ID, mean, data = csp[c("ID", "CorDepthM", "bathy", "depthdiff", "Slope", "PH", "ZO")])
+# names(mean_att) <- c("ID", "mean_CorDepthM", "mean_bathy", "mean_depthdiff", "mean_slope", "PH", "ZO")
+# 
+# #Quadrat attributes - most common substrate
+# Mode <- function(x) {
+#   ux <- unique(x)
+#   ux[which.max(tabulate(match(x, ux)))]
+# }
+# 
+# mode_att <- aggregate( . ~ ID, Mode, data = csp[c("ID", "Substrate")])
+# 
+# # Add back attributes
+# att <- merge(att, mean_att, by="ID")
+# spat <- merge(att, mode_att, by="ID")
+# spat <- merge(spat, nquads, by="ID")
+# spat <- spat[order(spat$HKey),]
+# 
+# # Ensure presence/absence
+# spat$PH[spat$PH > 0] <- 1
+# spat$ZO[spat$ZO > 0] <- 1
 
-# Transect attributes
-att <- csp[!duplicated(csp$ID),]
-att <- att[c("Survey","Year","Month","Day","HKey","ID" ,"X","Y",
-             "LonDeep","LatDeep","LonShallow","LatShallow")]
-# Quadrat attributes - Mean depth from quadrats aggregated to spatialised points
-mean_att <- aggregate( . ~ ID, mean, data = csp[c("ID", "CorDepthM", "bathy", "depthdiff", "Slope", "PH", "ZO")])
-names(mean_att) <- c("ID", "mean_CorDepthM", "mean_bathy", "mean_depthdiff", "mean_slope", "PH", "ZO")
-
-#Quadrat attributes - most common substrate
-Mode <- function(x) {
-  ux <- unique(x)
-  ux[which.max(tabulate(match(x, ux)))]
-}
-
-mode_att <- aggregate( . ~ ID, Mode, data = csp[c("ID", "Substrate")])
-
-# Add back attributes
-att <- merge(att, mean_att, by="ID")
-spat <- merge(att, mode_att, by="ID")
-spat <- merge(spat, nquads, by="ID")
-spat <- spat[order(spat$HKey),]
-
-# Ensure presence/absence
-spat$PH[spat$PH > 0] <- 1
-spat$ZO[spat$ZO > 0] <- 1
-
-# check
-cat( "\n\n")
-cat( "#----------------------------------------------------------------------#\n")
-cat( "First 5 rows and of spatialised site by species matrix:\n")
-head(spat, 5)
-cat( "\n\n")
+# # check
+# cat( "\n\n")
+# cat( "#----------------------------------------------------------------------#\n")
+# cat( "First 5 rows and of spatialised site by species matrix:\n")
+# head(spat, 5)
+# cat( "\n\n")
 
 
 
 #----------------------------------------------------------------------------#
-# export as csv
-write.csv( spat, file="code/output_data/SpatializedQuadrats_SitesvSpeciesMatrix_aggregated.csv") 
-
-# Convert to spdf and export
-spat <- spat %>%
-  st_as_sf(coords = c("X", "Y"), crs = "EPSG:3005") 
-
-# export as shapefile
-# likely to have issues with attribute field names shortening
-st_write(spat, "code/output_data/SpatializedQuadrats_aggregated.shp", append=FALSE)
-
-
+# # export as csv
+# write.csv( spat, file="code/output_data/SpatializedQuadrats_SitesvSpeciesMatrix_aggregated.csv") 
+# 
+# # Convert to spdf and export
+# spat <- spat %>%
+#   st_as_sf(coords = c("X", "Y"), crs = "EPSG:3005") 
+# 
+# # export as shapefile
+# # likely to have issues with attribute field names shortening
+# st_write(spat, "code/output_data/SpatializedQuadrats_aggregated.shp", append=FALSE)
+# 
+# 
 
 
 
