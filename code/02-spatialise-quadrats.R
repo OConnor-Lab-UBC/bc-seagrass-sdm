@@ -1,6 +1,6 @@
 ###############################################################################
 #
-# Authors:      Ashley Park, modified code from Jessica Nephin
+# Authors:      Ashley Park
 # Affiliation:  Fisheries and Oceans Canada (DFO)
 # Group:        Marine Spatial Ecology and Analysis
 # Location:     Institute of Ocean Sciences
@@ -36,8 +36,6 @@
 #when spatializing need to decide what to do with aggregating. This code provides out of quadrats aggregated to 20 m and notaggregated
 #First test sdmTMB with data not aggregating
 
-#have not finished code to include cliffs and one coord transects
-#there are a lot of transects from earlier surveys with no lat/long shallow, need to figure out how to make line without having datapoint
 ###############################################################################
 
 
@@ -60,24 +58,6 @@ boundary <- coastline_full %>%
 
 # Load bathy raster
 bathy <- vrt("raw_data/Bathymetry/Coastwide_20m_mosaic.tif")
-
-#----------------------------------------------------------------------------#
-# Remove quadrats with depth difference > depth_dist
-# between corrected quadrat depth and depth from bathymetry raster
-#depth_dist <- 5
-
-# How are the species data represented?
-# If presence/absence is coded using species codes, SpNum == FALSE
-# If presence/absence is coded using a numeric column (0/1), SpNum == TRUE
-# Name of column in dataset with 0/1 values must be named: 'SpNum'
-#SpNum <- FALSE
-
-# Name of column with species names
-#spNames <- "Species"
-
-# Species of interest
-# if all species are needed = 'all'
-#spp <- 'all'
 
 
 #----------------------------------------------------------------------------#
@@ -111,13 +91,12 @@ cliffs <- cliffs%>% filter(Transect_length < 41) #this is the cliffs data set to
 unique(cliffs$HKey) #1497 transects are cliffs
 
 #clean up dat
-dat <- dat[-c(missing_startorend, same_startend, missing_both),] #remove those from dat
+dat_for_trans <- dat[-c(missing_startorend,same_startend, missing_both),] #remove those from dat, took out  becasue we spatialize some of these. Need to confirm this right to do
 
 single_xy <- single_xy%>% filter(Transect_length > 40) #remove cliffs from single_xy
 unique(single_xy$HKey) #2006 transects have single xy
 same_xy <- same_xy%>% filter(Transect_length > 40) #remove cliffs from same_xy 
 unique(same_xy$HKey) #58 transects have same xy
-
 
 #likely can only spatialize if have deep end coordinate and transect length is <200m (otherwise other points of land may confuse spatialization)
 single_xy_tospatialize <- single_xy %>% 
@@ -132,16 +111,14 @@ single_xy_topoint <- single_xy %>%
   rbind(same_xy) # add in same_xy transects
  unique(single_xy_topoint$HKey) #396 transects have single xy we can get quadrats from one point
 
-
 # Create transect dataset with filtered dat dataset
-trans <- dat[!duplicated(dat$HKey), 
+trans <- dat_for_trans[!duplicated(dat_for_trans$HKey), 
              c("Survey","Source", "Year","Month","Day","HKey",
                "LonShallow","LatShallow","LonDeep","LatDeep")]
 
-
 # Create transect dataset with filtered single_xy to spatialize dataset
 single_xy_trans <- single_xy_tospatialize[!duplicated(single_xy_tospatialize$HKey),
-                             c("Survey","Year","Month","Day","HKey",
+                             c("Survey","Source","Year","Month","Day","HKey",
                                "LonShallow","LatShallow","LonDeep","LatDeep")]
 
 
@@ -231,9 +208,6 @@ sl<- lines.list %>%
   pivot_longer(cols = everything(), names_to = as.character("HKey"), values_to = "Lines") %>%
   st_as_sf(crs = "EPSG:3005")
 
-sldf<- sl %>%
-  merge(trans)
-
 
 #----------------------------------------------------------------------------#
 # Generate points along the transect at a certain distance set by 'dist_points'
@@ -264,33 +238,88 @@ spdf<- spdf %>%
   st_as_sf(coords = c("X", "Y"), crs = 	"EPSG:3005")
 
 
-#----------------------------------------------------------------------------#
-# Add points with only a single x,y at end
-# 
-# if( nrow(single_xy_trans) > 0 ){
-#   # Create featureID and re-assgin row names
-#   single_xy_trans$featureID <- nrow(trans)+1:nrow(single_xy_trans)
-#   row.names(single_xy_trans) <- single_xy_trans$featureID
-#   
-#   # Use start x,y unless start is NA, then use end
-#   single_xy_trans$Lat <- ifelse( is.na(single_xy_trans$LatDeep), 
-#                                  single_xy_trans$LatShallow,
-#                                  single_xy_trans$LatDeep )
-#   single_xy_trans$Long <- ifelse( is.na(single_xy_trans$LonDeep), 
-#                                   single_xy_trans$LonShallow,
-#                                   single_xy_trans$LonDeep )
-#   
-#   # convert to SpatialPointsDataFrame
-#   single_spdf <- SpatialPointsDataFrame( coords = coordinates(single_xy_trans[c("Long","Lat")]),
-#                                          data = single_xy_trans[c("featureID", "HKey")] ) 
-#   # project to albers
-#   proj4string(single_spdf) <- CRS("+proj=longlat")
-#   single_spdf <- spTransform(single_spdf, geoCRS)
-#   
-#   # bind single x,y values with generated points along transects
-#   spdf <- bind(spdf,single_spdf)
-# }
-# 
+##############----------------------------------------------------------------------------#
+# Add points with only a single x,y at end to spatialize
+# Create featureID and re-assign row names
+
+singlexy.sf <- single_xy_trans %>% st_as_sf(coords = c("LonDeep", "LatDeep"), crs = "EPSG:4326") %>%
+  st_transform(crs = "EPSG:3005")
+
+# look at https://stackoverflow.com/questions/51292952/snap-a-point-to-the-closest-point-on-a-line-segment-using-sf
+
+# create spatial lines and remove transects likely not correct due to incorrect xy by distance
+sl2<- singlexy.sf %>% 
+  mutate(
+    Lines = st_nearest_points(geometry, boundary[st_nearest_feature(geometry, boundary, pairwise = TRUE),], pairwise = TRUE),
+    closest_point = st_cast(Lines, 'POINT')[seq(2, nrow(.)*2, 2)],
+    length = as.integer(st_length(Lines)))
+
+#filter transect database by distance
+single_xy_trans$length <- sl2$length
+
+single_xy_trans <- single_xy_trans %>%
+  mutate(Keep = case_when(length<800 & Source=="RSU_bio" ~ 'Yes',
+                          length<800 & Source=="GSU_bio" ~ 'Yes',
+                          length<400 & Source=="Cuke_bio" ~ 'Yes',
+                          length<2000 & Source=="GDK_bio" ~ 'Yes',
+                          length<350 & Source=="BHM" ~ 'Yes',
+                          length<350 & Source=="MSEA"~ 'Yes',
+                          length<150 & Source=="Multispecies_bio" ~ 'Yes',
+                          TRUE ~ 'No')) %>%
+  filter(Keep == "Yes") %>%
+  select(-Keep)
+
+#filter spatial lines dataset
+sl2<- sl2 %>%  
+  mutate(Keep = case_when(length<800 & Source=="RSU_bio" ~ 'Yes',
+                          length<800 & Source=="GSU_bio" ~ 'Yes',
+                          length<400 & Source=="Cuke_bio" ~ 'Yes',
+                          length<2000 & Source=="GDK_bio" ~ 'Yes',
+                          length<350 & Source=="BHM" ~ 'Yes',
+                          length<350 & Source=="MSEA"~ 'Yes',
+                          length<150 & Source=="Multispecies_bio" ~ 'Yes',
+                          TRUE ~ 'No')) %>%
+  filter(Keep == "Yes") %>%
+  select(HKey, Lines) %>%
+  st_drop_geometry() %>%
+  st_as_sf(crs = "EPSG:3005")
+
+single_xy_trans$featureID <- 1:nrow(single_xy_trans)
+row.names(single_xy_trans) <- single_xy_trans$featureID
+  
+# Generate points along the transect at a certain distance set by 'dist_points'
+# Generate points
+spdf.list2 <- list()
+for( i in 1:nrow(sl2)){
+  # Get Hkey
+  hkey <- single_xy_trans$HKey[single_xy_trans$featureID == i]
+  # Get length of line
+  linelength <- st_length(sl2[i,])
+  # Number of points for breaks at 'dist_points' distance
+  npts <- ceiling( linelength / 20 ) # 20 becasue 20 m bathy layer
+  # Set seed for consistent results
+  set.seed(42)
+  # Regularly sample points along line
+  pts <- st_line_sample(sl2[i,], n = npts, type = "regular") 
+  ckey <- as.character(hkey)
+  spdf.list2[[ckey]] <-
+    data.frame(st_coordinates(st_as_sf(pts, crs =	"EPSG:3005")),
+               featureID = rep(i, npts),
+               HKey = rep(hkey, npts)) 
+}
+
+# bind all points together
+spdf2 <- do.call("rbind", spdf.list2)
+spdf2<- spdf2 %>%
+  st_as_sf(coords = c("X", "Y"), crs = 	"EPSG:3005")
+
+# extract depth from bathy raster
+extractdepth3 <- terra::extract(x = bathy, y = spdf2)
+names(extractdepth3) <-c("ID", "bathy")
+
+# combine with spdf
+ptsdat2<- cbind(st_drop_geometry(spdf2), st_coordinates(st_as_sf(spdf2, coords = c("x", "y"), crs = "EPSG:3005")), bathy=extractdepth3$bathy)
+
 
 
 #----------------------------------------------------------------------------#
@@ -303,7 +332,7 @@ names(extractdepth) <-c("ID", "bathy")
 # combine with spdf
 ptsdat<- cbind(st_drop_geometry(spdf), st_coordinates(st_as_sf(spdf, coords = c("x", "y"), crs = "EPSG:3005")), bathy=extractdepth$bathy)
 
-
+ptsdat <- ptsdat %>% rbind(ptsdat2)
 
 #----------------------------------------------------------------------------#
 # Merge points with quadrats using closest depth match
@@ -346,8 +375,12 @@ parallel::stopCluster( cl )
 # bind data.frames together
 spatialised <- do.call("rbind", spatialised.list)
 
+# Remove quadrats where bathy is NA becasue outside extent of bathymetry
+spatialised <- spatialised[ which(complete.cases(spatialised$bathy)), ]
 
-# get cliff sites
+
+#### cliffs dataset
+# get lat lon of one point
 cliffs<- cliffs %>%
   mutate(LatDeep = case_when(!is.na(LatDeep) ~ LatDeep,
                              is.na(LatDeep) ~ LatShallow),
@@ -361,89 +394,80 @@ cliffs.sf<- cliffs %>%
 
 cliffs.spdf<- cbind(cliffs, st_coordinates(st_as_sf(cliffs.sf, coords = c("x", "y"), crs = "EPSG:3005")))
 cliffs.spdf$bathy <- NA
-cliffs.spdf$ID <- NA
+cliffs.spdf$ID <- paste(cliffs.spdf$HKey, "1", sep="_")
 cliffs.spdf$depthdiff <- NA
 
 spatialised<- spatialised%>%
   rbind(cliffs.spdf) # add in cliffs to spatialized
 
-#add in sites single xy that are just one point
+#### sites single xy that are just one point
+# get lat lon of one point
+single_xy_topoint<- single_xy_topoint %>%
+  mutate(LatDeep = case_when(!is.na(LatDeep) ~ LatDeep,
+                             is.na(LatDeep) ~ LatShallow),
+         LonDeep = case_when(!is.na(LonDeep) ~ LonDeep,
+                             is.na(LonDeep) ~ LonShallow))%>%
+  filter(!is.na(LatDeep))
 
+singleptxy.sf <- single_xy_topoint %>% st_as_sf(coords = c("LonDeep", "LatDeep"), crs = 	"EPSG:4326") %>%
+  st_transform(crs = "EPSG:3005")
+
+# extract depth from bathy raster
+extractdepth2 <- terra::extract(x = bathy, y = singleptxy.sf)
+names(extractdepth2) <-c("ID", "bathy")
+
+# combine with singleptxy.sf
+singleptxy.spdf<- cbind(single_xy_topoint, st_coordinates(st_as_sf(singleptxy.sf, coords = c("x", "y"), crs = "EPSG:3005")), bathy=extractdepth2$bathy)
+
+singleptxy.spdf$ID <- paste(singleptxy.spdf$HKey, "1", sep="_")
+singleptxy.spdf$depthdiff <- abs( singleptxy.spdf$CorDepthM - singleptxy.spdf$bathy)
+
+#filter out records with depth diff >5m
+singleptxy.spdf <- singleptxy.spdf %>% 
+  filter(depthdiff<= 5)
+
+spatialised<- spatialised%>%
+  rbind(singleptxy.spdf) # add in single xy point to spatialized
 
 #----------------------------------------------------------------------------#
-# Clean up - Remove points that are likely incorrect, need to test with cliffs and single xy
+# Clean up - Remove points that are likely incorrect
 
 # check depth diff
-cat( "\n")
-cat( "#----------------------------------------------------------------------#\n")
-cat( "Summary of depth difference between dive and bathy depths:","\n")
 summary(spatialised$depthdiff)
 
 # Combine transect and quadrat to get unique quadrat identifier
 spatialised$QID <- paste(spatialised$HKey, spatialised$Quadrat, sep="_")
 
-# Remove quadrats where bathy is NA
-removed_quadrats <- NULL
-fsp <- spatialised[ which(complete.cases(spatialised$bathy)), ]
-rem_outside <- spatialised[ which(is.na(spatialised$bathy)), ]
-if( nrow(rem_outside) > 0 ) rem_outside$reason <- "Outside bathy extent"
-removed_quadrats <- rbind(removed_quadrats, rem_outside)
-# Number of quadrats removed
-cat( "\n")
-cat( length(unique(removed_quadrats$QID)), 
-     "quadrats removed because outside of bathymetry extent","\n\n")
-
-
-# Remove quadrats with depth difference > depth_dist
+#not including this one for now as diver depths are more accurate than bathy raster
+# Remove quadrats with depth difference > 5
 # between corrected quadrat depth and depth from bathymetry raster
-dsp <- fsp[which(fsp$depthdiff <= depth_dist),]
-rem_depthdiff <- fsp[which(fsp$depthdiff > depth_dist),]
-if( nrow(rem_depthdiff) > 0 ) {
-  rem_depthdiff$reason <- paste("Depth difference greater than",depth_dist, "m")
-}
-removed_quadrats <- rbind(removed_quadrats, rem_depthdiff)
-# Number of quadrats removed
-cat( paste0( length(unique(rem_depthdiff$QID)), 
-             " quadrats removed because depth mismatch > ",depth_dist, "m (", 
-             round(( length(unique(rem_depthdiff$QID)) / 
-                       length(unique(fsp$QID)) )*100), "%)"),"\n\n" )
-
+#spatialised <- spatialised[which(spatialised$depthdiff <= 5),]
 
 # Remove NAs in x and y's (usually due to NAs present in CorDepthM)
-rem_naxy <- dsp[!complete.cases(dsp[, c("X","Y")]),]
-if( nrow(rem_naxy) > 0 ) rem_naxy$reason <- "NA values in x,y points along transects"
-removed_quadrats <- rbind(removed_quadrats, rem_naxy)
-csp <- dsp[complete.cases(dsp[, c("X","Y")]),]
-# Number of transects removed
-cat( length(unique(dsp$QID))-length(unique(csp$QID)), 
-     "quadrats removed because NA values in quadrat x and y","\n\n")
+spatialised <- spatialised[complete.cases(spatialised[, c("X","Y")]),]
 
 
-# Quadrats removed
-write.csv( removed_quadrats, file="code/output_data/Quadrats_Removed.csv") 
-
-# Mean number of quadrats aggregated into a single spatial point
-nquads <- aggregate( Quadrat ~ ID, data= csp, function(x) length(unique(x)))
-cat( round( mean(nquads$Quadrat), 1 ), "quadrats per spatial point on average", 
+#Mean number of quadrats aggregated into a single spatial point
+nquads <- aggregate( Quadrat ~ ID, data= spatialised, function(x) length(unique(x)))
+cat( round( mean(nquads$Quadrat), 1 ), "quadrats per spatial point on average",
      "(range", min(nquads$Quadrat), "to", max(nquads$Quadrat), "quadrats)","\n\n")
 names(nquads)[2] <- "NumQuadrats"
 
 # Quadrats retained
 #select 
-csp<-csp %>% select("Survey","Year","Month","Day","HKey","ID" , "X", "Y",
-             "LonDeep","LatDeep","LonShallow","LatShallow", "CorDepthM", 
-             "bathy", "depthdiff", "Slope", "Substrate", "PH", "ZO")
+spatialised<-spatialised %>% select("Survey","Year","Month","Day","HKey","ID" , "X", "Y",
+             "LonDeep","LatDeep","LonShallow","LatShallow", "CorDepthM", "Slope", "Substrate", "PH", "ZO")
 
-write.csv( csp, file="code/output_data/SpatializedQuadrats_notaggregated.csv") 
+write.csv( spatialised, file="code/output_data/SpatializedQuadrats_notaggregated.csv") 
 
 
 # Convert to spdf and export
-csp <- csp %>%
+spatialised.spdf <- spatialised %>%
   st_as_sf(coords = c("X", "Y"), crs = "EPSG:3005") 
 
 # export as shapefile
 # likely to have issues with attribute field names shortening
-st_write(csp, "code/output_data/SpatializedQuadrats_notaggregated.shp", append=FALSE)
+st_write(spatialised.spdf, "code/output_data/SpatializedQuadrats_notaggregated.shp", append=FALSE)
 
 
 
@@ -499,16 +523,3 @@ st_write(csp, "code/output_data/SpatializedQuadrats_notaggregated.shp", append=F
 # st_write(spat, "code/output_data/SpatializedQuadrats_aggregated.shp", append=FALSE)
 # 
 # 
-
-
-
-#----------------------------------------------------------------------------#
-# Print end of file message and elapsed time
-cat( "\n\n")
-cat( "#----------------------------------------------------------------------#\n")
-cat( "Finished: ", sep="" ); print( Sys.time( ) - sTimeBRT )
-
-# Stop sinking output
-sink( type = "message" )
-sink( )
-closeAllConnections()
