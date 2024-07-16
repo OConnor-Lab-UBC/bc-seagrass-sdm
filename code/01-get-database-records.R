@@ -358,13 +358,17 @@ multi_dat <- multi_dat[order(multi_dat$HKey, multi_dat$Year, multi_dat$Transect,
 # cannot get slope from this survey as transect is zig zag
 
 # Load data
-ABLdat <- read.csv("raw_data/ab-data-restricted/Shellfish_Bio_Abalone_HeadersDensity_Substrate_2005-2021.csv",header=T, fileEncoding="UTF-8-BOM", stringsAsFactors = F)
-algaedat <- read.csv("raw_data/ab-data-restricted/Shellfish_Bio_Abalone_Habitat_2005-2021.csv",header=T, fileEncoding="UTF-8-BOM", stringsAsFactors = F)
+ABLdat <- read.csv("raw_data/ab-data-restricted/New/AbaloneDensitySubstrate1978-2021.csv",header=T, fileEncoding="UTF-8-BOM", stringsAsFactors = F)
+algaedat <- read.csv("raw_data/ab-data-restricted/New/AbaloneHabitat2002-2021.csv",header=T, fileEncoding="UTF-8-BOM", stringsAsFactors = F)
+algaedat_earlier <- read.csv("raw_data/ab-data-restricted/New/AbaloneDensitySubstrateAlgae1995-2005.csv",header=T, fileEncoding="UTF-8-BOM", stringsAsFactors = F)
 
 # Only one lat/long per site, remove sites with no lat/long
 ABLdat <- ABLdat %>%
   mutate (Latitude = coalesce(LatDeep, LatShallow), Longitude = coalesce(LonDeep, LonShallow))%>%
   tidyr::drop_na (Latitude)
+
+ABLdat<- ABLdat %>%
+  filter(Year > 1994) #no algae data earlier than this
 
 ## Calculate the substrate that represents > 50% for each quad
 # Match substrateID to substrate category
@@ -373,7 +377,8 @@ ABLdat <- ABLdat %>%
   rename (Substrate = RMSM.Nme) 
 
 #Assign substrate to each quadrat based on most prevalent substrate at site
-ABLsubdat<- ABLdat %>% 
+ABLsubdat<- ABLdat %>%
+  filter(!is.na(Substrate)) %>%
   group_by(HKey) %>%
   summarize (Substrate = names(which.max(table(Substrate))))
 
@@ -382,9 +387,12 @@ ABLdat<- ABLdat %>%
   mutate(CorDepthM = mean(CorDepthM))%>%
   ungroup() %>%
   distinct(HKey, .keep_all = TRUE) %>%
-  select(HKey, SurveyName, Year, Month, Day, Time, Time_type, Major_stat_area_code, Stat_subarea_code, Latitude, Longitude, TransectNum, Transect_length, CorDepthM)%>%
-  rename(Survey = SurveyName, Transect = TransectNum, Bathymetry = CorDepthM)
+  select(SurveyName, Year, Month, Day, HKey, LonDeep, LatDeep, LonShallow, LatShallow, CorDepthM, Latitude, Longitude)%>%
+  rename(Survey = SurveyName)
 
+
+  
+  
 # add PH column to algae data
 algaedat$PH <- 0
 algaedat$PH[algaedat$CanopySpecies1 == "PH"] <- 1
@@ -419,22 +427,32 @@ algaedat<- algaedat %>%
 algaedat$PH[algaedat$PH>0]<-1
 algaedat$ZO[algaedat$ZO>0]<-1
 
+
+###NEED TO ADD IN ZM RECORDS, NO PH RECORDS IN ALGAE1, ASKED ROB. NEED TO MAKE SURE SURVEY DESIGN IS FINE TO ADD
+#WRITE CODE FOR algaedat_earlier, MAKE SURE THAT THERE IS NOT OVERLAP WITH ALGAEDAT DATA
+
+
 ABLdat <- merge(ABLdat, algaedat, by = "HKey")
 ABLdat <- merge(ABLdat, ABLsubdat, by = "HKey")
 
 ## Create new fields and rename
-# Type
-ABLdat$Type <- "Research"
 # Source
 ABLdat$Source <- "ABL_bio"
-# Method
-ABLdat$Method <- "Dive"
 #Slope is not possible to calculate from this survey, so will need to use modelled slope
 ABLdat$Slope <- NA
+
+ABLdat <- ABLdat %>% 
+  mutate (HKey = paste0(Source,"_",HKey))
+
+ABLdat$ID <- paste(ABLdat$HKey, "1", sep="_")
 
 ## remove where phyllo and zostera are likely mis identified based on substrate type
 ABLdat <- ABLdat %>%
   filter(!(ZO == 1 & Substrate == "Rock"))
+
+
+ABLdat<-ABLdat %>% select("Survey","Year","Month","Day","HKey","ID" , "X", "Y",
+                                    "LonDeep","LatDeep","LonShallow","LatShallow", "CorDepthM", "Slope", "Substrate", "PH", "ZO")
 
 # Convert to spdf and export
 # create spatial points
@@ -444,6 +462,7 @@ ABLdat_sf <- ABLdat %>% st_as_sf(coords = c("Longitude", "Latitude"), crs = "EPS
 # export as shapefile
 # likely to have issues with attribute field names shortening
 st_write(ABLdat_sf, "code/output_data/ABLBio_quadrat.shp", append=FALSE) 
+
 
 
 #---------------------------------------------------------------------#

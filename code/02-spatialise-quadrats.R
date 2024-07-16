@@ -338,9 +338,6 @@ ptsdat <- ptsdat %>% rbind(ptsdat2)
 # Merge points with quadrats using closest depth match
 # If loop throws error increase tol in find.matches (doesn't work when set to Inf)
 
-# Add transect data with only a single start or end x,y back to dat
-#dat <- rbind(dat, single_xy)
-
 # Remove HKeys not in ptsdat
 qdat <- dat[dat$HKey %in% unique(ptsdat$HKey),]
 
@@ -469,7 +466,7 @@ spatialised.spdf <- spatialised %>%
 # likely to have issues with attribute field names shortening
 st_write(spatialised.spdf, "code/output_data/SpatializedQuadrats_notaggregated.shp", append=FALSE)
 
-
+###NEXT STEPS NEED TO RETRICT TO SDM PREDICTION AREA, ADD IN ABALONE DATASET, ADD IN OTHER PREDICTORS FOR MODEL FITTING. WHERE SUBSTRATE AND SLOPE NO VALUES ADD IN MODELLED DATA
 
 #----------------------------------------------------------------------------#
 
