@@ -368,7 +368,7 @@ ABLdat <- ABLdat %>%
   tidyr::drop_na (Latitude)
 
 ABLdat<- ABLdat %>%
-  filter(Year > 1994) #no algae data earlier than this
+  filter(Year > 2002 & SurveyDesign < 4) #algae data not collected on quadrat level before this. Other survey designs are not clear
 
 ## Calculate the substrate that represents > 50% for each quad
 # Match substrateID to substrate category
@@ -376,23 +376,21 @@ ABLdat <- ABLdat %>%
   dplyr::left_join(sub.cat, by=c("Substrate1", "Substrate2")) %>%
   rename (Substrate = RMSM.Nme) 
 
-#Assign substrate to each quadrat based on most prevalent substrate at site
-ABLsubdat<- ABLdat %>%
-  filter(!is.na(Substrate)) %>%
-  group_by(HKey) %>%
-  summarize (Substrate = names(which.max(table(Substrate))))
+#Assign substrate to each HKey based on most prevalent substrate at site, going to test not agregating quadrats. if doesnt work use this code
+# ABLsubdat<- ABLdat %>%
+#   filter(!is.na(Substrate)) %>%
+#   group_by(HKey) %>%
+#   summarize (Substrate = names(which.max(table(Substrate))))
 
 ABLdat<- ABLdat %>% 
-  group_by(HKey) %>%
-  mutate(CorDepthM = mean(CorDepthM))%>%
-  ungroup() %>%
-  distinct(HKey, .keep_all = TRUE) %>%
-  select(SurveyName, Year, Month, Day, HKey, LonDeep, LatDeep, LonShallow, LatShallow, CorDepthM, Latitude, Longitude)%>%
+  # group_by(HKey) %>%
+  # mutate(CorDepthM = mean(CorDepthM))%>%
+  # ungroup() %>%
+  # distinct(HKey, .keep_all = TRUE) %>%
+  select(SurveyName, Year, Month, Day, HKey, Quadrat, LonDeep, LatDeep, LonShallow, LatShallow, CorDepthM, Latitude, Longitude, Substrate)%>%
   rename(Survey = SurveyName)
 
 
-  
-  
 # add PH column to algae data
 algaedat$PH <- 0
 algaedat$PH[algaedat$CanopySpecies1 == "PH"] <- 1
@@ -404,6 +402,15 @@ algaedat$PH[algaedat$UndStySpecies4 == "PH"] <- 1
 algaedat$PH[algaedat$UndStySpecies5 == "PH"] <- 1
 algaedat$PH[algaedat$TurfSpecies1 == "PH"] <- 1
 algaedat$PH[algaedat$TurfSpecies2 == "PH"] <- 1
+algaedat$PH[algaedat$CanopySpecies1 == "PK"] <- 1
+algaedat$PH[algaedat$CanopySpecies2 == "PK"] <- 1
+algaedat$PH[algaedat$UndStySpecies1 == "PK"] <- 1
+algaedat$PH[algaedat$UndStySpecies2 == "PK"] <- 1
+algaedat$PH[algaedat$UndStySpecies3 == "PK"] <- 1
+algaedat$PH[algaedat$UndStySpecies4 == "PK"] <- 1
+algaedat$PH[algaedat$UndStySpecies5 == "PK"] <- 1
+algaedat$PH[algaedat$TurfSpecies1 == "PK"] <- 1
+algaedat$PH[algaedat$TurfSpecies2 == "PK"] <- 1
 
 algaedat$ZO <- 0
 algaedat$ZO[algaedat$CanopySpecies1 == "ZO"] <- 1
@@ -415,25 +422,61 @@ algaedat$ZO[algaedat$UndStySpecies4 == "ZO"] <- 1
 algaedat$ZO[algaedat$UndStySpecies5 == "ZO"] <- 1
 algaedat$ZO[algaedat$TurfSpecies1 == "ZO"] <- 1
 algaedat$ZO[algaedat$TurfSpecies2 == "ZO"] <- 1
+algaedat$ZO[algaedat$CanopySpecies1 == "ZM"] <- 1
+algaedat$ZO[algaedat$CanopySpecies2 == "ZM"] <- 1
+algaedat$ZO[algaedat$UndStySpecies1 == "ZM"] <- 1
+algaedat$ZO[algaedat$UndStySpecies2 == "ZM"] <- 1
+algaedat$ZO[algaedat$UndStySpecies3 == "ZM"] <- 1
+algaedat$ZO[algaedat$UndStySpecies4 == "ZM"] <- 1
+algaedat$ZO[algaedat$UndStySpecies5 == "ZM"] <- 1
+algaedat$ZO[algaedat$TurfSpecies1 == "ZM"] <- 1
+algaedat$ZO[algaedat$TurfSpecies2 == "ZM"] <- 1
 
 algaedat<- algaedat %>% 
-  group_by(HKey) %>% 
-  mutate(PH = sum(PH), ZO = sum(ZO))%>%
-  ungroup() %>%
-  distinct(HKey, .keep_all = TRUE) %>%
-  select(HKey, PH, ZO)
+  # group_by(HKey) %>% 
+  # mutate(PH = sum(PH), ZO = sum(ZO))%>%
+  # ungroup() %>%
+  # distinct(HKey, .keep_all = TRUE) %>%
+  select(HKey, QuadratNum, PH, ZO)%>%
+  rename(Quadrat = QuadratNum)
+
+# earlier data
+algaedat_earlier <- algaedat_earlier %>%
+  select(-c(PT, ZO, NT, MA)) 
+
+algaedat_earlier$PH <- 0
+algaedat_earlier$PH[algaedat_earlier$Algae1 == "PH"] <- 1
+algaedat_earlier$PH[algaedat_earlier$Algae2 == "PH"] <- 1
+algaedat_earlier$PH[algaedat_earlier$Algae3 == "PH"] <- 1
+algaedat_earlier$PH[algaedat_earlier$Algae1 == "PK"] <- 1
+algaedat_earlier$PH[algaedat_earlier$Algae2 == "PK"] <- 1
+algaedat_earlier$PH[algaedat_earlier$Algae3 == "PK"] <- 1
+
+algaedat_earlier$ZO <- 0
+algaedat_earlier$ZO[algaedat_earlier$Algae1 == "ZO"] <- 1
+algaedat_earlier$ZO[algaedat_earlier$Algae2 == "ZO"] <- 1
+algaedat_earlier$ZO[algaedat_earlier$Algae3 == "ZO"] <- 1
+algaedat_earlier$ZO[algaedat_earlier$Algae1 == "ZM"] <- 1
+algaedat_earlier$ZO[algaedat_earlier$Algae2 == "ZM"] <- 1
+algaedat_earlier$ZO[algaedat_earlier$Algae3 == "ZM"] <- 1
+
+algaedat_earlier<- algaedat_earlier %>% 
+  # group_by(HKey) %>% 
+  # mutate(PH = sum(PH), ZO = sum(ZO))%>%
+  # ungroup() %>%
+  # distinct(HKey, .keep_all = TRUE) %>%
+  select(HKey, Quadrat, PH, ZO)
+
+algaedat<- algaedat %>% 
+  rbind(algaedat_earlier)
 
 #change to 0 and 1
-algaedat$PH[algaedat$PH>0]<-1
-algaedat$ZO[algaedat$ZO>0]<-1
+# algaedat$PH[algaedat$PH>0]<-1
+# algaedat$ZO[algaedat$ZO>0]<-1
 
 
-###NEED TO ADD IN ZM RECORDS, NO PH RECORDS IN ALGAE1, ASKED ROB. NEED TO MAKE SURE SURVEY DESIGN IS FINE TO ADD
-#WRITE CODE FOR algaedat_earlier, MAKE SURE THAT THERE IS NOT OVERLAP WITH ALGAEDAT DATA
-
-
-ABLdat <- merge(ABLdat, algaedat, by = "HKey")
-ABLdat <- merge(ABLdat, ABLsubdat, by = "HKey")
+ABLdat <- merge(ABLdat, algaedat, by = c("HKey", "Quadrat"))
+# ABLdat <- merge(ABLdat, ABLsubdat, by = "HKey")
 
 ## Create new fields and rename
 # Source
@@ -446,23 +489,21 @@ ABLdat <- ABLdat %>%
 
 ABLdat$ID <- paste(ABLdat$HKey, "1", sep="_")
 
-## remove where phyllo and zostera are likely mis identified based on substrate type
+## remove where zostera are likely mis identified based on substrate type
 ABLdat <- ABLdat %>%
   filter(!(ZO == 1 & Substrate == "Rock"))
 
-
-ABLdat<-ABLdat %>% select("Survey","Year","Month","Day","HKey","ID" , "X", "Y",
-                                    "LonDeep","LatDeep","LonShallow","LatShallow", "CorDepthM", "Slope", "Substrate", "PH", "ZO")
-
-# Convert to spdf and export
-# create spatial points
 ABLdat_sf <- ABLdat %>% st_as_sf(coords = c("Longitude", "Latitude"), crs = "EPSG:4326") %>%
   st_transform(crs = "EPSG:3005")
 
-# export as shapefile
-# likely to have issues with attribute field names shortening
-st_write(ABLdat_sf, "code/output_data/ABLBio_quadrat.shp", append=FALSE) 
+ABL.spdf<- cbind(ABLdat, st_coordinates(st_as_sf(ABLdat_sf, coords = c("x", "y"), crs = "EPSG:3005")))
 
+ABL.spdf<-ABL.spdf %>% select("Survey","Year","Month","Day","HKey","ID" , "X", "Y",
+                                    "LonDeep","LatDeep","LonShallow","LatShallow", "CorDepthM", "Slope", "Substrate", "PH", "ZO")
+
+
+## Save files
+save(ABL.spdf, file="code/output_data/abl_seagrass_data.RData")
 
 
 #---------------------------------------------------------------------#
