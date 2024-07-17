@@ -129,13 +129,14 @@ scale_fun <- function(x){
   (x  - mean(x)) / sd(x)
 }
 
-spatialised.sf %>%
-  st_drop_geometry() %>%
-  mutate(rei_ln = log(rei),
-         rei_sqrt = sqrt(rei),
-         tidal_sqrt = sqrt(tidal)) %>%
-  select(depth, rei, rei_ln, rei_sqrt, slope, tidal, tidal_sqrt, salinity, temperature, freshwater) %>%
-  ggpairs()
+# spatialised.sf %>%
+#   st_drop_geometry() %>%
+#   mutate(rei_ln = log(rei),
+#          rei_sqrt = sqrt(rei),
+#          tidal_sqrt = sqrt(tidal)) %>%
+#   select(depth, rei, rei_ln, rei_sqrt, slope, tidal, tidal_sqrt, salinity, temperature, freshwater) %>%
+#   ggpairs()
+
 
 spatialised.sf <- spatialised.sf %>%
   mutate(rei_sqrt = sqrt(rei), 
@@ -197,14 +198,11 @@ seagrass_data$X_m <- XY$X*1000
 seagrass_data$Y_m <- XY$Y*1000
 
 seagrass_data_long <- seagrass_data %>%
-  select(HKey, ID, fold, depth, depth_stnd, slope, slope_stnd, substrate, rei, rei_stnd, rei_sqrt, rei_sqrt_stnd,
-         temperature, temperature_stnd, tidal_sqrt, tidal_sqrt_stnd, salinity, salinity_stnd, freshwater, ZO, PH, X:Y_m) %>%
+  select(HKey, ID, fold, Year, depth_stnd, slope_stnd, substrate, rei_stnd, rei_sqrt_stnd,
+         temperature_stnd, tidal_sqrt_stnd, salinity_stnd, ZO, PH, X:Y_m) %>%
   gather(key = species, value = presence, ZO:PH) %>%
   mutate(presence = ifelse(presence > 1, 1, presence)) %>%
   mutate(HKey = factor(HKey), substrate = factor(substrate))
-
-# seagrass_data_long <- seagrass_data_long %>% left_join(sp_table %>% select(species = Species_Code, SpType, Name)) %>%
-#   filter(!is.na(SpType))
 
 #save outputs####
 save(seagrass_data_long, seagrass_data, coastline, cv.list, file = "code/output_data/seagrass_model_inputs.RData")
