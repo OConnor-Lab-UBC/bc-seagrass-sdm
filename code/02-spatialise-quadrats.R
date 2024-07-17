@@ -1,10 +1,9 @@
 ###############################################################################
 #
 # Authors:      Ashley Park
-# Affiliation:  Fisheries and Oceans Canada (DFO)
-# Group:        Marine Spatial Ecology and Analysis
-# Location:     Institute of Ocean Sciences
-# Contact:      e-mail: Ashley.Park@dfo-mpo.gc.ca
+# Affiliation:  Fisheries and Oceans Canada (DFO) and University of British Columbia
+# Contact:      e-mail: ashley.park@dfo-mpo.gc.ca 
+# Project:      BC Seagrass SDM
 #
 #
 # Objective:
@@ -19,6 +18,7 @@
 # lines at a selected distance. Extracts depth from bathymetry raster at points 
 # along lines. Merges points with quadrats using closest depth match. Merges 
 # the resultant 'spatialised points' with species data. 
+# Includes transects represented by a point: cliffs and only sites that have a single lat/lon
 #
 #
 # Requirements (input data):
@@ -49,6 +49,7 @@ library(Hmisc)
 
 #load_data####
 load("code/output_data/seagrass_data.RData")
+load("code/output_data/abl_seagrass_data.RData")
 
 coastline_full <- st_read("raw_data/CHS_HWL2015_Coastline.gdb", layer = "Line_CHS_Pacific_HWL_2015_5028437")
 boundary <- coastline_full %>%
@@ -244,8 +245,6 @@ spdf<- spdf %>%
 
 singlexy.sf <- single_xy_trans %>% st_as_sf(coords = c("LonDeep", "LatDeep"), crs = "EPSG:4326") %>%
   st_transform(crs = "EPSG:3005")
-
-# look at https://stackoverflow.com/questions/51292952/snap-a-point-to-the-closest-point-on-a-line-segment-using-sf
 
 # create spatial lines and remove transects likely not correct due to incorrect xy by distance
 sl2<- singlexy.sf %>% 
@@ -443,7 +442,6 @@ spatialised$QID <- paste(spatialised$HKey, spatialised$Quadrat, sep="_")
 # Remove NAs in x and y's (usually due to NAs present in CorDepthM)
 spatialised <- spatialised[complete.cases(spatialised[, c("X","Y")]),]
 
-
 #Mean number of quadrats aggregated into a single spatial point
 nquads <- aggregate( Quadrat ~ ID, data= spatialised, function(x) length(unique(x)))
 cat( round( mean(nquads$Quadrat), 1 ), "quadrats per spatial point on average",
@@ -455,10 +453,14 @@ names(nquads)[2] <- "NumQuadrats"
 spatialised<-spatialised %>% select("Survey","Year","Month","Day","HKey","ID" , "X", "Y",
              "LonDeep","LatDeep","LonShallow","LatShallow", "CorDepthM", "Slope", "Substrate", "PH", "ZO")
 
+spatialised<- spatialised%>%
+  rbind(ABL.spdf)
+
+
 write.csv( spatialised, file="code/output_data/SpatializedQuadrats_notaggregated.csv") 
 
 
-# Convert to spdf and export
+# Convert to spdf
 spatialised.spdf <- spatialised %>%
   st_as_sf(coords = c("X", "Y"), crs = "EPSG:3005") 
 
@@ -466,7 +468,9 @@ spatialised.spdf <- spatialised %>%
 # likely to have issues with attribute field names shortening
 st_write(spatialised.spdf, "code/output_data/SpatializedQuadrats_notaggregated.shp", append=FALSE)
 
-###NEXT STEPS NEED TO RETRICT TO SDM PREDICTION AREA, ADD IN ABALONE DATASET, ADD IN OTHER PREDICTORS FOR MODEL FITTING. WHERE SUBSTRATE AND SLOPE NO VALUES ADD IN MODELLED DATA
+save(spatialised, file="code/output_data/seagrass_data_spatialized.RData")
+
+
 
 #----------------------------------------------------------------------------#
 
