@@ -23,8 +23,14 @@ library(reproducible)
 library(caret)
 
 #load_data####
-load("code/output_data/seagrass_data_spatialized.RData")
+#load("code/output_data/seagrass_data_spatialized.RData")
 # 400,597 quadrats
+
+load("code/output_data/seagrass_data_spatialized_aggregated.RData")
+spatialised<-spat %>%
+  rename(Slope = mean_slope,
+         CorDepthM = mean_CorDepthM)
+# 96,241 obs 
 
 # check covariate observations
 summary(spatialised$Slope) #18,129 NAs
@@ -66,6 +72,11 @@ tidal_index_all <- tidal_all/(maxFn(tidal_all))
 crs(tidal_index_all) <- "EPSG:3005"
 #plot(tidal_index_all)
 
+#read in biooracle data
+# biooracle_temp <- rast("code/output_data/baseline_2000_2020/bt_max_2000_baseline.tif")
+# plot(biooracle_temp)
+# names(biooracle_temp)<-"bo_temp_max"
+
 coastline_full <- st_read("raw_data/CHS_HWL2015_Coastline.gdb", layer = "Line_CHS_Pacific_HWL_2015_5028437")
 coastline <- coastline_full %>%
   st_zm(drop = TRUE, what = "ZM") %>%
@@ -75,12 +86,16 @@ coastline <- coastline_full %>%
 spatialised.sf<- spatialised %>%
   st_as_sf(coords = c("X", "Y"), crs = "EPSG:3005") 
 
-ggplot(spatialised.sf)+
-  geom_sf(data = coastline, size = 0.001)+
-  geom_sf(color = "red")+
-  theme_bw()+coord_sf(expand = FALSE)
+# ggplot(spatialised.sf)+
+#   geom_sf(data = coastline, size = 0.001)+
+#   geom_sf(color = "red")+
+#   theme_bw()+coord_sf(expand = FALSE)
 
 #add extracted data to seagrass data####
+# bo_temp_extract <- terra::extract(biooracle_temp, spatialised.sf)
+# summary(bo_temp_extract$bo_temp_max)
+# spatialised.sf$bo_temp_max <- bo_temp_extract$bo_temp_max
+
 
 rei_extract <- terra::extract(rei_all, spatialised.sf)
 summary(rei_extract$rei)
@@ -129,20 +144,22 @@ scale_fun <- function(x){
   (x  - mean(x)) / sd(x)
 }
 
-# spatialised.sf %>%
-#   st_drop_geometry() %>%
-#   mutate(rei_ln = log(rei),
-#          rei_sqrt = sqrt(rei),
-#          tidal_sqrt = sqrt(tidal)) %>%
-#   select(depth, rei, rei_ln, rei_sqrt, slope, tidal, tidal_sqrt, salinity, temperature, freshwater) %>%
-#   ggpairs()
+spatialised.sf %>%
+  st_drop_geometry() %>%
+  mutate(rei_ln = log(rei),
+         rei_sqrt = sqrt(rei),
+         tidal_sqrt = sqrt(tidal)) %>%
+  select(depth, rei, rei_ln, rei_sqrt, slope, tidal, tidal_sqrt, salinity, temperature, freshwater) %>%
+  ggpairs()
 
 
 spatialised.sf <- spatialised.sf %>%
-  mutate(rei_sqrt = sqrt(rei), 
+  mutate(rei_ln = log(rei),
+         rei_sqrt = sqrt(rei), 
          tidal_sqrt = sqrt(tidal)) %>%
   mutate(depth_stnd = scale(depth), 
          rei_stnd = scale(rei),
+         rei_ln_stnd = scale(rei_ln),
          rei_sqrt_stnd = scale(rei_sqrt), 
          slope_stnd = scale(slope),
          temperature_stnd = scale(temperature), 
@@ -198,7 +215,7 @@ seagrass_data$X_m <- XY$X*1000
 seagrass_data$Y_m <- XY$Y*1000
 
 seagrass_data_long <- seagrass_data %>%
-  select(HKey, ID, fold, Year, depth_stnd, slope_stnd, substrate, rei_stnd, rei_sqrt_stnd,
+  select(HKey, ID, fold, Year, depth_stnd, slope_stnd, substrate, rei_stnd, rei_ln_stnd, rei_sqrt_stnd,
          temperature_stnd, tidal_sqrt_stnd, salinity_stnd, ZO, PH, X:Y_m) %>%
   gather(key = species, value = presence, ZO:PH) %>%
   mutate(presence = ifelse(presence > 1, 1, presence)) %>%
@@ -207,3 +224,12 @@ seagrass_data_long <- seagrass_data %>%
 #save outputs####
 save(seagrass_data_long, seagrass_data, coastline, cv.list, file = "code/output_data/seagrass_model_inputs.RData")
 
+# # Convert to spdf
+# spatialised.seagrass <- seagrass_data %>%
+#   st_as_sf(coords = c("X", "Y"), crs = "EPSG:3005") 
+# 
+# # export as shapefile
+# # likely to have issues with attribute field names shortening
+# spatialised.sf <- spatialised.sf %>% mutate_all(~replace(., is.na(.), -9999))
+# 
+# st_write(spatialised.sf, "code/output_data/seagrass_covariates.shp", append=FALSE)

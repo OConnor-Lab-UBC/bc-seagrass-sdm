@@ -19,11 +19,11 @@ library(sdmTMBextra)
 library(tidyverse)
 library(sf)
 library(future)
+library(terra)
 
 #load seagrass data
 load("code/output_data/seagrass_model_inputs.RData")
-
-
+load("code/output_data/prediction_model_inputs.RData")
 
 #set up cv model using spatial cross validation###
 eelgrass <- filter(seagrass_data_long, species == "ZO")
@@ -54,7 +54,7 @@ substrates_present
 
 
 #make mesh
-mesh_eelgrass <- make_mesh(data = eelgrass, xy_cols = c("X", "Y"), cutoff = 10)
+mesh_eelgrass <- make_mesh(data = eelgrass, xy_cols = c("X", "Y"), cutoff = 15)
 plot(mesh_eelgrass)
 barrier_mesh_eelgrass <- add_barrier_mesh(mesh_eelgrass, barrier_sf = coastline, proj_scaling = 1000, plot = TRUE)
 
@@ -62,17 +62,26 @@ barrier_mesh_eelgrass <- add_barrier_mesh(mesh_eelgrass, barrier_sf = coastline,
 plan(multisession)
 
 
-# m_eelgrass_1 <- sdmTMB_cv(presence ~ 0 + s(depth_stnd, k = 3) + slope_stnd + temperature_stnd + substrate + s(rei_sqrt_stnd, k=3) + salinity_stnd + s(tidal_sqrt_stnd, k = 3) + (1|HKey),
+# m_eelgrass_1 <- sdmTMB_cv(presence ~1 + s(depth_stnd, k = 3) + slope_stnd + s(temperature_stnd, k = 3) + substrate + s(rei_sqrt_stnd, k=3) + salinity_stnd + s(tidal_sqrt_stnd, k = 3),
 #                       mesh = barrier_mesh_eelgrass, family = binomial(link = "logit"), spatial = TRUE, data = eelgrass, fold_ids = "fold")
-# 
+#  
 # m_eelgrass_1$sum_loglik
-eelgrass$ID<-as.factor(eelgrass$ID)
+#eelgrass$ID<-as.factor(eelgrass$ID)
 
-m_eelgrass <- sdmTMB(presence ~ 0 + s(depth_stnd, k = 3) + slope_stnd + temperature_stnd + substrate + s(rei_sqrt_stnd, k=3) + salinity_stnd + s(tidal_sqrt_stnd, k = 3) + (1|ID),
-                          mesh = barrier_mesh_eelgrass, family = binomial(link = "logit"), spatial = "on", time = "Year", spatiotemporal = "IID", data = eelgrass)
+# m_eelgrass <- sdmTMB(presence ~ 0 + s(depth_stnd, k = 3) + slope_stnd + temperature_stnd + substrate + s(rei_sqrt_stnd, k=3) + salinity_stnd + s(tidal_sqrt_stnd, k = 3) + (1|ID),
+#                           mesh = barrier_mesh_eelgrass, family = binomial(link = "logit"), spatial = "on", time = "Year", spatiotemporal = "IID", data = eelgrass)
+# 
+# m_eelgrass <- sdmTMB(presence ~ 0 + s(depth_stnd, k = 3) + slope_stnd + temperature_stnd + substrate + s(rei_sqrt_stnd, k=3) + salinity_stnd + s(tidal_sqrt_stnd, k = 3) + (1|HKey),
+#                      mesh = barrier_mesh_eelgrass, family = binomial(link = "logit"), spatial = "on", data = eelgrass)
+
+m_eelgrass <- sdmTMB(presence ~ 1 + s(depth_stnd, k = 3) + slope_stnd + s(temperature_stnd, k = 3) + substrate + s(rei_sqrt_stnd, k=3) + s(salinity_stnd, k = 3) + s(tidal_sqrt_stnd, k = 3),
+                     mesh = barrier_mesh_eelgrass, family = binomial(link = "logit"), spatial = "on", data = eelgrass)
 
 sanity(m_eelgrass)
+#sdmTMB::run_extra_optimization(m_eelgrass, nlminb_loops = 1L, newton_loops = 1L)
+
 m_eelgrass
+
 
 pred_fixed <- m_eelgrass$family$linkinv(predict(m_eelgrass)$est_non_rf)
 r_pois <- DHARMa::createDHARMa(
@@ -91,39 +100,49 @@ simulate(m_eelgrass, nsim = 500) %>%
 predict(m_eelgrass) %>%
   ggplot(aes(x = presence, y = m_eelgrass$family$linkinv(est)))+
   geom_abline(slope = 1, intercept = 0)+
-  geom_jitter(width = 0.05, height = 0)+
-  scale_x_log10()+
-  scale_y_log10()
+  geom_jitter(width = 0.05, height = 0)
 
-hold <- predict(m_eelgrass, prediction_0m.df)
-sims <- predict(m_eelgrass, newdata = prediction_0m.df, nsim = 500)
+hold <- predict(m_eelgrass, env_20m_all)
+sims <- predict(m_eelgrass, newdata = env_20m_all, nsim = 500)
 hold$SE <- apply(sims, 1, sd)
-eelgrass_predictions <- prediction_0m.df
+eelgrass_predictions <- env_20m_all
 eelgrass_predictions <- bind_cols(eelgrass_predictions, hold %>% select(est:SE))
 
+eelgrass_predictions <- eelgrass_predictions %>%
+  mutate(est_p = plogis(est))
+         
+         
 ggplot(eelgrass_predictions)+
-  geom_sf(data = coastline %>% st_crop(prediction_sf_0m))+
-  geom_tile(aes(x = X_m, y = Y_m, fill = exp(est), color = exp(est)), lwd= 0)+
-  geom_sf(data = all_data %>% filter(`CHUM SALMON`>0, avg_tow_depth <16) %>% st_crop(prediction_sf_0m), aes(size = `CHUM SALMON`), pch = 1)+
-  geom_sf(data = all_data %>% filter(`CHUM SALMON`==0, avg_tow_depth <16) %>% st_crop(prediction_sf_0m), pch = 4)+
-  scale_shape_manual(values = c(4,1), guide = "none") +
-  scale_size_continuous("catch", breaks = c(1, 100, 1000)) +
-  scale_color_viridis_c(trans = "log10", "ind. per\n30 min", guide = "none") +
-  scale_fill_viridis_c(trans = "log10", "ind. per\n30 min", breaks = c(1, 10, 100, 1000)) +
-  facet_grid(season~year)+
+  geom_sf(data = coastline, linewidth = 0.1)+
+  geom_tile(aes(x = X_m, y = Y_m, colour=est_p, width=20,height=20))+
+  scale_colour_gradient(
+    low = "#fee5d9",
+    high = "#cb181d")+
+  theme(panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        # Remove panel background
+        panel.background = element_blank(),
+        axis.text.x = element_blank(),
+        axis.text.y = element_blank(),
+        axis.ticks = element_blank())+
   coord_sf(expand = FALSE)+
-  theme_bw()+
-  xlab("")+
   ylab("")+
-  scale_x_continuous(breaks = seq(-125, -122, by = 1))+
-  ggtitle("Chum Salmon")+
-  theme(strip.background = element_rect(fill = NA, color = NA))
-ggsave("./figures/Chum_counts.png", height = 6, width = 20)
+  xlab("") 
 
-hold <- eelgrass_predictions %>%
-  group_by(X_m, Y_m) %>%
-  summarise(CV = sd(exp(est), na.rm = TRUE)/mean(exp(est)), counts_ln = mean(est), SE = mean(SE))
+ggsave("./figures/eelgrass.png", height = 6, width = 20)
 
+# hold <- eelgrass_predictions %>%
+#   group_by(X_m, Y_m) %>%
+#   summarise(CV = sd(exp(est), na.rm = TRUE)/mean(exp(est)), counts_ln = mean(est), SE = mean(SE))
+# 
+
+#save as raster
+eelgrass_raster <- eelgrass_predictions %>%
+  mutate(x_round = round(X_m, -2), y_round = round(Y_m, -2)) %>%
+  select(x_round, y_round, est_p)
+
+eelgrass_raster <- rast(x = eelgrass_raster %>% as.matrix, type = "xyz", crs = "EPSG:3005")
+writeRaster(eelgrass_raster, file.path("./raster/eelgrass_predictions.tif"), overwrite=TRUE)
 
 
 

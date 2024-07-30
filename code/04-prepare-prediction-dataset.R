@@ -86,7 +86,7 @@ min_depth <- quantile(seagrass_data$depth, probs = c(0.01))
 #haida gwaii
 env_20m_hg_all <- as.data.frame(bathy_hg, xy=TRUE)
 names(env_20m_hg_all) <- c("X_m", "Y_m", "depth")
-env_20m_hg_all <- env_20m_hg_all %>% filter(depth < max_depth, depth > min_depth)
+#env_20m_hg_all <- env_20m_hg_all %>% filter(depth < max_depth, depth > min_depth)
 
 all_y <- unique(env_20m_hg_all$Y_m)[order(unique(env_20m_hg_all$Y_m))]
 select_y <- all_y[seq(1, length(all_y), by = scale/20)]
@@ -127,7 +127,7 @@ ggplot(env_20m_hg, aes(x = X_m, y = Y_m, color = substrate))+
 #north central coast
 env_20m_ncc_all <- as.data.frame(bathy_ncc, xy=TRUE)
 names(env_20m_ncc_all) <- c("X_m", "Y_m", "depth")
-env_20m_ncc_all <- env_20m_ncc_all %>% filter(depth < max_depth, depth > min_depth)
+#env_20m_ncc_all <- env_20m_ncc_all %>% filter(depth < max_depth, depth > min_depth)
 
 all_y <- unique(env_20m_ncc_all$Y_m)[order(unique(env_20m_ncc_all$Y_m))]
 select_y <- all_y[seq(1, length(all_y), by = scale/20)]
@@ -168,7 +168,7 @@ ggplot(env_20m_ncc, aes(x = X_m, y = Y_m, color = substrate))+
 #queen charlotte strait
 env_20m_qcs_all <- as.data.frame(bathy_qcs, xy=TRUE)
 names(env_20m_qcs_all) <- c("X_m", "Y_m", "depth")
-env_20m_qcs_all <- env_20m_qcs_all %>% filter(depth < max_depth, depth > min_depth)
+#env_20m_qcs_all <- env_20m_qcs_all %>% filter(depth < max_depth, depth > min_depth)
 
 all_y <- unique(env_20m_qcs_all$Y_m)[order(unique(env_20m_qcs_all$Y_m))]
 select_y <- all_y[seq(1, length(all_y), by = scale/20)]
@@ -211,7 +211,7 @@ ggplot(env_20m_qcs, aes(x = X_m, y = Y_m, color = substrate))+
 #west coast vancouver island
 env_20m_wcvi_all <- as.data.frame(bathy_wcvi, xy=TRUE)
 names(env_20m_wcvi_all) <- c("X_m", "Y_m", "depth")
-env_20m_wcvi_all <- env_20m_wcvi_all %>% filter(depth < max_depth, depth > min_depth)
+#env_20m_wcvi_all <- env_20m_wcvi_all %>% filter(depth < max_depth, depth > min_depth)
 
 all_y <- unique(env_20m_wcvi_all$Y_m)[order(unique(env_20m_wcvi_all$Y_m))]
 select_y <- all_y[seq(1, length(all_y), by = scale/20)]
@@ -253,7 +253,7 @@ ggplot(env_20m_wcvi, aes(x = X_m, y = Y_m, color = substrate))+
 #salish sea
 env_20m_ss_all <- as.data.frame(bathy_ss, xy=TRUE)
 names(env_20m_ss_all) <- c("X_m", "Y_m", "depth")
-env_20m_ss_all <- env_20m_ss_all %>% filter(depth < max_depth, depth > min_depth)
+#env_20m_ss_all <- env_20m_ss_all %>% filter(depth < max_depth, depth > min_depth)
 
 all_y <- unique(env_20m_ss_all$Y_m)[order(unique(env_20m_ss_all$Y_m))]
 select_y <- all_y[seq(1, length(all_y), by = scale/20)]
@@ -302,15 +302,15 @@ ggplot(env_20m_all, aes(x = X_m, y = Y_m, color = substrate))+
   coord_equal()
 
 #need to think about this in reference to how much we want to extrapolate, will depend on future conditions
-env_20m_all <- env_20m_all %>%
-  filter(freshwater < quantile(seagrass_data$freshwater, probs = 0.99),
-         salinity > quantile(seagrass_data$salinity, probs = 0.001),
-         #temperature > quantile(seagrass_data$temperature, probs = 0.001),
-         #temperature < quantile(seagrass_data$temperature, probs = 0.999),
-         #tidal < quantile(seagrass_data$tidal, probs = 0.999),
-         tidal >= 0,
-         rei < quantile(seagrass_data$rei, probs = 0.999),
-         !is.na(freshwater))
+# env_20m_all <- env_20m_all %>%
+#   filter(freshwater < quantile(seagrass_data$freshwater, probs = 0.99),
+#          salinity > quantile(seagrass_data$salinity, probs = 0.001),
+#          #temperature > quantile(seagrass_data$temperature, probs = 0.001),
+#          #temperature < quantile(seagrass_data$temperature, probs = 0.999),
+#          #tidal < quantile(seagrass_data$tidal, probs = 0.999),
+#          tidal >= 0,
+#          rei < quantile(seagrass_data$rei, probs = 0.999),
+#          !is.na(freshwater))
 
 
 summary(env_20m_all)

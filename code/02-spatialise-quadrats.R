@@ -474,53 +474,48 @@ save(spatialised, file="code/output_data/seagrass_data_spatialized.RData")
 
 #----------------------------------------------------------------------------#
 
-# Aggregate presence / absence by spatial points, want to test both if need to aggregate, look at spatial autocorrelation
-# 
+# Aggregate presence / absence by spatial points
+#
 # # Transect attributes
-# att <- csp[!duplicated(csp$ID),]
-# att <- att[c("Survey","Year","Month","Day","HKey","ID" ,"X","Y",
-#              "LonDeep","LatDeep","LonShallow","LatShallow")]
-# # Quadrat attributes - Mean depth from quadrats aggregated to spatialised points
-# mean_att <- aggregate( . ~ ID, mean, data = csp[c("ID", "CorDepthM", "bathy", "depthdiff", "Slope", "PH", "ZO")])
-# names(mean_att) <- c("ID", "mean_CorDepthM", "mean_bathy", "mean_depthdiff", "mean_slope", "PH", "ZO")
-# 
-# #Quadrat attributes - most common substrate
-# Mode <- function(x) {
-#   ux <- unique(x)
-#   ux[which.max(tabulate(match(x, ux)))]
-# }
-# 
-# mode_att <- aggregate( . ~ ID, Mode, data = csp[c("ID", "Substrate")])
-# 
-# # Add back attributes
-# att <- merge(att, mean_att, by="ID")
-# spat <- merge(att, mode_att, by="ID")
-# spat <- merge(spat, nquads, by="ID")
-# spat <- spat[order(spat$HKey),]
-# 
-# # Ensure presence/absence
-# spat$PH[spat$PH > 0] <- 1
-# spat$ZO[spat$ZO > 0] <- 1
+att <- spatialised[!duplicated(spatialised$ID),]
+att <- att[c("Survey","Year","Month","Day","HKey","ID" ,"X","Y",
+              "LonDeep","LatDeep","LonShallow","LatShallow")]
 
-# # check
-# cat( "\n\n")
-# cat( "#----------------------------------------------------------------------#\n")
-# cat( "First 5 rows and of spatialised site by species matrix:\n")
-# head(spat, 5)
-# cat( "\n\n")
+## Quadrat attributes - Mean depth from quadrats aggregated to spatialised points
+mean_att <- aggregate( . ~ ID, mean, data = spatialised[c("ID", "CorDepthM", "Slope", "PH", "ZO")])
+names(mean_att) <- c("ID", "mean_CorDepthM", "mean_slope", "PH", "ZO")
+#
+##Quadrat attributes - most common substrate
+Mode <- function(x) {
+   ux <- unique(x)
+   ux[which.max(tabulate(match(x, ux)))]
+ }
+
+mode_att <- aggregate( . ~ ID, Mode, data = spatialised[c("ID", "Substrate")])
+
+## Add back attributes
+att <- merge(att, mean_att, by="ID")
+spat <- merge(att, mode_att, by="ID")
+spat <- merge(spat, nquads, by="ID")
+spat <- spat[order(spat$HKey),]
+
+## Ensure presence/absence
+spat$PH[spat$PH > 0] <- 1
+spat$ZO[spat$ZO > 0] <- 1
 
 
 
 #----------------------------------------------------------------------------#
 # # export as csv
-# write.csv( spat, file="code/output_data/SpatializedQuadrats_SitesvSpeciesMatrix_aggregated.csv") 
-# 
-# # Convert to spdf and export
-# spat <- spat %>%
-#   st_as_sf(coords = c("X", "Y"), crs = "EPSG:3005") 
-# 
-# # export as shapefile
-# # likely to have issues with attribute field names shortening
-# st_write(spat, "code/output_data/SpatializedQuadrats_aggregated.shp", append=FALSE)
-# 
-# 
+write.csv( spat, file="code/output_data/SpatializedQuadrats_SitesvSpeciesMatrix_aggregated.csv")
+
+# Convert to spdf and export
+spat.spdf <- spat %>%
+  st_as_sf(coords = c("X", "Y"), crs = "EPSG:3005")
+
+# export as shapefile
+# likely to have issues with attribute field names shortening
+st_write(spat.spdf, "code/output_data/SpatializedQuadrats_aggregated.shp", append=FALSE)
+
+save(spat, file="code/output_data/seagrass_data_spatialized_aggregated.RData")
+
