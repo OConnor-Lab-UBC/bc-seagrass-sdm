@@ -79,6 +79,33 @@ crs(tidal_index_all) <- "EPSG:3005"
 # names(biooracle_temp)<-"bo_temp_max"
 
 #read in BCCM data
+
+BCCM <- tidync("raw_data/BCCM/hindcast/bcc42_run4_mon1993to2021_salt.nc")
+
+#Load data and grid
+BCCMData <- hyper_tibble(BCCM)
+BCCMGrid <- BCCM %>% activate("D0,D1") %>% hyper_tibble()
+
+#Take mean value across years
+BCCMAv <- BCCMData %>%
+  group_by(xi_rho,eta_rho)%>%
+  summarise(SurfaceSal = mean(mean_sur))
+
+#Combine with grid and filter land value 
+BCCMAv_grid <- full_join(BCCMAv,BCCMGrid,by=c("xi_rho","eta_rho")) %>%
+  filter(SurfaceSal>0.52) #Remove land and 1 cell error in model output equal to 0.5 salinity
+
+#Convert to spatial points and transform to grid crs
+BCCMPoints <- st_as_sf(BCCMAv_grid, coords=(c("lon_rho","lat_rho")), crs = st_crs(4326))
+BCCMPointseq <- st_transform(BCCMPoints,crs = st_crs(3573))
+
+
+#Rasterize onto 3km equal area (size of BCCM pixels) with mean = akin to project
+BCCMSalRast <- rasterize(BCCMPointseq,rast(crs="EPSG:3573",extent=ext(BCCMPointseq),res=3000),field="SurfaceSal", fun=mean)
+#Allow to extrapolate by 1 pixel
+BCCMSalRast <- focal(BCCMSalRast,w=3,fun="mean",na.policy="only")
+writeRaster(BCCMSalRast,"raster/BCCMSalinity.tif", overwrite=TRUE)
+
 BCCM <- tidync("raw_data/BCCM/BCCM - 1993 to 2019 - Annual Means - Seafloor - Temperature, Salinity, Current Velocity .nc")
 
 #Load data and grid

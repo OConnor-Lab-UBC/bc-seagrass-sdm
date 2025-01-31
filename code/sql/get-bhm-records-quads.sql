@@ -18,6 +18,7 @@ Q.Substrate2,
 Q.Sub2Pct,
 Q.Substrate3,
 Q.Sub3Pct,
+Q.UnderstoryPct,
 Q.CorDepthM
 FROM ([1-Headers] H
 	INNER JOIN [2-Quadrat] Q ON H.HKey = Q.HKey) 

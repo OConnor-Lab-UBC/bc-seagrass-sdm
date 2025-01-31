@@ -1,11 +1,11 @@
 ###############################################################################
 #
-# Authors:      Ashley Park (code modified from Jessica Nephin and Sarah Friesen)
+# Authors:      Ashley Park
 # Affiliation:  Fisheries and Oceans Canada (DFO)
 # Group:        Marine Spatial Ecology and Analysis
 # Location:     Institute of Ocean Sciences
 # Contact:      e-mail: ashley.park@dfo-mpo.gc.ca
-# Project:      UVic turbidity layers
+# Project:      Process ocean models
 #
 # Overview:
 
@@ -22,6 +22,7 @@ require(rgdal)
 require(raster)
 require(terra)
 require(ggplot2)
+library(tidync)
 
 
 # working directory

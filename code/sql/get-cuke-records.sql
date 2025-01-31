@@ -22,10 +22,11 @@ MaxGageDepth*0.3048 AS Max_gauge_m,
 SubstrateRaw1 AS Substrate1,
 SubstrateRaw2 AS Substrate2,
 SubstrateRaw3 AS Substrate3,
+D.PctCover,
 CASE WHEN ',' + D.Algae1 + ',' LIKE '%PH%' THEN 1 WHEN ',' + D.Algae2 + ',' LIKE '%PH%' THEN 1 ELSE 0 END AS PH,
 CASE WHEN ',' + D.Algae1 + ',' LIKE '%ZO%' THEN 1 WHEN ',' + D.Algae2 + ',' LIKE '%ZO%' THEN 1 ELSE 0 END AS ZO
 FROM Shellfish_Bio_Other.dbo.SeaCukeHeaders H
     INNER JOIN 
     Shellfish_Bio_Other.dbo.SeaCukeDensities D ON H.[Key] = D.HKey
-WHERE H.LatDegDeep IS NOT NULL AND H.LongDegDeep IS NOT NULL AND D.ChartDepth IS NOT NULL AND H.Year > 1992
+WHERE H.LatDegDeep IS NOT NULL AND H.LongDegDeep IS NOT NULL AND D.ChartDepth IS NOT NULL AND H.Year BETWEEN 1993 and 2023
 ORDER BY H.Year, H.[Key], H.Transect, D.QuadratNum;

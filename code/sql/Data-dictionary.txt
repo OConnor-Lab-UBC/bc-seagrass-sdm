@@ -12,6 +12,7 @@ MaxChatDepth prior to 2017 is sometimes recorded as top of first quadrat (so can
 Can only get a reliable bottom depth for surveys 2017 and later
 No cuke surveys 2002-2005, some surveys in 1997-2001 do not have lat shallow/longshallow
 Divers record every 5 x 4 m strip quadrat.  No skips
+#Looks like they only have percent cover for all algae together, not separated into canopy, understory etc.
 
 ## Multi-species database
 
@@ -42,6 +43,7 @@ Most common substrate catagory from all quadrats in one transect is taken to be 
 
 ##GDK database
 # Quadrats are 5 x1 m and depth is measured at the top of the quadrat. Quadrat 0 is the bottom of the first surveyed quadrat. 
+# The Geoduck survey does not collect info on percent cover of algae.  It's done by industry, with a bit of a different protocol than our other dive surveys.  They document the top three substrates (no percentages) and the most dominant algae species (or lack of any algae) - again without percentages.  
 
 #HiLo
 Dive surveys in Gulf Islands to measure diversity in high and low current areas. Three transects per site going from deep to shallow. Three quadrats per transects at depths of 50, 30, and 10 ft. 

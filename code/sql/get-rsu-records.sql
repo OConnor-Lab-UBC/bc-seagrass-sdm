@@ -38,6 +38,7 @@ D.SubStrate2 AS Substrate2,
 D.PctSub2 AS PctSubstrate2,
 D.SubStrate3 AS Substrate3,
 D.PctSub3 AS PctSubstrate3,
+A.UnderstoryPct,
 CASE 
   	WHEN ',' + A.CanopySpecies1 + ',' LIKE '%PH%' THEN 1
 	WHEN ',' + A.CanopySpecies2 + ',' LIKE '%PH%' THEN 1

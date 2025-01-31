@@ -48,7 +48,7 @@ dir.create( outdir, recursive=TRUE )
 # final field names for dive surveys
 fnames <-  c( "Type", "Source", "Survey", "HKey", "Method",
               "Year","Month", "Day", "LatDeep","LonDeep",
-              "LatShallow","LonShallow", "Transect_length", "Quadrat", "CorDepthM","Substrate", "Slope",
+              "LatShallow","LonShallow", "Transect_length", "Quadrat", "CorDepthM","Substrate", "Slope", "PerCovZO",
               "PH", "ZO", "Identification")  
 
 
@@ -105,9 +105,14 @@ rsu_dat <- rsu_dat %>%
 ## Melt all species into species column
 # rsu_dat <- melt(rsu_dat, measure.vars=sp_pa, value.name = "SpNum", variable.name = "Species")
 
+#get percent cover of ZO (not possible to get percent cover of PH as outher algae would be found alongside PH, for ZO algae not as likely to also be present, i.e. ZO usually in monoculture)
+rsu_dat <- rsu_dat %>%
+  mutate(PerCovZO = ifelse(ZO==0, 0, UnderstoryPct)) 
+
+rsu_dat$PerCovZO[rsu_dat$PerCovZO > 100] <- 100
+
 #remove Survey=="RES-P" as don't know their collection methods for algae or much other metadata and have not gotten first nation approval to share data
-rsu_dat <-rsu_dat %>%
-  filter(Survey!="RES-P")
+rsu_dat <-rsu_dat %>% filter(Survey!="RES-P")
 
 ## Create new fields and rename
 # Type
@@ -172,6 +177,12 @@ gsu_dat$Slope <- round(abs(gsu_dat$Slope) * 180/pi, digits = 0)
 gsu_dat <- gsu_dat %>% 
   dplyr::left_join(sub.cat, by=c("Substrate1", "Substrate2")) %>%
   rename (Substrate = RMSM.Nme) 
+
+#get percent cover of ZO (not possible to get percent cover of PH as outher algae would be found alongside PH, for ZO algae not as likely to also be present, i.e. ZO usually in monoculture)
+gsu_dat <- gsu_dat %>%
+  mutate(PerCovZO = ifelse(ZO==0, 0, UnderstoryPct)) 
+
+gsu_dat$PerCovZO[gsu_dat$PerCovZO > 100] <- 100
 
 ## Melt all invert and algae species into species column
 #gsu_dat <- melt(gsu_dat, measure.vars=sp_pa, value.name = "SpNum", variable.name = "Species")
@@ -247,6 +258,12 @@ rsc_dat <- rsc_dat %>%
   dplyr::left_join(sub.cat, by=c("Substrate1", "Substrate2")) %>%
   rename (Substrate = RMSM.Nme) 
 
+#get percent cover of ZO (not possible to get percent cover of PH as outher algae would be found alongside PH, for ZO algae not as likely to also be present, i.e. ZO usually in monoculture)
+rsc_dat <- rsc_dat %>%
+  mutate(PerCovZO = ifelse(ZO==0, 0, PctCover)) 
+
+rsc_dat$PerCovZO[rsc_dat$PerCovZO > 100] <- 100
+
 ## Melt all invert and algae species into species column
 #rsc_dat <- melt(rsc_dat, measure.vars=sp_pa, value.name = "SpNum", variable.name = "Species")
 
@@ -318,6 +335,11 @@ multi_dat <- multi_dat %>%
   dplyr::left_join(sub.cat, by=c("Substrate1", "Substrate2")) %>%
   rename (Substrate = RMSM.Nme) 
   
+#get percent cover of ZO (not possible to get percent cover of PH as outher algae would be found alongside PH, for ZO algae not as likely to also be present, i.e. ZO usually in monoculture)
+multi_dat <- multi_dat %>%
+  mutate(PerCovZO = ifelse(ZO==0, 0, UnderstoryPct)) 
+
+multi_dat$PerCovZO[multi_dat$PerCovZO > 100] <- 100
 
 ## Melt all invert and algae species into species column
 #multi_dat <- melt(multi_dat, measure.vars=sp_pa, value.name = "SpNum", variable.name = "Species")
@@ -437,7 +459,7 @@ algaedat<- algaedat %>%
   # mutate(PH = sum(PH), ZO = sum(ZO))%>%
   # ungroup() %>%
   # distinct(HKey, .keep_all = TRUE) %>%
-  select(HKey, QuadratNum, PH, ZO)%>%
+  select(HKey, QuadratNum, PH, ZO, UnderstoryPct)%>%
   rename(Quadrat = QuadratNum)
 
 # earlier data
@@ -463,9 +485,10 @@ algaedat_earlier$ZO[algaedat_earlier$Algae3 == "ZM"] <- 1
 algaedat_earlier<- algaedat_earlier %>% 
   # group_by(HKey) %>% 
   # mutate(PH = sum(PH), ZO = sum(ZO))%>%
+  mutate(UnderstoryPct = NA) %>%
   # ungroup() %>%
   # distinct(HKey, .keep_all = TRUE) %>%
-  select(HKey, Quadrat, PH, ZO)
+  select(HKey, Quadrat, PH, ZO, UnderstoryPct)
 
 algaedat<- algaedat %>% 
   rbind(algaedat_earlier)
@@ -477,6 +500,12 @@ algaedat<- algaedat %>%
 
 ABLdat <- merge(ABLdat, algaedat, by = c("HKey", "Quadrat"))
 # ABLdat <- merge(ABLdat, ABLsubdat, by = "HKey")
+
+#add percent cover of ZO
+ABLdat <- ABLdat %>%
+  mutate(PerCovZO = ifelse(ZO==0, 0, UnderstoryPct)) 
+
+ABLdat$PerCovZO[ABLdat$PerCovZO > 100] <- 100
 
 ## Create new fields and rename
 # Source
@@ -504,6 +533,20 @@ ABL.spdf<-ABL.spdf %>% select("Survey","Year","Month","Day","HKey","ID" , "X", "
 
 ## Save files
 save(ABL.spdf, file="code/output_data/abl_seagrass_data.RData")
+
+# export as shapefile
+# likely to have issues with attribute field names shortening
+ABLsp_sf <- ABLdat %>%
+  mutate(Latitude = case_when(!is.na(LatDeep) ~ LatDeep,
+                              is.na(LatDeep) ~ LatShallow),
+         Longitude = case_when(!is.na(LonDeep) ~ LonDeep,
+                               is.na(LonDeep) ~ LonShallow)) %>%
+  filter(!is.na(Latitude))  %>%
+  st_as_sf(coords = c("Longitude", "Latitude"), crs = "EPSG:4326") %>%
+  st_transform(crs = "EPSG:3005")
+
+
+st_write(ABLsp_sf, "code/output_data/abl_transect.shp", append=FALSE)
 
 
 #---------------------------------------------------------------------#
@@ -571,6 +614,11 @@ gdk_dat <- gdk_dat %>%
   dplyr::left_join(sub.cat, by=c("Substrate1", "Substrate2")) %>%
   rename (Substrate = RMSM.Nme) 
 
+#add percent cover of ZO, this survey does not record percent cover so all absences are assigned 0 and presences assigned NA
+gdk_dat <- gdk_dat %>%
+  mutate(PerCovZO = ifelse(ZO==0, 0, NA)) 
+
+
 ## Melt all invert and algae species into species column
 #gdk_dat <- melt(gdk_dat, measure.vars=sp_pa, value.name = "SpNum", variable.name = "Species")
 
@@ -581,6 +629,7 @@ gdk_dat$Type <- "Research"
 gdk_dat$Source <- "GDK_bio"
 # Method
 gdk_dat$Method <- "Dive"
+O <- NA
 
 ## remove where phyllo and zostera are likely mis identified based on substrate type
 gdk_dat <- gdk_dat %>%
@@ -602,7 +651,7 @@ gdk_dat <- gdk_dat[order(gdk_dat$HKey, gdk_dat$Year, gdk_dat$Transect, gdk_dat$Q
 # All species observations are converted to presence (1)/ absence (0)
 
 # Connect to mdb
-bhm_mdb <- mdb_connection("//dcbcpbsna01a/Spatial_Datasets/Dive_Surveys/Database/BHM_DiveSurveys_CLEAN_March2024.mdb")
+bhm_mdb <- mdb_connection("//ent.dfo-mpo.ca/dfo-mpo/GROUP/PAC/Reg_Shares/EOS/ES/Spatial_Datasets/Dive_Surveys/Database/BHM_DiveSurveys_CLEAN_July2024.mdb")
 
 # Load queries
 bhm_sql <- readLines("code/sql/get-bhm-records-quads.sql")
@@ -662,6 +711,12 @@ bhm_dat <- bhm_dat %>%
   dplyr::left_join(sub.cat, by=c("Substrate1", "Substrate2")) %>%
   rename (Substrate = RMSM.Nme) 
 
+#add percent cover of ZO
+bhm_dat <- bhm_dat %>%
+  mutate(PerCovZO = ifelse(ZO==0, 0, UnderstoryPct)) 
+
+bhm_dat$PerCovZO[bhm_dat$PerCovZO > 100] <- 100
+
 ## Melt all invert and algae species into species column
 #bhm_dat <- melt(bhm_dat, measure.vars=sp_pa, value.name = "SpNum", variable.name = "Species")
 
@@ -705,6 +760,10 @@ hilo_dat <- hilo_dat %>%
   dplyr::left_join(sub.cat, by=c("Substrate1", "Substrate2")) %>%
   rename (Substrate = RMSM.Nme) 
 
+#add percent cover of ZO, this survey does not record percent cover so all absences are assigned 0 and presences assigned NA
+hilo_dat <- hilo_dat %>%
+  mutate(PerCovZO = ifelse(ZO==0, 0, NA)) 
+
 ## Melt all invert and algae species into species column
 #hilo_dat <- melt(hilo_dat, measure.vars=sp_pa, value.name = "SpNum", variable.name = "Species")
 
@@ -719,6 +778,7 @@ hilo_dat$Method <- "Dive"
 hilo_dat$Slope <- NA
 # transect length is not possible to determine from the method of this survey 
 hilo_dat$Transect_length <- NA
+
 
 ## remove where phyllo and zostera are likely mis identified based on substrate type
 hilo_dat <- hilo_dat %>%
@@ -737,6 +797,12 @@ dat <- bind_rows(rsu_dat, gsu_dat, rsc_dat, multi_dat, gdk_dat, bhm_dat, hilo_da
 #need to make new HKey incase there is overlap in HKey between source types
 dat <- dat %>% 
   mutate (HKey = paste0(Source,"_",HKey))
+
+# when ZO has value of 1 and percent cover has value of 0, need to change to NA
+dat$PerCovZO[dat$PerCovZO == 0 & dat$ZO == 1] <- NA
+
+# remove ZO presence observations in high intertidal, likely Z. japonica
+dat$Identification[dat$ZO == 1 & dat$CorDepthM < -2] <- "Remove"
 
 
 ## Save files

@@ -30,6 +30,7 @@ SELECT
 	D.Sub2Pct AS PctSubstrate2,
 	cast(D.SubCode3 AS INTEGER) AS Substrate3,
 	D.Sub3Pct AS PctSubstrate3,
+	D.UnderstoryPct,
 	CASE WHEN ',' + Q.ALGAE + ',' LIKE '%, PH,%' THEN 1 ELSE 0 END AS PH,
 	CASE WHEN ',' + Q.ALGAE + ',' LIKE '%, ZO,%' THEN 1 ELSE 0 END AS ZO
 FROM SFBioSQL.dbo.vw_ms1_headers H
@@ -41,6 +42,6 @@ FROM SFBioSQL.dbo.vw_ms1_headers H
 	SFBioSQL.dbo.vw_ms3_algae2 Q ON H.TRIP_ID = Q.TRIP_ID AND H.TransectSite = Q.TransectSite AND D.Quadrat = Q.Quadrat
 	INNER JOIN
 	SFBioSQL.dbo.vw_ms2a_subcat S ON H.TRIP_ID = S.TRIP_ID AND H.TransectSite = S.TransectSite AND D.Quadrat = S.Quadrat
-WHERE H.latStart IS NOT NULL AND H.lonStart IS NOT NULL AND D.CorDepthM IS NOT NULL 
+WHERE H.latStart IS NOT NULL AND H.lonStart IS NOT NULL AND D.CorDepthM IS NOT NULL AND H.Year BETWEEN 1993 AND 2023
 ORDER BY H.Year, H.TransectSite, D.Quadrat
 ;
