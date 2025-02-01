@@ -528,7 +528,7 @@ ABLdat_sf <- ABLdat %>% st_as_sf(coords = c("Longitude", "Latitude"), crs = "EPS
 ABL.spdf<- cbind(ABLdat, st_coordinates(st_as_sf(ABLdat_sf, coords = c("x", "y"), crs = "EPSG:3005")))
 
 ABL.spdf<-ABL.spdf %>% select("Survey","Year","Month","Day","HKey","ID" , "X", "Y",
-                                    "LonDeep","LatDeep","LonShallow","LatShallow", "CorDepthM", "Slope", "Substrate", "PH", "ZO")
+                                    "LonDeep","LatDeep","LonShallow","LatShallow", "CorDepthM", "Slope", "Substrate", "PerCovZO", "PH", "ZO")
 
 
 ## Save files

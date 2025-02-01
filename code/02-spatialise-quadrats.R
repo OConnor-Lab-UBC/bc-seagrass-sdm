@@ -89,7 +89,7 @@ same_xy <- dat[c(same_startend),]
 #make cliffs dataset
 cliffs <- dat[c(missing_startorend, same_startend),]
 cliffs <- cliffs%>% filter(Transect_length < 41) #this is the cliffs data set to be spatialized separately and retain all quadrats
-unique(cliffs$HKey) #1497 transects are cliffs
+unique(cliffs$HKey) #1380 transects are cliffs
 
 #clean up dat
 dat_for_trans <- dat[-c(missing_startorend,same_startend, missing_both),] #remove those from dat, took out  becasue we spatialize some of these. Need to confirm this right to do
@@ -375,6 +375,7 @@ spatialised <- do.call("rbind", spatialised.list)
 spatialised <- spatialised[ which(complete.cases(spatialised$bathy)), ]
 
 
+
 #### cliffs dataset
 # get lat lon of one point
 cliffs<- cliffs %>%
@@ -428,6 +429,13 @@ spatialised<- spatialised%>%
 #----------------------------------------------------------------------------#
 # Clean up - Remove points that are likely incorrect
 
+spatialised<- spatialised %>%
+  filter(Identification == "Keep")
+
+#this record still ends up on land so removing it manually
+spatialised<- spatialised %>%
+  filter(ID != "Cuke_bio_3453_1")
+
 # check depth diff
 summary(spatialised$depthdiff)
 
@@ -451,7 +459,7 @@ names(nquads)[2] <- "NumQuadrats"
 # Quadrats retained
 #select 
 spatialised<-spatialised %>% select("Survey","Year","Month","Day","HKey","ID" , "X", "Y",
-             "LonDeep","LatDeep","LonShallow","LatShallow", "CorDepthM", "Slope", "Substrate", "PH", "ZO")
+             "LonDeep","LatDeep","LonShallow","LatShallow", "CorDepthM", "Slope", "Substrate", "PerCovZO", "PH", "ZO")
 
 spatialised<- spatialised%>%
   rbind(ABL.spdf)
@@ -482,8 +490,8 @@ att <- att[c("Survey","Year","Month","Day","HKey","ID" ,"X","Y",
               "LonDeep","LatDeep","LonShallow","LatShallow")]
 
 ## Quadrat attributes - Mean depth from quadrats aggregated to spatialised points
-mean_att <- aggregate( . ~ ID, mean, data = spatialised[c("ID", "CorDepthM", "Slope", "PH", "ZO")])
-names(mean_att) <- c("ID", "mean_CorDepthM", "mean_slope", "PH", "ZO")
+mean_att <- aggregate( . ~ ID, mean, data = spatialised[c("ID", "CorDepthM", "Slope", "PerCovZO", "PH", "ZO")])
+names(mean_att) <- c("ID", "mean_CorDepthM", "mean_slope", "mean_PerCovZO", "PH", "ZO")
 #
 ##Quadrat attributes - most common substrate
 Mode <- function(x) {
