@@ -6,10 +6,10 @@
 # Project:      BC Seagrass SDM
 #
 # Overview:
-# Processing scripts that query and standardize zostera, phyllospadix, depth, and substrate observations from Pacific shellfish databases through SQL Server and BHM database through MS Access. 
-# Data range is 1993-2023 to correspond with ROMs hindcast (1993-2022)
+# Processing scripts that query and standardize zostera, phyllospadix, percent cover, depth, and substrate observations from Pacific shellfish databases through SQL Server and BHM database through MS Access. 
+# Data range is 1993-2023 to correspond with ROMs hindcast (1993-2021), NEP36, and Salish Sea Cast
 # Calculate slope based off quadrat size, quadrat skipping, and depth observations
-# Clean data to remove where divers may have miss identified eelgrass and surfgrass for each other (based on substrate observations)
+# Clean data to remove where divers may have misidentified eelgrass and surfgrass for each other (based on substrate observations)
 # For more information of survey protocols see Data-dictionary.txt 
 
 

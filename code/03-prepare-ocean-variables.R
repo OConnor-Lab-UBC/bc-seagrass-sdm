@@ -1,6 +1,6 @@
 ###############################################################################
 #
-# Authors:      Ashley Park (with some code modified from Matt Csordas and Graham Epstien)
+# Authors:      Ashley Park 
 # Affiliation:  Fisheries and Oceans Canada (DFO) and University of British Columbia
 # Contact:      e-mail: ashley.park@dfo-mpo.gc.ca 
 # Project:      BC Seagrass SDM
@@ -241,9 +241,9 @@ SSC_month_data <-bind_rows(SSC_ubc_month_data, SSC_dfo_month_data)
 # Set the start and end year for the climatology to be calculated based off of
 # For seagrass climatologies were created in decadal slices as wanted to match data based on climatologies, not annual data as eelgrass is a perennial species that spreads by colonal growth;
 # Beds are usually stable over time even if they expand and contract 
-# 1993-2002, 2003-2012, 2013-2021. Also did 1993-2021 for prediction grid
-start <- 1993
-end <- 2002
+# 1993-2002, 2003-2012, 2013-2023. Also did 1993-2023 for prediction grid
+start <- 2003
+end <- 2023
 
 
 #Summarise and make rasters

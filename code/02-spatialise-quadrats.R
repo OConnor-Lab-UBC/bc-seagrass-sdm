@@ -34,7 +34,7 @@
 
 
 #when spatializing need to decide what to do with aggregating. This code provides out of quadrats aggregated to 20 m and notaggregated
-#First test sdmTMB with data not aggregating
+#First test sdmTMB with data aggregating
 
 ###############################################################################
 
