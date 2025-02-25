@@ -26,25 +26,33 @@ library(terra)
 load("code/output_data/seagrass_model_inputs.RData")
 load("code/output_data/prediction_model_inputs.RData")
 
-#set up cv model using spatial cross validation###
+
+#eelgrass model###
 eelgrass <- filter(seagrass_data_long, species == "ZO")
-print(paste("eelgrass present in ", round((sum(eelgrass$presence)/nrow(eelgrass))*100,2), "% of transects", sep = ""))
+print(paste("eelgrass present in ", round((sum(eelgrass$presence)/nrow(eelgrass))*100,2), "% of observations", sep = ""))
 
 library(corrplot)
 eelgrass_env<- eelgrass %>%
-  select(presence, depth_stnd, slope_stnd, temperature_stnd, salinity_stnd, rei_sqrt_stnd, tidal_sqrt_stnd)
+  select(presence, depth_stnd, rei_sqrt_stnd, tidal_sqrt_stnd, freshwater_sqrt_stnd, slope_sqrt_stnd, NH4_stnd, NO3_stnd, 
+         saltmean_sq_stnd, saltmin_sq_stnd, PARmean_stnd, PARmin_stnd, PARmax_stnd, surftempmean_stnd, surftempmin_stnd, 
+         surftempmax_stnd, tempmean_stnd, tempmin_stnd, tempmax_stnd, DOmean_stnd, DOmin_stnd)
 corrplot(cor(eelgrass_env), method = "number")
 # Correlations close to-1 or +1 might indicate the existence of multicollinearity. 
 # As a rule of thumb, one might suspect multicollinearity when the correlation between two (predictor) variables is below -0.9 or above +0.9.
+# correlated: PAR max and mean, salt min and mean, surftempmean and temp mean, surftempmax and tempmax, tempmean and temp max (but not temp min)
+# keep PAR mean and min, salt min, 5 m temps max and min, NH4, NO3
 
 ## CREATE A LINEAR REGRESSION MODEL
-my_model <- lm(presence~., data = eelgrass_env)
+#my_model <- lm(presence~., data = eelgrass_env)
+my_model <- lm(presence~ depth_stnd + rei_sqrt_stnd + tidal_sqrt_stnd + freshwater_sqrt_stnd + slope_sqrt_stnd +
+                 NH4_stnd + NO3_stnd + saltmin_sq_stnd + PARmean_stnd + tempmin_stnd + tempmax_stnd +
+                 DOmin_stnd, data = eelgrass_env)
 library(olsrr)
 ols_vif_tol(my_model)
 # As a general guideline, a Tolerance of <0.1 might indicate multicollinearity.
 # As a rule of thumb, a VIF exceeding 5 requires further investigation, whereas VIFs above 10 indicate multicollinearity. 
 # Ideally, the Variance Inflation Factors are below 3.
-# there is no multi multicollinearity in this dataset.
+# there is no multi multicollinearity in variables selevered in my_model.
 
 # Continue if prevalence is greater than 0.5%
 substrates_present <- eelgrass %>%
@@ -57,16 +65,18 @@ substrates_present
 #make mesh
 mesh_eelgrass <- make_mesh(data = eelgrass, xy_cols = c("X", "Y"), cutoff = 15)
 plot(mesh_eelgrass)
+
 barrier_mesh_eelgrass <- add_barrier_mesh(mesh_eelgrass, barrier_sf = coastline, proj_scaling = 1000, plot = TRUE)
 
 #fit model
 plan(multisession)
 
 
-# m_eelgrass_1 <- sdmTMB_cv(presence ~1 + s(depth_stnd, k = 3) + slope_stnd + s(temperature_stnd, k = 3) + substrate + s(rei_sqrt_stnd, k=3) + salinity_stnd + s(tidal_sqrt_stnd, k = 3),
-#                       mesh = barrier_mesh_eelgrass, family = binomial(link = "logit"), spatial = TRUE, data = eelgrass, fold_ids = "fold")
+m_eelgrass_1 <- sdmTMB_cv(presence ~ s(depth_stnd, k = 3) + freshwater_sqrt_stnd + slope_sqrt_stnd + substrate + s(rei_sqrt_stnd, k=3) + s(tidal_sqrt_stnd, k = 3) + NH4_stnd + NO3_stnd + saltmin_sq_stnd + PARmean_stnd + tempmin_stnd + tempmax_stnd + DOmin_stnd,
+                      mesh = barrier_mesh_eelgrass, family = binomial(link = "logit"), spatial = TRUE, data = eelgrass, fold_ids = "fold")
 #  
-# m_eelgrass_1$sum_loglik
+m_eelgrass_1$sum_loglik
+m_eelgrass_1$AIC
 #eelgrass$ID<-as.factor(eelgrass$ID)
 
 # m_eelgrass <- sdmTMB(presence ~ 0 + s(depth_stnd, k = 3) + slope_stnd + temperature_stnd + substrate + s(rei_sqrt_stnd, k=3) + salinity_stnd + s(tidal_sqrt_stnd, k = 3) + (1|ID),
@@ -75,8 +85,9 @@ plan(multisession)
 # m_eelgrass <- sdmTMB(presence ~ 0 + s(depth_stnd, k = 3) + slope_stnd + temperature_stnd + substrate + s(rei_sqrt_stnd, k=3) + salinity_stnd + s(tidal_sqrt_stnd, k = 3) + (1|HKey),
 #                      mesh = barrier_mesh_eelgrass, family = binomial(link = "logit"), spatial = "on", data = eelgrass)
 
-m_eelgrass <- sdmTMB(presence ~ 1 + s(depth_stnd, k = 3) + slope_stnd + s(temperature_stnd, k = 3) + substrate + s(rei_sqrt_stnd, k=3) + salinity_stnd + s(tidal_sqrt_stnd, k = 3),
-                     mesh = barrier_mesh_eelgrass, family = binomial(link = "logit"), spatial = "on", data = eelgrass)
+m_eelgrass <- sdmTMB(presence ~ s(depth_stnd, k = 3) + freshwater_sqrt_stnd + slope_sqrt_stnd + substrate + s(rei_sqrt_stnd, k=3) + s(tidal_sqrt_stnd, k = 3) +
+                       NH4_stnd + NO3_stnd + saltmin_sq_stnd + PARmean_stnd + tempmin_stnd + tempmax_stnd + DOmin_stnd, mesh = barrier_mesh_eelgrass, 
+                     family = binomial(link = "logit"), spatial = "on", data = eelgrass)
 
 sanity(m_eelgrass)
 #sdmTMB::run_extra_optimization(m_eelgrass, nlminb_loops = 1L, newton_loops = 1L)
@@ -209,7 +220,9 @@ plan(multisession)
 # m_surfgrass <- sdmTMB(presence ~ 0 + s(depth_stnd, k = 3) + slope_stnd + temperature_stnd + substrate + s(rei_sqrt_stnd, k=3) + salinity_stnd + s(tidal_sqrt_stnd, k = 3) + (1|HKey),
 #                      mesh = barrier_mesh_surfgrass, family = binomial(link = "logit"), spatial = "on", data = surfgrass)
 
-m_surfgrass <- sdmTMB(presence ~ 1 + s(depth_stnd, k = 3) + slope_stnd + s(temperature_stnd, k = 3) + substrate + s(rei_sqrt_stnd, k=3) + salinity_stnd + s(tidal_sqrt_stnd, k = 3),
+#remove freshwater compared to eelgrass
+m_surfgrass <- sdmTMB(presence ~ 1 + s(depth_stnd, k = 3) + slope_sqrt_stnd + substrate + s(rei_sqrt_stnd, k=3) + s(tidal_sqrt_stnd, k = 3) +
+                        NH4_stnd + NO3_stnd + saltmin_sq_stnd + PARmean_stnd + tempmin_stnd + tempmax_stnd + DOmin_stnd,
                      mesh = barrier_mesh_surfgrass, family = binomial(link = "logit"), spatial = "on", data = surfgrass)
 
 sanity(m_surfgrass)

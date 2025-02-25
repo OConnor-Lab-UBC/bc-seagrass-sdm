@@ -502,8 +502,11 @@ terra::writeRaster(Predictor_Hindcast_Climatologies, paste0("code/output_data/pr
 #checking individual rasters
 #terra::writeRaster(Predictor_Hindcast_Climatologies[[15]], paste0("code/output_data/processed_ocean_variables/Predictor_Hindcast_Climatologies_", names(Predictor_Hindcast_Climatologies[[15]]),".tif"), overwrite = TRUE)
 
-# comparing 1993-2002 data
-# PAR min and PAR mean look a little weird across Salish Sea and BCCM boundaries. PAR max doesn't look bad
-# NH4 is high in the fraser, some inlets, and in spots around HG; NO3 is high in the Broughton and Holberg Inlet
-# salt mean looks good. Salt min only changes around Nass, Skeena, Fraser, and a few major inlets, otherwise looks similar to salt mean
+# comparing 2013-2023 data
+# PARs all look weird across Salish Sea and BCCM boundaries.
 # temp surface min values go below 0, so not going to use those. Matt used values below 0 filtered out to remove some inlets
+# Also planning to filter out DO <100 as that removes some inlets that are not predicted well by BCCM
+# NH4 is high in the fraser, some inlets (holberg), and in spots around HG; 
+#NO3 is high in the Broughton and Holberg Inlet
+# salt mean looks good. Salt min only changes around Nass, Skeena, Fraser, and a few major inlets, otherwise looks similar to salt mean
+
