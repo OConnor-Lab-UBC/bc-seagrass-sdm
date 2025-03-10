@@ -122,11 +122,11 @@ oceanvars_2013_2023 <- terra::extract(x = hindcast2013_2023, y = spatialised_sf_
   terra::as.data.frame() 
 
 oceanvars_allyears <- rbind(oceanvars_1993_2002, oceanvars_2003_2012, oceanvars_2013_2023) %>%
-  rename(NH4 = NH4_5m_mean, NO3 = NO3_5m_mean, saltmean = salt_5m_mean, saltmin = salt_5m_min, PARmean = PAR_5m_mean, PARmin = PAR_5m_min,
-         PARmax = PAR_5m_max, surftempmean = temp_s_mean, surftempmax = temp_s_max, surftempmin = temp_s_min, tempmean = temp_5m_mean, 
-         tempmax = temp_5m_max, tempmin = temp_5m_min, DOmean = do_5m_mean, DOmin = do_5m_min) %>%
-  select(ID, NH4, NO3, saltmean, saltmin, PARmean, PARmin, PARmax, surftempmean, surftempmax, surftempmin, tempmean, tempmax, tempmin, 
-         DOmean, DOmin)
+  rename(NH4 = NH4_5m_mean, NO3 = NO3_5m_mean, saltmean = salt_5m_mean, saltmin = salt_5m_min, saltcv = salt_5m_cv, PARmean = PAR_5m_mean, PARmin = PAR_5m_min,
+         PARmax = PAR_5m_max, surftempmean = temp_s_mean, surftempmax = temp_s_max, surftempmin = temp_s_min, surftempcv = temp_s_cv, surftempdiff = temp_s_diff, tempmean = temp_5m_mean, 
+         tempmax = temp_5m_max, tempmin = temp_5m_min, tempcv= temp_5m_cv, tempdiff = temp_5m_diff, DOmean = do_5m_mean, DOmin = do_5m_min) %>%
+  select(ID, NH4, NO3, saltmean, saltmin, saltcv, PARmean, PARmin, PARmax, surftempmean, surftempmax, surftempmin, surftempcv, surftempdiff, tempmean, tempmax, tempmin, 
+         tempcv, tempdiff, DOmean, DOmin)
 
 spatialised_sf <- dplyr::full_join(spatialised_sf, oceanvars_allyears, by=c("ID")) %>% filter(!is.na(NH4))
 spatialised_sf$mean_PerCovZO<- round(spatialised_sf$mean_PerCovZO, digits = 0)
@@ -152,19 +152,24 @@ spatialised_sf <- spatialised_sf %>%
          saltmean_sq_stnd = scale_fun((saltmean)^2),
          saltmin_stnd = scale_fun(saltmin),
          saltmin_sq_stnd = scale_fun((saltmin)^2),
+         saltcv_stnd = scale_fun(saltcv),
          PARmean_stnd = scale_fun(PARmean),
          PARmin_stnd = scale_fun(PARmin),
          PARmax_stnd = scale_fun(PARmax),
          surftempmean_stnd = scale_fun(surftempmean),
          surftempmin_stnd = scale_fun(surftempmin),
          surftempmax_stnd = scale_fun(surftempmax),
+         surftempcv_stnd = scale_fun(surftempcv),
+         surftempdiff_stnd = scale_fun(surftempdiff),
          tempmean_stnd = scale_fun(tempmean),
          tempmin_stnd = scale_fun(tempmin),
          tempmax_stnd = scale_fun(tempmax),
+         tempcv_stnd = scale_fun(tempcv),
+         tempdiff_stnd = scale_fun(tempdiff),
          DOmean_stnd = scale_fun(DOmean),
          DOmin_stnd = scale_fun(DOmin)) 
 
-# ggpairs(spatialised_sf %>% dplyr::select(depth_stnd:DOmin_stnd) %>% st_set_geometry(NULL))
+#ggpairs(spatialised_sf %>% dplyr::select(depth_stnd:DOmin_stnd) %>% st_set_geometry(NULL))
 # keep sqrt rei, tidal, freshwater. Maybe sqrt slope. Don't need sqrt of NO3 and NH4
 # log salinity make it worse, squaring it makes it marginally better, will include it to next stage but might not be worth keeping it
 # high correlation between salt mean and min, pick one
@@ -175,47 +180,82 @@ spatialised_sf <- spatialised_sf %>%
 #### Create spatial blocks for CV 
 
 # spatial clustering
-sp_blocks <- cv_spatial(x = spatialised_sf,
+#make seperate fold for eelgrass to test versus one that could be used for both species
+sp_blocks_eelgrass <- cv_spatial(x = spatialised_sf,
                         column = NULL,
                         k = 10, # 10 or more is recommended best practice Yates et al 2023
                         hexagon = FALSE,
-                        size = 75000,  #in meters, matern range is 32km for eelgrass and 71km for surfgrass
+                        size = 40000,  #in meters, matern range is 32km for eelgrass and 71km for surfgrass
                         selection = "random",
                         biomod2 = FALSE,
                         seed = 42, # to ensure reproducibility
                         plot = FALSE)
 
-spatialised_sf$fold <- sp_blocks$folds_ids
+sp_blocks_seagrass <- cv_spatial(x = spatialised_sf,
+                                 column = NULL,
+                                 k = 10, # 10 or more is recommended best practice Yates et al 2023
+                                 hexagon = FALSE,
+                                 size = 75000,  #in meters, matern range is 32km for eelgrass and 71km for surfgrass
+                                 selection = "random",
+                                 biomod2 = FALSE,
+                                 seed = 42, # to ensure reproducibility
+                                 plot = FALSE)
+spatialised_sf$fold_eelgrass <- sp_blocks_eelgrass$folds_ids
+spatialised_sf$fold_seagrass <- sp_blocks_seagrass$folds_ids
 #spatialised_sf$fold[is.na(spatialised_sf$fold)] <- 10
-table(spatialised_sf$fold)
+table(spatialised_sf$fold_eelgrass)
+table(spatialised_sf$fold_seagrass)
 
 #check that there are presences in each fold
 ph <- spatialised_sf %>% filter(PH ==1) 
-unique(ph$fold)
+unique(ph$fold_seagrass)
 zo <- spatialised_sf %>% filter(ZO ==1) 
-unique(zo$fold)
+unique(zo$fold_seagrass)
+unique(zo$fold_eelgrass)
 
-cv_plot <- cv_plot(cv = sp_blocks, #  blockCV object
+cv_plot_eelgrass <- cv_plot(cv = sp_blocks_eelgrass, #  blockCV object
         x = spatialised_sf, # sample points
         r = rei_all) #  raster background
-cv_plot
-ggsave("./figures/pre-analysis/spatial_blocks1.png", height = 6, width = 6)
+cv_plot_eelgrass
+ggsave("./figures/pre-analysis/spatial_blocks_eelgrass_type1.png", height = 6, width = 6)
 
-sp_blocks <- ggplot(spatialised_sf)+
-  geom_sf(aes(color = factor(fold)))+
+sp_blocks_eelgrass <- ggplot(spatialised_sf)+
+  geom_sf(aes(color = factor(fold_eelgrass)))+
   geom_sf(data = coastline)
-sp_blocks
-ggsave("./figures/pre-analysis/spatial_blocks2.png", height = 6, width = 6)
+sp_blocks_eelgrass
+ggsave("./figures/pre-analysis/spatial_blocks_eelgrass_type2.png", height = 6, width = 6)
 
-cv <- list()
+cv_plot_seagrass <- cv_plot(cv = sp_blocks_seagrass, #  blockCV object
+                            x = spatialised_sf, # sample points
+                            r = rei_all) #  raster background
+cv_plot_seagrass
+ggsave("./figures/pre-analysis/spatial_blocks_seagrass_type1.png", height = 6, width = 6)
+
+sp_blocks_seagrass <- ggplot(spatialised_sf)+
+  geom_sf(aes(color = factor(fold_seagrass)))+
+  geom_sf(data = coastline)
+sp_blocks_seagrass
+ggsave("./figures/pre-analysis/spatial_blocks_seagrass_type2.png", height = 6, width = 6)
+
+cv_eelgrass <- list()
 for ( f in 1:10 ){
   foldname <- paste0("fold",f)
-  cv[[foldname]][['train']] <- which(sp_blocks$folds_ids!=f)
-  cv[[foldname]][['test']] <- which(sp_blocks$folds_ids==f)
+  cv_eelgrass[[foldname]][['train']] <- which(sp_blocks_eelgrass$folds_ids!=f)
+  cv_eelgrass[[foldname]][['test']] <- which(sp_blocks_eelgrass$folds_ids==f)
 }
 
 #return blockpoly, foldID and CV list
-cv_list<-list( foldID=sp_blocks$foldID, blockpolys=sp_blocks$blocks, cv=cv) 
+cv_list_eelgrass<-list( foldID=sp_blocks_eelgrass$foldID, blockpolys=sp_blocks_eelgrass$blocks, cv=cv_eelgrass) 
+
+cv_seagrass <- list()
+for ( f in 1:10 ){
+  foldname <- paste0("fold",f)
+  cv_seagrass[[foldname]][['train']] <- which(sp_blocks_seagrass$folds_ids!=f)
+  cv_seagrass[[foldname]][['test']] <- which(sp_blocks_seagrass$folds_ids==f)
+}
+
+#return blockpoly, foldID and CV list
+cv_list_seagrass<-list( foldID=sp_blocks_seagrass$foldID, blockpolys=sp_blocks_seagrass$blocks, cv=cv_seagrass) 
 
 #prepare data for model####
 seagrass_data <- spatialised_sf %>% st_drop_geometry()
@@ -226,11 +266,11 @@ seagrass_data$X_m <- XY$X*1000
 seagrass_data$Y_m <- XY$Y*1000
 
 seagrass_data_long <- seagrass_data %>%
-  select(HKey, ID, fold, Year, substrate, depth_stnd:DOmin_stnd, ZO, PH, mean_PerCovZO, X:Y_m) %>%
+  select(HKey, ID, fold_eelgrass, fold_seagrass, Year, substrate, depth_stnd:DOmin_stnd, ZO, PH, mean_PerCovZO, X:Y_m) %>%
   gather(key = species, value = presence, ZO:PH) %>%
   mutate(presence = ifelse(presence > 1, 1, presence)) %>%
   mutate(HKey = factor(HKey), substrate = factor(substrate))
 
 #save outputs####
-save(seagrass_data_long, seagrass_data, coastline, cv_list, file = "code/output_data/seagrass_model_inputs.RData")
+save(seagrass_data_long, seagrass_data, coastline, cv_list_eelgrass, cv_list_seagrass, file = "code/output_data/seagrass_model_inputs.RData")
 

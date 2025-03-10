@@ -59,7 +59,7 @@ BCCM_h_NO3_data <- BCCM_h_NO3_data %>%
          month = month(date))
 BCCM_h_NO3_grid <- BCCM_h_NO3_nc %>% tidync::activate("D0,D1") %>% tidync::hyper_tibble()
 
-#### Salinity ####
+#### Salinity #### 
 #read in the nc file
 BCCM_h_salt_nc <- tidync::tidync("raw_data/BCCM/hindcast/bcc42_run4_mon1993to2021_salt.nc")
 #Load in the data and grid
@@ -104,7 +104,9 @@ BCCM_h_temp_data$months <- as.numeric(BCCM_h_temp_data$months)
 BCCM_h_temp_data <- BCCM_h_temp_data %>%
   mutate(date = as.Date('1992-12-01') + months(months),
          year = year(date),
-         month = month(date))
+         month = month(date), 
+         diff_sur = max_sur - min_sur,
+         diff_5m = max_5m - min_5m)
 BCCM_h_temp_grid <- BCCM_h_temp_nc %>% tidync::activate("D0,D1") %>% tidync::hyper_tibble()
 
 ####read in SalishSea cast data####
@@ -201,7 +203,7 @@ SSC_dfo_month_data <- SSC_dfo_monthmax_data %>%
   full_join(SSC_dfo_monthmean_data, by = join_by(x, y, deptht, time_counter)) %>%
   full_join(SSC_dfo_monthmin_data, by = join_by(x, y, deptht, time_counter)) %>%
   mutate(year = year(as.POSIXct(time_counter, origin = date_origin, tz = "UTC"))) %>%
-  filter(deptht > 0 & deptht < 6)%>%
+  filter(deptht > 0 & deptht < 6) %>%
   select(-c(saltmax, saltmin))
 
 #grid 
@@ -231,9 +233,8 @@ SSC_ubc_month_data <- SSC_ubc_salt_csv %>%
   select(-c(time, latitude, longitude))
 
 #bind ubc and dfo data
-SSC_month_data <-bind_rows(SSC_ubc_month_data, SSC_dfo_month_data) 
-
-
+SSC_month_data <-bind_rows(SSC_ubc_month_data, SSC_dfo_month_data) %>%
+  mutate(tempdiff = tempmax - tempmin)
 
 
 
@@ -243,7 +244,7 @@ SSC_month_data <-bind_rows(SSC_ubc_month_data, SSC_dfo_month_data)
 # Beds are usually stable over time even if they expand and contract 
 # 1993-2002, 2003-2012, 2013-2023. Also did 1993-2023 for prediction grid
 start <- 2003
-end <- 2023
+end <- 2012
 
 
 #Summarise and make rasters
@@ -279,10 +280,11 @@ bccm_NO3_5_mean_rast <- terra::rasterize(NO3_points, terra::rast(crs ="EPSG:3573
 
 #subset the salt data by these start and end year
 salt_sub <- BCCM_h_salt_data %>% dplyr::filter(year >= start & year <= end)
-#Summarise the predictor by year
-salt_summary_year <- salt_sub %>% dplyr::group_by(xi_rho, eta_rho, year) %>% dplyr::summarise(mean_5_year = mean(mean_5m, na.rm = TRUE), min_5_year = min(mean_5m, na.rm = TRUE))
+#Summarise the predictor by year, want freshest month on average, and also monthly sd for each year 
+salt_summary_year <- salt_sub %>% dplyr::group_by(xi_rho, eta_rho, year) %>% dplyr::summarise(mean_5_year = mean(mean_5m, na.rm = TRUE), min_5_year = min(mean_5m, na.rm = TRUE), sd_5_year = sd(mean_5m, na.rm = TRUE)) %>%
+  mutate(cv_5_year = sd_5_year/mean_5_year*100)
 #Summarise the salt data into the desired climatologies for the entire time period
-salt_summary <- salt_summary_year %>% dplyr::group_by(xi_rho, eta_rho) %>% dplyr::summarise(salt_5_mean = mean(mean_5_year, na.rm = TRUE),  salt_5_min = mean(min_5_year, na.rm = TRUE))
+salt_summary <- salt_summary_year %>% dplyr::group_by(xi_rho, eta_rho) %>% dplyr::summarise(salt_5_mean = mean(mean_5_year, na.rm = TRUE),  salt_5_min = mean(min_5_year, na.rm = TRUE), salt_5_cv = mean(cv_5_year, na.rm = TRUE))
 #Combine the above dataframe with the salt grid and filter out erroneous entries
 salt_summary_grid <- dplyr::full_join(salt_summary, BCCM_h_salt_grid, by=c("xi_rho","eta_rho")) %>% na.omit()
 #Convert to spatial points and transform to grid crs
@@ -290,6 +292,7 @@ salt_points <- sf::st_as_sf(salt_summary_grid, coords=(c("lon_rho", "lat_rho")),
 #Rasterize all  predictors of intrerest onto the 3km equal area grid (size of BCCM pixels) with mean = akin to project
 bccm_salt_5_mean_rast <- terra::rasterize(salt_points, terra::rast(crs ="EPSG:3573", extent = terra::ext(salt_points), res=3000),field = "salt_5_mean", fun=mean)
 bccm_salt_5_min_rast <- terra::rasterize(salt_points, terra::rast(crs ="EPSG:3573", extent = terra::ext(salt_points), res=3000),field = "salt_5_min", fun=mean)
+bccm_salt_5_cv_rast <- terra::rasterize(salt_points, terra::rast(crs ="EPSG:3573", extent = terra::ext(salt_points), res=3000),field = "salt_5_cv", fun=mean)
 
 #subset the PAR data by these start and end year
 urad_sub <- BCCM_h_urad_data %>% dplyr::filter(year >= start & year <= end)
@@ -323,9 +326,10 @@ bccm_do_5_min_rast <- terra::rasterize(do_points, terra::rast(crs ="EPSG:3573", 
 #subset the temp data by these start and end year
 temp_sub <- BCCM_h_temp_data %>% dplyr::filter(year >= start & year <= end)
 #Summarise the predictor by year
-temp_summary_year <- temp_sub %>% dplyr::group_by(xi_rho, eta_rho, year) %>% dplyr::summarise(mean_sur_year = mean(mean_sur, na.rm = TRUE), max_sur_year = max(mean_sur, na.rm = TRUE), min_sur_year = min(mean_sur, na.rm = TRUE), mean_5_year = mean(mean_5m, na.rm = TRUE), max_5_year = max(mean_5m, na.rm = TRUE), min_5_year = min(mean_5m, na.rm = TRUE))
+temp_summary_year <- temp_sub %>% dplyr::group_by(xi_rho, eta_rho, year) %>% dplyr::summarise(mean_sur_year = mean(mean_sur, na.rm = TRUE), max_sur_year = max(mean_sur, na.rm = TRUE), min_sur_year = min(mean_sur, na.rm = TRUE), mean_5_year = mean(mean_5m, na.rm = TRUE), max_5_year = max(mean_5m, na.rm = TRUE), min_5_year = min(mean_5m, na.rm = TRUE), maxdiff_5_year = max(diff_5m, na.rm = TRUE), maxdiff_surf_year = max(diff_sur, na.rm = TRUE), sd_5_year = sd(mean_5m, na.rm = TRUE), sd_sur_year = sd(mean_sur, na.rm = TRUE)) %>%
+  mutate(cv_5_year = sd_5_year/mean_5_year*100, cv_sur_year = sd_sur_year/mean_sur_year*100)
 #Summarise the temp data into the desired climatologies for the entire time period
-temp_summary <- temp_summary_year %>% dplyr::group_by(xi_rho, eta_rho) %>% dplyr::summarise(temp_s_mean = mean(mean_sur_year, na.rm = TRUE), temp_s_max = mean(max_sur_year, na.rm = TRUE), temp_s_min = mean(min_sur_year, na.rm = TRUE), temp_5_mean = mean(mean_5_year, na.rm = TRUE), temp_5_max = mean(max_5_year, na.rm = TRUE), temp_5_min = mean(min_5_year, na.rm = TRUE))
+temp_summary <- temp_summary_year %>% dplyr::group_by(xi_rho, eta_rho) %>% dplyr::summarise(temp_s_mean = mean(mean_sur_year, na.rm = TRUE), temp_s_max = mean(max_sur_year, na.rm = TRUE), temp_s_min = mean(min_sur_year, na.rm = TRUE), temp_5_mean = mean(mean_5_year, na.rm = TRUE), temp_5_max = mean(max_5_year, na.rm = TRUE), temp_5_min = mean(min_5_year, na.rm = TRUE), temp_5_diff = mean(maxdiff_5_year, na.rm = TRUE), temp_sur_diff = mean(maxdiff_surf_year, na.rm = TRUE), temp_5_cv = mean(cv_5_year, na.rm = TRUE), temp_sur_cv = mean(cv_sur_year, na.rm = TRUE))
 #Combine the above dataframe with the temp grid and filter out erroneous entries
 temp_summary_grid <- dplyr::full_join(temp_summary, BCCM_h_temp_grid, by=c("xi_rho","eta_rho")) %>% na.omit() # %>% dplyr::filter(temp_s_min >= 0, temp_10_min >= 0)
 #Convert to spatial points and transform to grid crs
@@ -334,9 +338,13 @@ temp_points <- sf::st_as_sf(temp_summary_grid, coords=(c("lon_rho", "lat_rho")),
 bccm_temp_s_mean_rast <- terra::rasterize(temp_points, terra::rast(crs ="EPSG:3573", extent = terra::ext(temp_points), res=3000),field = "temp_s_mean", fun=mean)
 bccm_temp_s_max_rast <- terra::rasterize(temp_points, terra::rast(crs ="EPSG:3573", extent = terra::ext(temp_points), res=3000),field = "temp_s_max", fun=mean)
 bccm_temp_s_min_rast <- terra::rasterize(temp_points, terra::rast(crs ="EPSG:3573", extent = terra::ext(temp_points), res=3000),field = "temp_s_min", fun=mean)
+bccm_temp_s_diff_rast <- terra::rasterize(temp_points, terra::rast(crs ="EPSG:3573", extent = terra::ext(temp_points), res=3000),field = "temp_sur_diff", fun=mean)
+bccm_temp_s_cv_rast <- terra::rasterize(temp_points, terra::rast(crs ="EPSG:3573", extent = terra::ext(temp_points), res=3000),field = "temp_sur_cv", fun=mean)
 bccm_temp_5_mean_rast <- terra::rasterize(temp_points, terra::rast(crs ="EPSG:3573", extent = terra::ext(temp_points), res=3000),field = "temp_5_mean", fun=mean)
 bccm_temp_5_max_rast <- terra::rasterize(temp_points, terra::rast(crs ="EPSG:3573", extent = terra::ext(temp_points), res=3000),field = "temp_5_max", fun=mean)
 bccm_temp_5_min_rast <- terra::rasterize(temp_points, terra::rast(crs ="EPSG:3573", extent = terra::ext(temp_points), res=3000),field = "temp_5_min", fun=mean)
+bccm_temp_5_diff_rast <- terra::rasterize(temp_points, terra::rast(crs ="EPSG:3573", extent = terra::ext(temp_points), res=3000),field = "temp_5_diff", fun=mean)
+bccm_temp_5_cv_rast <- terra::rasterize(temp_points, terra::rast(crs ="EPSG:3573", extent = terra::ext(temp_points), res=3000),field = "temp_5_cv", fun=mean)
 
 
 #### SalishSeaCast Yearly data for NH4, NO3, PAR, DO####
@@ -402,13 +410,17 @@ Month_surf_sub <- SSC_month_data %>%
                 deptht < 2)
 #Summarise the predictor by year
 month_surf_summary_year <- Month_surf_sub %>% dplyr::group_by(x, y, year) %>% 
-  dplyr::summarise(salt_mean_sur_year = mean(saltmean, na.rm = TRUE), salt_min_sur_year = min(saltmean, na.rm = TRUE),
-                   temp_mean_sur_year = mean(tempmean, na.rm = TRUE), temp_max_sur_year = max(tempmean, na.rm = TRUE), temp_min_sur_year = min(tempmean, na.rm = TRUE))
+  dplyr::summarise(salt_mean_sur_year = mean(saltmean, na.rm = TRUE), salt_min_sur_year = min(saltmean, na.rm = TRUE), salt_sd_sur_year = sd(saltmean, na.rm = TRUE),
+                   temp_mean_sur_year = mean(tempmean, na.rm = TRUE), temp_max_sur_year = max(tempmean, na.rm = TRUE), temp_min_sur_year = min(tempmean, na.rm = TRUE), temp_sd_sur_year = sd(tempmean, na.rm = TRUE),
+                   temp_diff_sur_year = max(tempdiff, na.rm = TRUE)) %>%
+  mutate(salt_cv_sur_year = salt_sd_sur_year/salt_mean_sur_year*100,
+         temp_cv_sur_year = temp_sd_sur_year/temp_mean_sur_year*100)
 
 #Summarise the predictor into the desired climatologies for the entire time period
 month_surf_summary <- month_surf_summary_year %>% dplyr::group_by(x, y) %>% 
-  dplyr::summarise(salt_mean_sur = mean(salt_mean_sur_year, na.rm = TRUE), salt_min_sur = mean(salt_min_sur_year, na.rm = TRUE),
-                   temp_mean_sur = mean(temp_mean_sur_year, na.rm = TRUE), temp_max_sur = mean(temp_max_sur_year, na.rm = TRUE), temp_min_sur = mean(temp_min_sur_year, na.rm = TRUE))
+  dplyr::summarise(salt_mean_sur = mean(salt_mean_sur_year, na.rm = TRUE), salt_min_sur = mean(salt_min_sur_year, na.rm = TRUE), salt_cv_sur = mean(salt_cv_sur_year, na.rm = TRUE),
+                   temp_mean_sur = mean(temp_mean_sur_year, na.rm = TRUE), temp_max_sur = mean(temp_max_sur_year, na.rm = TRUE), temp_min_sur = mean(temp_min_sur_year, na.rm = TRUE),
+                   temp_diff_sur = mean(temp_diff_sur_year, na.rm = TRUE), temp_cv_sur = mean(temp_cv_sur_year, na.rm = TRUE))
 
 #Combine the above dataframe with the grid and filter out erroneous entries
 month_surf_summary_grid <- dplyr::full_join(month_surf_summary, SSC_dfo_month_grid, by=c("x","y")) %>% na.omit() %>% dplyr::filter(salt_mean_sur > 0)
@@ -418,8 +430,11 @@ month_surf_points <- sf::st_as_sf(month_surf_summary_grid, coords=(c("nav_lon", 
 ssc_temp_sur_mean_rast <- terra::rasterize(month_surf_points, terra::rast(crs ="EPSG:3573", extent = terra::ext(month_surf_points), res=500),field = "temp_mean_sur", fun=mean)
 ssc_temp_sur_max_rast <- terra::rasterize(month_surf_points, terra::rast(crs ="EPSG:3573", extent = terra::ext(month_surf_points), res=500),field = "temp_max_sur", fun=mean)
 ssc_temp_sur_min_rast <- terra::rasterize(month_surf_points, terra::rast(crs ="EPSG:3573", extent = terra::ext(month_surf_points), res=500),field = "temp_min_sur", fun=mean)
+ssc_temp_sur_cv_rast <- terra::rasterize(month_surf_points, terra::rast(crs ="EPSG:3573", extent = terra::ext(month_surf_points), res=500),field = "temp_cv_sur", fun=mean)
+ssc_temp_sur_diff_rast <- terra::rasterize(month_surf_points, terra::rast(crs ="EPSG:3573", extent = terra::ext(month_surf_points), res=500),field = "temp_diff_sur", fun=mean)
 ssc_salt_sur_mean_rast <- terra::rasterize(month_surf_points, terra::rast(crs ="EPSG:3573", extent = terra::ext(month_surf_points), res=500),field = "salt_mean_sur", fun=mean)
 ssc_salt_sur_min_rast <- terra::rasterize(month_surf_points, terra::rast(crs ="EPSG:3573", extent = terra::ext(month_surf_points), res=500),field = "salt_min_sur", fun=mean)
+ssc_salt_sur_cv_rast <- terra::rasterize(month_surf_points, terra::rast(crs ="EPSG:3573", extent = terra::ext(month_surf_points), res=500),field = "salt_cv_sur", fun=mean)
 
 #subset the year data by these start and end year, and just 5m values
 Month_5_sub <- SSC_month_data %>% 
@@ -428,13 +443,16 @@ Month_5_sub <- SSC_month_data %>%
 
 #Summarise the predictor by year
 month_5_summary_year <- Month_5_sub %>% dplyr::group_by(x, y, year) %>% 
-  dplyr::summarise(salt_mean_5_year = mean(saltmean, na.rm = TRUE), salt_min_5_year = min(saltmean, na.rm = TRUE),
-                   temp_mean_5_year = mean(tempmean, na.rm = TRUE), temp_max_5_year = max(tempmean, na.rm = TRUE), temp_min_5_year = min(tempmean, na.rm = TRUE))
-
+  dplyr::summarise(salt_mean_5_year = mean(saltmean, na.rm = TRUE), salt_min_5_year = min(saltmean, na.rm = TRUE), salt_sd_5_year = sd(saltmean, na.rm = TRUE),
+                   temp_mean_5_year = mean(tempmean, na.rm = TRUE), temp_max_5_year = max(tempmean, na.rm = TRUE), temp_min_5_year = min(tempmean, na.rm = TRUE), temp_sd_5_year = sd(tempmean, na.rm = TRUE),
+                   temp_diff_5_year = max(tempdiff, na.rm = TRUE)) %>%
+  mutate(salt_cv_5_year = salt_sd_5_year/salt_mean_5_year*100,
+         temp_cv_5_year = temp_sd_5_year/temp_mean_5_year*100)
 #Summarise the predictor into the desired climatologies for the entire time period
 month_5_summary <- month_5_summary_year %>% dplyr::group_by(x, y) %>% 
-  dplyr::summarise(salt_mean_5 = mean(salt_mean_5_year, na.rm = TRUE), salt_min_5 = mean(salt_min_5_year, na.rm = TRUE),
-                   temp_mean_5 = mean(temp_mean_5_year, na.rm = TRUE), temp_max_5 = mean(temp_max_5_year, na.rm = TRUE), temp_min_5 = mean(temp_min_5_year, na.rm = TRUE))
+  dplyr::summarise(salt_mean_5 = mean(salt_mean_5_year, na.rm = TRUE), salt_min_5 = mean(salt_min_5_year, na.rm = TRUE), salt_cv_5 = mean(salt_cv_5_year, na.rm = TRUE),
+                   temp_mean_5 = mean(temp_mean_5_year, na.rm = TRUE), temp_max_5 = mean(temp_max_5_year, na.rm = TRUE), temp_min_5 = mean(temp_min_5_year, na.rm = TRUE),
+                   temp_diff_5 = mean(temp_diff_5_year, na.rm = TRUE), temp_cv_5 = mean(temp_cv_5_year, na.rm = TRUE))
 
 #Combine the above dataframe with the NH4 grid and filter out erroneous entries
 month_5_summary_grid <- dplyr::full_join(month_5_summary, SSC_dfo_month_grid, by=c("x","y")) %>% na.omit() %>% dplyr::filter(salt_mean_5 > 0)
@@ -447,19 +465,26 @@ ssc_temp_5_max_rast <- terra::rasterize(month_5_points, terra::rast(crs ="EPSG:3
   terra::merge(ssc_temp_sur_max_rast, na.rm=TRUE)
 ssc_temp_5_min_rast <- terra::rasterize(month_5_points, terra::rast(crs ="EPSG:3573", extent = terra::ext(month_5_points), res=500),field = "temp_min_5", fun=mean)%>%
   terra::merge(ssc_temp_sur_min_rast, na.rm=TRUE)
+ssc_temp_5_diff_rast <- terra::rasterize(month_5_points, terra::rast(crs ="EPSG:3573", extent = terra::ext(month_5_points), res=500),field = "temp_diff_5", fun=mean)%>%
+  terra::merge(ssc_temp_sur_diff_rast, na.rm=TRUE)
+ssc_temp_5_cv_rast <- terra::rasterize(month_5_points, terra::rast(crs ="EPSG:3573", extent = terra::ext(month_5_points), res=500),field = "temp_cv_5", fun=mean)%>%
+  terra::merge(ssc_temp_sur_cv_rast, na.rm=TRUE)
 ssc_salt_5_mean_rast <- terra::rasterize(month_5_points, terra::rast(crs ="EPSG:3573", extent = terra::ext(month_5_points), res=500),field = "salt_mean_5", fun=mean)%>%
   terra::merge(ssc_salt_sur_mean_rast, na.rm=TRUE)
 ssc_salt_5_min_rast <- terra::rasterize(month_5_points, terra::rast(crs ="EPSG:3573", extent = terra::ext(month_5_points), res=500),field = "salt_min_5", fun=mean)%>%
   terra::merge(ssc_salt_sur_min_rast, na.rm=TRUE)
-
+ssc_salt_5_cv_rast <- terra::rasterize(month_5_points, terra::rast(crs ="EPSG:3573", extent = terra::ext(month_5_points), res=500),field = "salt_cv_5", fun=mean)%>%
+  terra::merge(ssc_salt_sur_cv_rast, na.rm=TRUE)
 
 #Stack all of the layers together
 BCCM_layers <- c(bccm_NH4_5_mean_rast, bccm_NO3_5_mean_rast, bccm_salt_5_mean_rast, bccm_salt_5_min_rast, bccm_PAR_5_mean_rast, bccm_PAR_5_min_rast, 
                  bccm_PAR_5_max_rast, bccm_temp_s_mean_rast, bccm_temp_s_max_rast, bccm_temp_s_min_rast, bccm_temp_5_mean_rast, bccm_temp_5_max_rast, 
-                 bccm_temp_5_min_rast, bccm_do_5_mean_rast, bccm_do_5_min_rast)
+                 bccm_temp_5_min_rast, bccm_do_5_mean_rast, bccm_do_5_min_rast, bccm_salt_5_cv_rast, bccm_temp_5_cv_rast, bccm_temp_5_diff_rast,
+                 bccm_temp_s_cv_rast, bccm_temp_s_diff_rast)
 SSC_layers <- c(ssc_NH4_5_mean_rast, ssc_NO3_5_mean_rast, ssc_salt_5_mean_rast, ssc_salt_5_min_rast, ssc_PAR_5_mean_rast, ssc_PAR_5_min_rast, 
                 ssc_PAR_5_max_rast, ssc_temp_sur_mean_rast, ssc_temp_sur_max_rast, ssc_temp_sur_min_rast, ssc_temp_5_mean_rast, ssc_temp_5_max_rast, 
-                ssc_temp_5_min_rast, ssc_DO_5_mean_rast, ssc_DO_5_min_rast)
+                ssc_temp_5_min_rast, ssc_DO_5_mean_rast, ssc_DO_5_min_rast, ssc_salt_5_cv_rast, ssc_temp_5_cv_rast, ssc_temp_5_diff_rast,
+                ssc_temp_sur_cv_rast, ssc_temp_sur_diff_rast)
 
 # resample (and reproject) onto DFO bathy grid
 BCCM_Resampled <- terra::sapp(BCCM_layers, function(x){
@@ -487,15 +512,19 @@ temp_5_max_rast <- terra::merge(SSC_Resampled[[12]], BCCM_Resampled[[12]], na.rm
 temp_5_min_rast <- terra::merge(SSC_Resampled[[13]], BCCM_Resampled[[13]], na.rm=TRUE) %>% terra::mask(bathy20m) %>% terra::crop(bathy20m)
 do_5_mean_rast <- terra::merge(SSC_Resampled[[14]], BCCM_Resampled[[14]], na.rm=TRUE) %>% terra::mask(bathy20m) %>% terra::crop(bathy20m)
 do_5_min_rast <- terra::merge(SSC_Resampled[[15]], BCCM_Resampled[[15]], na.rm=TRUE) %>% terra::mask(bathy20m) %>% terra::crop(bathy20m)
-
+salt_5_cv_rast <- terra::merge(SSC_Resampled[[16]], BCCM_Resampled[[16]], na.rm=TRUE) %>% terra::mask(bathy20m) %>% terra::crop(bathy20m)
+temp_5_cv_rast<- terra::merge(SSC_Resampled[[17]], BCCM_Resampled[[17]], na.rm=TRUE) %>% terra::mask(bathy20m) %>% terra::crop(bathy20m)
+temp_5_diff_rast<- terra::merge(SSC_Resampled[[18]], BCCM_Resampled[[18]], na.rm=TRUE) %>% terra::mask(bathy20m) %>% terra::crop(bathy20m)
+temp_s_cv_rast<- terra::merge(SSC_Resampled[[19]], BCCM_Resampled[[19]], na.rm=TRUE) %>% terra::mask(bathy20m) %>% terra::crop(bathy20m)
+temp_s_diff_rast<- terra::merge(SSC_Resampled[[20]], BCCM_Resampled[[20]], na.rm=TRUE) %>% terra::mask(bathy20m) %>% terra::crop(bathy20m)
 
 Predictor_Hindcast_Climatologies <- c(NH4_5_mean_rast, NO3_5_mean_rast, salt_5_mean_rast, salt_5_min_rast, PAR_5_mean_rast, PAR_5_min_rast, 
                  PAR_5_max_rast, temp_s_mean_rast, temp_s_max_rast, temp_s_min_rast, temp_5_mean_rast, temp_5_max_rast, 
-                 temp_5_min_rast, do_5_mean_rast, do_5_min_rast)
+                 temp_5_min_rast, do_5_mean_rast, do_5_min_rast, salt_5_cv_rast, temp_5_cv_rast, temp_5_diff_rast, temp_s_cv_rast, temp_s_diff_rast)
 
 names(Predictor_Hindcast_Climatologies) <- c("NH4_5m_mean", "NO3_5m_mean", "salt_5m_mean", "salt_5m_min", "PAR_5m_mean", "PAR_5m_min", 
                                              "PAR_5m_max", "temp_s_mean", "temp_s_max", "temp_s_min", "temp_5m_mean", "temp_5m_max", 
-                                             "temp_5m_min", "do_5m_mean", "do_5m_min")
+                                             "temp_5m_min", "do_5m_mean", "do_5m_min", "salt_5m_cv", "temp_5m_cv", "temp_5m_diff", "temp_s_cv", "temp_s_diff")
 
 #Save the hindcast predictor raster
 terra::writeRaster(Predictor_Hindcast_Climatologies, paste0("code/output_data/processed_ocean_variables/Predictor_Hindcast_Climatologies_", paste(start),"-",paste(end),".tif"), overwrite = TRUE)

@@ -26,6 +26,13 @@ library(terra)
 load("code/output_data/seagrass_model_inputs.RData")
 load("code/output_data/prediction_model_inputs.RData")
 
+#functions####
+tjur <- function(y, pred) {
+  categories <- sort(unique(y))
+  m1 <- mean(pred[which(y == categories[1])], na.rm = TRUE)
+  m2 <- mean(pred[which(y == categories[2])], na.rm = TRUE)
+  abs(m2 - m1)
+}
 
 #eelgrass model###
 eelgrass <- filter(seagrass_data_long, species == "ZO")
@@ -34,19 +41,20 @@ print(paste("eelgrass present in ", round((sum(eelgrass$presence)/nrow(eelgrass)
 library(corrplot)
 eelgrass_env<- eelgrass %>%
   select(presence, depth_stnd, rei_sqrt_stnd, tidal_sqrt_stnd, freshwater_sqrt_stnd, slope_sqrt_stnd, NH4_stnd, NO3_stnd, 
-         saltmean_sq_stnd, saltmin_sq_stnd, PARmean_stnd, PARmin_stnd, PARmax_stnd, surftempmean_stnd, surftempmin_stnd, 
-         surftempmax_stnd, tempmean_stnd, tempmin_stnd, tempmax_stnd, DOmean_stnd, DOmin_stnd)
+         saltmean_sq_stnd, saltmin_sq_stnd, saltcv_stnd, PARmean_stnd, PARmin_stnd, PARmax_stnd, surftempmean_stnd, surftempmin_stnd, 
+         surftempmax_stnd, surftempcv_stnd, surftempdiff_stnd, tempmean_stnd, tempmin_stnd, tempmax_stnd, tempcv_stnd, tempdiff_stnd, 
+         DOmean_stnd, DOmin_stnd)
 corrplot(cor(eelgrass_env), method = "number")
 # Correlations close to-1 or +1 might indicate the existence of multicollinearity. 
 # As a rule of thumb, one might suspect multicollinearity when the correlation between two (predictor) variables is below -0.9 or above +0.9.
-# correlated: PAR max and mean, salt min and mean, surftempmean and temp mean, surftempmax and tempmax, tempmean and temp max (but not temp min)
+# correlated: PAR max and mean, salt min and mean and cv, surf temp min and surf temp cv, surf temp diff and surf temp max, surftempmean and temp mean, surftempmax and tempmax, temp diff and temp max, tempmean and temp max (but not temp min)
 # keep PAR mean and min, salt min, 5 m temps max and min, NH4, NO3
 
 ## CREATE A LINEAR REGRESSION MODEL
 #my_model <- lm(presence~., data = eelgrass_env)
 my_model <- lm(presence~ depth_stnd + rei_sqrt_stnd + tidal_sqrt_stnd + freshwater_sqrt_stnd + slope_sqrt_stnd +
-                 NH4_stnd + NO3_stnd + saltmin_sq_stnd + PARmean_stnd + tempmin_stnd + tempmax_stnd +
-                 DOmin_stnd, data = eelgrass_env)
+                 NH4_stnd + NO3_stnd + saltmin_sq_stnd + saltcv_stnd + PARmean_stnd + surftempcv_stnd  + surftempdiff_stnd +
+                 tempmax_stnd + tempcv_stnd + tempdiff_stnd + DOmin_stnd, data = eelgrass_env)
 library(olsrr)
 ols_vif_tol(my_model)
 # As a general guideline, a Tolerance of <0.1 might indicate multicollinearity.
@@ -62,38 +70,120 @@ substrates_present
 # there are eelgrass presence observations on all substrates
 
 
+### Forward feature selection test eelgrass
+k<-n_distinct(eelgrass$fold_eelgrass)
+#Set up a list to hold the output for each fold
+Fold_Outputs <- list()
+for(u in 1:k){
+  eelgrass_data <- eelgrass %>% dplyr::filter(fold_eelgrass <=k) %>% dplyr::filter(fold_eelgrass != u)
+  Test_Data <- eelgrass %>% dplyr::filter(fold_eelgrass <=k) %>% dplyr::filter(fold_eelgrass == u)
+  #create a vector for fold membership
+  foldmem <- seq(1:1:length(eelgrass_data$fold_eelgrass))
+  folds <- unique(eelgrass_data$fold_eelgrass)
+  new_folds <- seq(1:1:(k-1))
+  for (i in 1:length(eelgrass_data$fold_eelgrass)){
+    for (j in 1:(k-1)){
+      if (eelgrass_data$fold_eelgrass[[i]] == folds[j]){
+        foldmem[i] <- new_folds[j]
+      }
+    }
+  }
+  #Setting up an index list for the folds in the caret model training
+  index_list <- list()
+  for (i in 1:(k-1)){
+    index_list[[i]] <- which(foldmem == i)
+  }
+    #Setting up parameters for how my model is going to be fitted
+  fitControl <- caret::trainControl(method = "cv",
+                                    number = (k-1),
+                                    index = index_list)
+  #setting a seed in case that matters
+  set.seed(2024)
+  #performing model selection by glmStepAIC I think I may want to use glmboost instead
+  caret_model <- CAST::ffs(response = eelgrass_data$presence, 
+                           predictors = eelgrass_data[,6:37], 
+                           method = "glm", 
+                           family = "binomial",
+                           trControl = fitControl)
+    #Create the final glm model using the above determined formula
+  #Create a final formula using the selected variables
+  selectedVars <- caret_model$selectedvars
+  final_formula <- paste0("presence~",selectedVars[1])
+  for (i in 2: length(selectedVars)){
+    final_formula <- paste0(final_formula,"+",selectedVars[i])
+  }
+  #fit the model
+  caretmodel <- glm(as.formula(final_formula), data = eelgrass_data, family = binomial(link = "logit"))
+  #Calculate final model AUC on the testing fold
+  pred.caretModel <- predict(caretmodel, newdata = Test_Data, type = "response")
+  roc.caretModel <- pROC::roc(Test_Data$presence, pred.caretModel)
+  auc.caretModel <- pROC::auc(roc.caretModel)
+  Output <- list(caretmodel, auc.caretModel, caretmodel$formula)
+  Fold_Outputs[[u]] <- Output
+}
+return(Fold_Outputs)
+### variables that came out include depth, substrate, slope_stnd,  rei_stnd (note rei sqrt so need to assess)
+
+#SDMtmb model
 #make mesh
-mesh_eelgrass <- make_mesh(data = eelgrass, xy_cols = c("X", "Y"), cutoff = 15)
+mesh_eelgrass <- make_mesh(data = eelgrass, xy_cols = c("X", "Y"), cutoff = 12) # going to 10 km makes the model not run, likely will need to reduce fixed effects to make it work
 plot(mesh_eelgrass)
 
 barrier_mesh_eelgrass <- add_barrier_mesh(mesh_eelgrass, barrier_sf = coastline, proj_scaling = 1000, plot = TRUE)
 
-#fit model
+#fit cv model
 plan(multisession)
+m_e_1 <- sdmTMB_cv(formula = presence ~ s(depth_stnd, k = 3) + substrate + slope_stnd + rei_sqrt_stnd,
+                          mesh = barrier_mesh_eelgrass, 
+                          family = binomial(link = "logit"), 
+                          spatial = FALSE, 
+                          data = eelgrass, 
+                          fold_ids = "fold_eelgrass")
+m_e_2 <- sdmTMB_cv(formula = presence ~ s(depth_stnd, k = 3) + substrate + slope_stnd + rei_sqrt_stnd,
+                   mesh = barrier_mesh_eelgrass, 
+                   family = binomial(link = "logit"), 
+                   spatial = TRUE, 
+                   data = eelgrass, 
+                   fold_ids = "fold_eelgrass")
+roc <- pROC::roc(m_e_2$data$presence, plogis(m_e_2$data$cv_predicted))
+auc <- pROC::auc(roc)
+auc 
+# auc with no spatial field is 0.9326, with spatial field is 0.9431
+# with depth and substrate AUC = 0.9307, adding slope made 0.9337, adding rei made 0.9361
+# addition of depth vastly increases auc from 0.6223 to 0.863, model does better with spline
+#slope_stnd produces slightly better auc than with it sqrt so will keep the stnd
+# adding Par max made marginal improvement, but PAR mean and PAR min made it go down
+# adding salinitymin made model decline, adding salinity mean made it stay same
+# adding tidal did not improve the model auc is still 0.9361, don't add spline, relationship is not quadratic
 
 
-m_eelgrass_1 <- sdmTMB_cv(presence ~ s(depth_stnd, k = 3) + freshwater_sqrt_stnd + slope_sqrt_stnd + substrate + s(rei_sqrt_stnd, k=3) + s(tidal_sqrt_stnd, k = 3) + NH4_stnd + NO3_stnd + saltmin_sq_stnd + PARmean_stnd + tempmin_stnd + tempmax_stnd + DOmin_stnd,
-                      mesh = barrier_mesh_eelgrass, family = binomial(link = "logit"), spatial = TRUE, data = eelgrass, fold_ids = "fold")
-#  
-m_eelgrass_1$sum_loglik
-m_eelgrass_1$AIC
-#eelgrass$ID<-as.factor(eelgrass$ID)
+m_e_2$fold_loglik  
+m_e_2$sum_loglik
 
-# m_eelgrass <- sdmTMB(presence ~ 0 + s(depth_stnd, k = 3) + slope_stnd + temperature_stnd + substrate + s(rei_sqrt_stnd, k=3) + salinity_stnd + s(tidal_sqrt_stnd, k = 3) + (1|ID),
-#                           mesh = barrier_mesh_eelgrass, family = binomial(link = "logit"), spatial = "on", time = "Year", spatiotemporal = "IID", data = eelgrass)
-# 
-# m_eelgrass <- sdmTMB(presence ~ 0 + s(depth_stnd, k = 3) + slope_stnd + temperature_stnd + substrate + s(rei_sqrt_stnd, k=3) + salinity_stnd + s(tidal_sqrt_stnd, k = 3) + (1|HKey),
-#                      mesh = barrier_mesh_eelgrass, family = binomial(link = "logit"), spatial = "on", data = eelgrass)
+# fit full model
 
-m_eelgrass <- sdmTMB(presence ~ s(depth_stnd, k = 3) + freshwater_sqrt_stnd + slope_sqrt_stnd + substrate + s(rei_sqrt_stnd, k=3) + s(tidal_sqrt_stnd, k = 3) +
-                       NH4_stnd + NO3_stnd + saltmin_sq_stnd + PARmean_stnd + tempmin_stnd + tempmax_stnd + DOmin_stnd, mesh = barrier_mesh_eelgrass, 
-                     family = binomial(link = "logit"), spatial = "on", data = eelgrass)
+m_eelgrass <- sdmTMB(formula = presence ~ depth_stnd + substrate + slope_stnd + rei_sqrt_stnd,
+                     mesh = barrier_mesh_eelgrass, 
+                     family = binomial(link = "logit"), 
+                     spatial = "on", 
+                     data = eelgrass)
+ggeffects::ggeffect(model = m_eelgrass,  terms = "depth_stnd[-4:0]") %>% plot() 
+ggeffects::ggeffect(model = m_eelgrass,  terms = "rei_sqrt_stnd[-1:8]") %>% plot() 
+ggeffects::ggeffect(model = m_eelgrass,  terms = "slope_stnd[-1:8]") %>% plot() 
+ggeffects::ggeffect(model = m_eelgrass,  terms = "substrate") %>% plot() 
+visreg::visreg(m_eelgrass, "depth_stnd")
 
+tidy(m_eelgrass, conf.int = TRUE)
 sanity(m_eelgrass)
+
+eelgrass$resids <- residuals(m_eelgrass) # randomized quantile residuals
+qqnorm(eelgrass$resids)
+qqline(eelgrass$resids)
+
 #sdmTMB::run_extra_optimization(m_eelgrass, nlminb_loops = 1L, newton_loops = 1L)
 
 m_eelgrass
-
+# refere to https://pbs-assess.github.io/sdmTMB/articles/basic-intro.html to make plots of random spatial fields etc
 
 pred_fixed <- m_eelgrass$family$linkinv(predict(m_eelgrass)$est_non_rf)
 r_pois <- DHARMa::createDHARMa(
@@ -115,7 +205,7 @@ predict(m_eelgrass) %>%
   geom_jitter(width = 0.05, height = 0)
 
 hold <- predict(m_eelgrass, env_20m_all)
-sims <- predict(m_eelgrass, newdata = env_20m_all, nsim = 500) #ram is not working for this right now at 20m prediction cells
+sims <- predict(m_eelgrass, newdata = env_20m_all, nsim = 100) #ram is not working for this right now for 500 sims (or 250) at 20m prediction cells
 hold$SE <- apply(sims, 1, sd)
 eelgrass_predictions <- env_20m_all
 eelgrass_predictions <- bind_cols(eelgrass_predictions, hold %>% select(est:SE))
@@ -186,12 +276,76 @@ eelgrass_raster_qcs <- rast(x = eelgrass_raster_qcs %>% as.matrix, type = "xyz",
 writeRaster(eelgrass_raster_qcs, file.path("./raster/eelgrass_predictions_qcs.tif"), overwrite=TRUE)
 
 
-
+#### Surfgrass model ####
 
 surfgrass <- filter(seagrass_data_long, species == "PH")
-print(paste("surfgrass present in ", round((sum(surfgrass$presence)/nrow(surfgrass))*100,2), "% of transects", sep = ""))
+print(paste("surfgrass present in ", round((sum(surfgrass$presence)/nrow(surfgrass))*100,2), "% of 20 m cells", sep = ""))
 
-# Continue if prevalence is greater than 0.5%
+my_model_surfgrass <- lm(presence~ depth_stnd + rei_sqrt_stnd + tidal_sqrt_stnd + substrate+ freshwater_sqrt_stnd + slope_sqrt_stnd +
+                 NH4_stnd + NO3_stnd + saltmin_stnd + PARmean_stnd + surftempcv_stnd +
+                   tempcv_stnd + DOmin_stnd +tempmin_stnd, data = surfgrass)
+ols_vif_tol(my_model_surfgrass)
+# As a general guideline, a Tolerance of <0.1 might indicate multicollinearity.
+# As a rule of thumb, a VIF exceeding 5 requires further investigation, whereas VIFs above 10 indicate multicollinearity. 
+# Ideally, the Variance Inflation Factors are below 3.
+# there is no multi multicollinearity in variables selevered in my_model.
+
+### Forward feature selection test eelgrass
+k<-n_distinct(surfgrass$fold_seagrass)
+#Set up a list to hold the output for each fold
+Fold_Outputs_seagrass <- list()
+for(u in 1:k){
+  surfgrass_data <- surfgrass %>% dplyr::filter(fold_seagrass <=k) %>% dplyr::filter(fold_seagrass != u)
+  Test_Data <- surfgrass %>% dplyr::filter(fold_seagrass <=k) %>% dplyr::filter(fold_seagrass == u)
+  #create a vector for fold membership
+  foldmem <- seq(1:1:length(surfgrass_data$fold_seagrass))
+  folds <- unique(surfgrass_data$fold_seagrass)
+  new_folds <- seq(1:1:(k-1))
+  for (i in 1:length(surfgrass_data$fold_seagrass)){
+    for (j in 1:(k-1)){
+      if (surfgrass_data$fold_seagrass[[i]] == folds[j]){
+        foldmem[i] <- new_folds[j]
+      }
+    }
+  }
+  #Setting up an index list for the folds in the caret model training
+  index_list <- list()
+  for (i in 1:(k-1)){
+    index_list[[i]] <- which(foldmem == i)
+  }
+  #Setting up parameters for how my model is going to be fitted
+  fitControl <- caret::trainControl(method = "cv",
+                                    number = (k-1),
+                                    index = index_list)
+  #setting a seed in case that matters
+  set.seed(2024)
+  #performing model selection by glmStepAIC I think I may want to use glmboost instead
+  caret_model <- CAST::ffs(response = surfgrass_data$presence, 
+                           predictors = surfgrass_data[,6:37], 
+                           method = "glm", 
+                           family = "binomial",
+                           trControl = fitControl)
+  #Create the final glm model using the above determined formula
+  #Create a final formula using the selected variables
+  selectedVars <- caret_model$selectedvars
+  final_formula <- paste0("presence~",selectedVars[1])
+  for (i in 2: length(selectedVars)){
+    final_formula <- paste0(final_formula,"+",selectedVars[i])
+  }
+  #fit the model
+  caretmodel <- glm(as.formula(final_formula), data = surfgrass_data, family = binomial(link = "logit"))
+  #Calculate final model AUC on the testing fold
+  pred.caretModel <- predict(caretmodel, newdata = Test_Data, type = "response")
+  roc.caretModel <- pROC::roc(Test_Data$presence, pred.caretModel)
+  auc.caretModel <- pROC::auc(roc.caretModel)
+  Output <- list(caretmodel, auc.caretModel, caretmodel$formula)
+  Fold_Outputs_seagrass[[u]] <- Output
+}
+return(Fold_Outputs_seagrass)
+### variables that came out include depth, rei sqrt, subtrate. Surftempmin_stnd (2); DOmin (1); Freshwater sqrt (1); Tempcvstn(1); Tempmin (1); Slope  (1); PAR mean (1)
+# so need to include some temp variable
+
+# present on all
 substrates_present <- surfgrass %>%
   group_by(substrate) %>%
   summarise(n_present = sum(presence))
@@ -206,24 +360,43 @@ barrier_mesh_surfgrass <- add_barrier_mesh(mesh_surfgrass, barrier_sf = coastlin
 
 #fit model
 plan(multisession)
+m_s_1 <- sdmTMB_cv(formula = presence ~ depth_stnd + substrate + rei_sqrt_stnd,
+                   mesh = barrier_mesh_surfgrass, 
+                   family = binomial(link = "logit"), 
+                   spatial = FALSE, 
+                   data = surfgrass, 
+                   fold_ids = "fold_seagrass")
+m_s_2 <- sdmTMB_cv(formula = presence ~ depth_stnd  + substrate + rei_sqrt_stnd + surftempcv_stnd + tempcv_stnd,
+                   mesh = barrier_mesh_surfgrass, 
+                   family = binomial(link = "logit"), 
+                   spatial = TRUE, 
+                   data = surfgrass, 
+                   fold_ids = "fold_seagrass")
+roc <- pROC::roc(m_s_2$data$presence, plogis(m_s_2$data$cv_predicted))
+auc <- pROC::auc(roc)
+auc 
 
-
-# m_surfgrass_1 <- sdmTMB_cv(presence ~1 + s(depth_stnd, k = 3) + slope_stnd + s(temperature_stnd, k = 3) + substrate + s(rei_sqrt_stnd, k=3) + salinity_stnd + s(tidal_sqrt_stnd, k = 3),
-#                       mesh = barrier_mesh_surfgrass, family = binomial(link = "logit"), spatial = TRUE, data = surfgrass, fold_ids = "fold")
-#  
-# m_surfgrass_1$sum_loglik
-#surfgrass$ID<-as.factor(surfgrass$ID)
-
-# m_surfgrass <- sdmTMB(presence ~ 0 + s(depth_stnd, k = 3) + slope_stnd + temperature_stnd + substrate + s(rei_sqrt_stnd, k=3) + salinity_stnd + s(tidal_sqrt_stnd, k = 3) + (1|ID),
-#                           mesh = barrier_mesh_surfgrass, family = binomial(link = "logit"), spatial = "on", time = "Year", spatiotemporal = "IID", data = surfgrass)
-# 
-# m_surfgrass <- sdmTMB(presence ~ 0 + s(depth_stnd, k = 3) + slope_stnd + temperature_stnd + substrate + s(rei_sqrt_stnd, k=3) + salinity_stnd + s(tidal_sqrt_stnd, k = 3) + (1|HKey),
-#                      mesh = barrier_mesh_surfgrass, family = binomial(link = "logit"), spatial = "on", data = surfgrass)
-
-#remove freshwater compared to eelgrass
-m_surfgrass <- sdmTMB(presence ~ 1 + s(depth_stnd, k = 3) + slope_sqrt_stnd + substrate + s(rei_sqrt_stnd, k=3) + s(tidal_sqrt_stnd, k = 3) +
-                        NH4_stnd + NO3_stnd + saltmin_sq_stnd + PARmean_stnd + tempmin_stnd + tempmax_stnd + DOmin_stnd,
-                     mesh = barrier_mesh_surfgrass, family = binomial(link = "logit"), spatial = "on", data = surfgrass)
+# without spatial field AUC is 0.9443, with spatial field is 0.9551
+#need depth, substrate, rei sqrt. Test addin these: Surftempmin_stnd (2); DOmin (1); Tempmin (1); 
+#don't need spline for depth or rei
+# added suftempcv_stnd increased to 0.96
+# added tempcv_stnd increased to 0.9607
+#adding slope, PAR, DO, freshwater, tempmin_stnd, surftempmin doesn't help or hinders after other factors accounted for
+# tested several mess sizes between 20- 10 km and 15 had highest AUC
+# cv is calculated as the sd for a year divided by the mean of the year *100. Then the mean across the decade is calculated from each year
+#fit full model
+m_surfgrass <- sdmTMB(formula = presence ~ depth_stnd  + substrate + rei_sqrt_stnd + surftempcv_stnd + tempcv_stnd,
+                     mesh = barrier_mesh_surfgrass, 
+                     family = binomial(link = "logit"), 
+                     spatial = "on", 
+                     data = surfgrass)
+ggeffects::ggeffect(model = m_surfgrass,  terms = "depth_stnd[-4:0]") %>% plot() # found highest at shallow
+ggeffects::ggeffect(model = m_surfgrass,  terms = "rei_sqrt_stnd[-1:8]") %>% plot()  # increases with exposure
+ggeffects::ggeffect(model = m_surfgrass,  terms = "substrate") %>% plot() # found on rock
+ggeffects::ggeffect(model = m_surfgrass,  terms = "surftempcv_stnd[-3:8]") %>% plot() # declines with increased variation
+ggeffects::ggeffect(model = m_surfgrass,  terms = "tempcv_stnd[-3:6]") %>% plot() # declines with increased variation
+visreg::visreg(m_surfgrass, "depth_stnd")
+visreg::visreg(m_surfgrass, "surftempcv_stnd")
 
 sanity(m_surfgrass)
 #sdmTMB::run_extra_optimization(m_surfgrass, nlminb_loops = 1L, newton_loops = 1L)
