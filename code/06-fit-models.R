@@ -34,6 +34,11 @@ tjur <- function(y, pred) {
   abs(m2 - m1)
 }
 
+ll_binomial <- function(withheld_y, withheld_mu) {
+  stats::dbinom(x = withheld_y, size = 1, prob = withheld_mu, log = TRUE)
+  }
+  
+  
 #eelgrass model###
 eelgrass <- filter(seagrass_data_long, species == "ZO")
 print(paste("eelgrass present in ", round((sum(eelgrass$presence)/nrow(eelgrass))*100,2), "% of observations", sep = ""))
@@ -122,7 +127,8 @@ for(u in 1:k){
   Fold_Outputs[[u]] <- Output
 }
 return(Fold_Outputs)
-### variables that came out include depth, substrate, slope_stnd,  rei_stnd (note rei sqrt so need to assess)
+### variables that came out include depth, substrate, slope_stnd,  rei_stnd (not rei sqrt so need to assess)
+
 
 #SDMtmb model
 #make mesh
@@ -133,13 +139,13 @@ barrier_mesh_eelgrass <- add_barrier_mesh(mesh_eelgrass, barrier_sf = coastline,
 
 #fit cv model
 plan(multisession)
-m_e_1 <- sdmTMB_cv(formula = presence ~ s(depth_stnd, k = 3) + substrate + slope_stnd + rei_sqrt_stnd,
+m_e_1 <- sdmTMB_cv(formula = presence ~ s(depth_stnd, k = 3) + substrate + slope_stnd + rei_stnd,
                           mesh = barrier_mesh_eelgrass, 
                           family = binomial(link = "logit"), 
                           spatial = FALSE, 
                           data = eelgrass, 
                           fold_ids = "fold_eelgrass")
-m_e_2 <- sdmTMB_cv(formula = presence ~ s(depth_stnd, k = 3) + substrate + slope_stnd + rei_sqrt_stnd,
+m_e_2 <- sdmTMB_cv(formula = presence ~ s(depth_stnd, k = 3) + substrate + slope_stnd + rei_stnd,
                    mesh = barrier_mesh_eelgrass, 
                    family = binomial(link = "logit"), 
                    spatial = TRUE, 
@@ -148,27 +154,66 @@ m_e_2 <- sdmTMB_cv(formula = presence ~ s(depth_stnd, k = 3) + substrate + slope
 roc <- pROC::roc(m_e_2$data$presence, plogis(m_e_2$data$cv_predicted))
 auc <- pROC::auc(roc)
 auc 
-# auc with no spatial field is 0.9326, with spatial field is 0.9431
+# auc with no spatial field is 0.9326, with spatial field is 0.9427
 # with depth and substrate AUC = 0.9307, adding slope made 0.9337, adding rei made 0.9361
+#STILL NEED TO DECIDE BETWEEN REI SQRT AND REI, WITH SQRT AUC IS 0.9431, WITH OUT IS 0.9427, tJUR IS BETTER WITHOUT,  FFC ONLY SELECTED REI WITHOUT SQRT
 # addition of depth vastly increases auc from 0.6223 to 0.863, model does better with spline
 #slope_stnd produces slightly better auc than with it sqrt so will keep the stnd
 # adding Par max made marginal improvement, but PAR mean and PAR min made it go down
 # adding salinitymin made model decline, adding salinity mean made it stay same
 # adding tidal did not improve the model auc is still 0.9361, don't add spline, relationship is not quadratic
 
+folds <- unique(eelgrass$fold_eelgrass)
+CV=cv_list_eelgrass$cv
+fitted.df <- data.frame()
+for(i in folds){
+  mu <-  plogis(predict(m_e_2$models[[i]])$est[eelgrass$fold_eelgrass == i])
+  fitted.df <- rbind(fitted.df, data.frame(presence = eelgrass$presence[eelgrass$fold_eelgrass == i], mu = mu, fold = i))    
+}
+#compare test and train statistics
+traintest.df <- data.frame()
+for(i in folds){
+  # Get train obs
+  train <- CV[[i]][["train"]]
+  sp_data_cv <- filter(seagrass_data_long, species == "ZO")
+  trainobs <- sp_data_cv[ train, 44]
+  #trainobs <- obs$presence
+  # Get train preds
+  trainpred <- plogis(predict(m_e_2$models[[i]])$est[train])
+  # Calculate area under the receiver-operator curve (AUC))
+  train.AUC <-  pROC::auc(trainobs, trainpred)
+  # Calculate tjur R2
+  train.tjur <- tjur(trainobs, trainpred )
+  # Get test indices
+  test <- CV[[i]][["test"]]
+  testobs <- sp_data_cv[ test, 44]
+  #testobs <- tobs$presence
+  # Get test preds
+  testpred <- plogis(predict(m_e_2$models[[i]])$est[test])
+  # Calculate area under the receiver-operator curve (AUC))
+  test.AUC <- pROC::auc(testobs, testpred)
+  # Calculate tjur R2
+  test.tjur <- tjur(testobs, testpred)
+  # sum log likelihood
+  ll<- m_e_2$sum_loglik
+  traintest.df <- data.frame(ll=ll, train.AUC = train.AUC, test.AUC=test.AUC, train.tjur = train.tjur, test.tjur = test.tjur, species = "ZO", fold = i)
+  traintest.df <- traintest.df %>% dplyr::summarise(mean_AUC_train = mean(train.AUC, na.rm = TRUE), mean_AUC_test = mean(test.AUC, na.rm = TRUE), mean_Tjur_train = mean(train.tjur, na.rm = TRUE), mean_Tjur_test = mean(test.tjur, na.rm = TRUE), sum_loglike = mean(ll, na.rm = TRUE))
+}
 
-m_e_2$fold_loglik  
-m_e_2$sum_loglik
+
+
+
+
 
 # fit full model
 
-m_eelgrass <- sdmTMB(formula = presence ~ depth_stnd + substrate + slope_stnd + rei_sqrt_stnd,
+m_eelgrass <- sdmTMB(formula = presence ~ s(depth_stnd, k = 3) + substrate + slope_stnd + rei_stnd,
                      mesh = barrier_mesh_eelgrass, 
                      family = binomial(link = "logit"), 
                      spatial = "on", 
                      data = eelgrass)
 ggeffects::ggeffect(model = m_eelgrass,  terms = "depth_stnd[-4:0]") %>% plot() 
-ggeffects::ggeffect(model = m_eelgrass,  terms = "rei_sqrt_stnd[-1:8]") %>% plot() 
+ggeffects::ggeffect(model = m_eelgrass,  terms = "rei_stnd[-1:8]") %>% plot() 
 ggeffects::ggeffect(model = m_eelgrass,  terms = "slope_stnd[-1:8]") %>% plot() 
 ggeffects::ggeffect(model = m_eelgrass,  terms = "substrate") %>% plot() 
 visreg::visreg(m_eelgrass, "depth_stnd")
@@ -384,6 +429,7 @@ auc
 #adding slope, PAR, DO, freshwater, tempmin_stnd, surftempmin doesn't help or hinders after other factors accounted for
 # tested several mess sizes between 20- 10 km and 15 had highest AUC
 # cv is calculated as the sd for a year divided by the mean of the year *100. Then the mean across the decade is calculated from each year
+
 #fit full model
 m_surfgrass <- sdmTMB(formula = presence ~ depth_stnd  + substrate + rei_sqrt_stnd + surftempcv_stnd + tempcv_stnd,
                      mesh = barrier_mesh_surfgrass, 

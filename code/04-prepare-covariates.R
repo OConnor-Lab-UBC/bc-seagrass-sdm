@@ -219,10 +219,10 @@ cv_plot_eelgrass <- cv_plot(cv = sp_blocks_eelgrass, #  blockCV object
 cv_plot_eelgrass
 ggsave("./figures/pre-analysis/spatial_blocks_eelgrass_type1.png", height = 6, width = 6)
 
-sp_blocks_eelgrass <- ggplot(spatialised_sf)+
+sp_blocks_e <- ggplot(spatialised_sf)+
   geom_sf(aes(color = factor(fold_eelgrass)))+
   geom_sf(data = coastline)
-sp_blocks_eelgrass
+sp_blocks_e
 ggsave("./figures/pre-analysis/spatial_blocks_eelgrass_type2.png", height = 6, width = 6)
 
 cv_plot_seagrass <- cv_plot(cv = sp_blocks_seagrass, #  blockCV object
@@ -231,10 +231,10 @@ cv_plot_seagrass <- cv_plot(cv = sp_blocks_seagrass, #  blockCV object
 cv_plot_seagrass
 ggsave("./figures/pre-analysis/spatial_blocks_seagrass_type1.png", height = 6, width = 6)
 
-sp_blocks_seagrass <- ggplot(spatialised_sf)+
+sp_blocks_ss <- ggplot(spatialised_sf)+
   geom_sf(aes(color = factor(fold_seagrass)))+
   geom_sf(data = coastline)
-sp_blocks_seagrass
+sp_blocks_ss
 ggsave("./figures/pre-analysis/spatial_blocks_seagrass_type2.png", height = 6, width = 6)
 
 cv_eelgrass <- list()

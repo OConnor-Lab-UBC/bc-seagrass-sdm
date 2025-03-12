@@ -24,6 +24,13 @@ library(viridis)
 #load seagrass data
 load("code/output_data/seagrass_model_inputs.RData")
 
+# coastline
+coastline_full <- st_read("raw_data/CHS_HWL2015_Coastline.gdb", layer = "Line_CHS_Pacific_HWL_2015_5028437")
+coastline <- coastline_full %>%
+  st_zm(drop = TRUE, what = "ZM") %>%
+  st_crop(st_bbox(coastline_full) + c(0, 100000, -10000, -80000)) %>%
+  st_transform(crs = "EPSG:3005")
+
 #read in 20m rasters####
 bathy_hg <- rast("raw_data/envlayers-20m-hg//bathymetry.tif")
 bathy_ncc <- rast("raw_data/envlayers-20m-ncc/bathymetry.tif")
@@ -74,7 +81,7 @@ hindcast2013_2023 <- terra::rast("code/output_data/processed_ocean_variables/Pre
 
 ####make prediction data####
 max_depth <- quantile(seagrass_data$depth, probs = c(0.99))
-min_depth <- quantile(seagrass_data$depth, probs = c(0.01))
+min_depth <- quantile(seagrass_data$depth, probs = c(0.001))
 
 #haida gwaii
 env_20m_hg <- as.data.frame(bathy_hg, xy=TRUE)
@@ -335,7 +342,7 @@ summary(env_20m_all)
 
 #need to think about this in reference to how much we want to extrapolate, will depend on future conditions
 env_20m_all <- env_20m_all %>%
-  filter(freshwater < quantile(seagrass_data$freshwater, probs = 0.99),  # we have no surveys in freshwater areas, so better to exclude
+  filter(#freshwater < quantile(seagrass_data$freshwater, probs = 0.99),  # we have no surveys in freshwater areas, so better to exclude
          salt_5m_mean > quantile(seagrass_data$saltmean, probs = 0.001), # same as above
          #temperature > quantile(seagrass_data$temperature, probs = 0.001), # want to allow extrapolation into higher temperatures
          #temperature < quantile(seagrass_data$temperature, probs = 0.999),
@@ -390,19 +397,16 @@ env_20m_all <- env_20m_all %>%
 
 summary(env_20m_all)
   
-#save outputs####
-save(env_20m_all, file = "code/output_data/prediction_model_inputs.RData")
 
+#env_20m_all_sf <- st_as_sf(env_20m_all, coords = c("X_m", "Y_m"), crs = "EPSG:3005")
   
 
 #### Compare the sampled predictor space to that of the total hindcast climatology
 #2013-2023 hindcast climatology without depth and substrate and turn into a dataframe
-hindcast_predictor_data <- env_20m_all %>% select(rei_stnd, tidal_stnd, freshwater_stnd, slope_stnd, NH4_stnd, NO3_stnd, saltmean_stnd, saltmin_stnd, saltcv_stnd,
-                                                  PARmean_stnd, PARmin_stnd, tempmin_stnd, tempmax_stnd, tempcv_stnd, tempdiff_stnd, DOmean_stnd, DOmin_stnd)
+hindcast_predictor_data <- env_20m_all %>% select(rei_stnd, tidal_stnd, slope_stnd, NH4_stnd, NO3_stnd, saltmean_stnd, saltmin_stnd, PARmean_stnd, surftempmean_stnd, surftempmin_stnd, surftempmax_stnd, surftempcv_stnd,surftempdiff_stnd, tempmean_stnd, tempmin_stnd, tempmax_stnd, tempcv_stnd, tempdiff_stnd, DOmean_stnd)
 
 # transect predictor data
-transect_predictor_data <- seagrass_data %>% select(rei_stnd, tidal_stnd, freshwater_stnd, slope_stnd, NH4_stnd, NO3_stnd, saltmean_stnd, saltmin_stnd, saltcv_stnd,
-                                                    PARmean_stnd, PARmin_stnd, tempmin_stnd, tempmax_stnd, tempcv_stnd, tempdiff_stnd, DOmean_stnd, DOmin_stnd)
+transect_predictor_data <- seagrass_data %>% select(rei_stnd, tidal_stnd, slope_stnd, NH4_stnd, NO3_stnd, saltmean_stnd, saltmin_stnd, PARmean_stnd, surftempmean_stnd, surftempmin_stnd, surftempmax_stnd, surftempcv_stnd,surftempdiff_stnd, tempmean_stnd, tempmin_stnd, tempmax_stnd, tempcv_stnd, tempdiff_stnd, DOmean_stnd)
 
 #Create a PCA for the total predictor space of the hindcast
 Hindcast_PCA <- princomp(hindcast_predictor_data)
@@ -432,7 +436,7 @@ All_Scores <- rbind(Hindcast_Scores, Transect_Scores)
 Density_Plot <- function(All_Scores, comp, title, x, y){
   Dense <- ggplot(All_Scores) + 
     geom_density(aes(x = All_Scores[,comp], fill = Type), alpha = 0.5) + 
-    scale_fill_manual(values = c("#404788FF", "#55C667FF"), name = "Feature Space" )  + 
+    scale_fill_manual(values = c("#f28e2b", "#76b7b2"), name = "Feature Space" )  + 
     scale_y_continuous(expand = c(0, 0)) +
     xlab(title) +
     ylab("Frequency") + 
@@ -458,14 +462,14 @@ Density_Plot <- function(All_Scores, comp, title, x, y){
 #Plot grid a density plot for the first four principal components
 PCA_dense_plot <- gridExtra::grid.arrange(Density_Plot(All_Scores, 1, "Principal Component 1 Value (39%)", 0.75, 0.81), 
                                      Density_Plot(All_Scores, 2, "Principal Component 2 Value (19%)", 0.75, 0.81), 
-                                     Density_Plot(All_Scores, 3, "Principal Component 3 Value (15%)", 0.25, 0.81), 
-                                     Density_Plot(All_Scores, 4, "Principal Component 4 Value (9%)", 0.75, 0.81), nrow = 2)
+                                     Density_Plot(All_Scores, 3, "Principal Component 3 Value (15%)", 0.75, 0.81), 
+                                     Density_Plot(All_Scores, 4, "Principal Component 4 Value (9%)", 0.25, 0.81), nrow = 2)
 PCA_dense_plot
 ggsave(filename = "./figures/pre-analysis/Predictor_Hindcast_Transect_PCA_Density_Plot.png", plot = PCA_dense_plot, scale = 1, height = 10, width = 12)
 
 #Create a PCA plot of the first two principal components of our hindcast and survey predictor space with no points but 95% elipses
 PCA_Plot_Ellipses <- ggplot(All_Scores) + 
-  scale_colour_manual( values = c("#404788FF", "#55C667FF")) + 
+  scale_colour_manual( values = c("#f28e2b", "#76b7b2")) + 
   xlab("Principal Component 1 (39%)") + 
   ylab("Principal Component 2 (19%)") + 
   theme_classic() + 
@@ -482,7 +486,7 @@ PCA_Plot_Ellipses <- ggplot(All_Scores) +
         legend.justification = c("left","top"), 
         legend.box.just = "right") + 
   stat_ellipse(geom = "polygon", alpha = 0.2, aes(x = Comp.1, y = Comp.2, color = Type, group = Type, fill = Type)) + 
-  scale_fill_manual( values = c("#404788FF", "#55C667FF")) + 
+  scale_fill_manual( values = c("#f28e2b", "#76b7b2")) + 
   theme(axis.text = element_text(size=14), 
         axis.title = element_text(size = 18), 
         legend.text = element_text(size = 16), 
@@ -491,3 +495,59 @@ PCA_Plot_Ellipses <- ggplot(All_Scores) +
 
 PCA_Plot_Ellipses
 ggsave("./figures/pre-analysis/Predictor_Hindcast_Transect_PCA_Plot_Ellipses.png", plot = PCA_Plot_Ellipses, width = 10, height = 12)
+
+#hindcast_MESS<- modEvA::MESS(transect_predictor_data, hindcast_predictor_data)
+# refer to elith et al for more details on MESS. measures the similarity of any given point to a reference set of points, with respect to the chosen predictor variables. It reports the closeness of the point to the distribution of reference points, gives negative values for dissimilar points and maps these values across the whole prediction region
+hindcast_MESS<- predicts::mess(x = hindcast_predictor_data, v= transect_predictor_data, full = FALSE)
+plot(hindcast_MESS)
+env_20m_all <- env_20m_all %>% cbind(hindcast_MESS)
+
+#save outputs####
+save(env_20m_all, file = "code/output_data/prediction_model_inputs.RData")
+
+mess_plot<-ggplot(env_20m_all)+
+  geom_sf(data = coastline, linewidth = 0.1)+
+  geom_tile(aes(x = X_m, y = Y_m, colour=mess, width=20,height=20))+
+  scale_colour_gradient2() +
+  theme(panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        # Remove panel background
+        panel.background = element_blank(),
+        axis.text.x = element_blank(),
+        axis.text.y = element_blank(),
+        axis.ticks = element_blank())+
+  coord_sf(expand = FALSE)+
+  ylab("")+
+  xlab("") 
+mess_plot
+ggsave("./figures/pre-analysis/hindcast_mess.png", height = 6, width = 6)
+
+mess_raster_hg <- env_20m_all %>%
+  filter(region == "Haida Gwaii") %>%
+  select(X_m, Y_m, mess)
+mess_raster_hg <- rast(x = mess_raster_hg %>% as.matrix, type = "xyz", crs = "EPSG:3005")
+writeRaster(mess_raster_hg, file.path("./raster/mess_predictions_hg.tif"), overwrite=TRUE)
+
+mess_raster_ss <- env_20m_all %>%
+  filter(region == "Salish Sea") %>%
+  select(X_m, Y_m, mess)
+mess_raster_ss <- rast(x = mess_raster_ss %>% as.matrix, type = "xyz", crs = "EPSG:3005")
+writeRaster(mess_raster_ss, file.path("./raster/mess_predictions_ss.tif"), overwrite=TRUE)
+
+mess_raster_wcvi <- env_20m_all %>%
+  filter(region == "West Coast Vancouver Island") %>%
+  select(X_m, Y_m, mess)
+mess_raster_wcvi <- rast(x = mess_raster_wcvi %>% as.matrix, type = "xyz", crs = "EPSG:3005")
+writeRaster(mess_raster_wcvi, file.path("./raster/mess_predictions_wcvi.tif"), overwrite=TRUE)
+
+mess_raster_ncc <- env_20m_all %>%
+  filter(region == "North Central Coast") %>%
+  select(X_m, Y_m, mess)
+mess_raster_ncc <- rast(x = mess_raster_ncc %>% as.matrix, type = "xyz", crs = "EPSG:3005")
+writeRaster(mess_raster_ncc, file.path("./raster/mess_predictions_ncc.tif"), overwrite=TRUE)
+
+mess_raster_qcs <- env_20m_all %>%
+  filter(region == "Queen Charlotte Strait") %>%
+  select(X_m, Y_m, mess)
+mess_raster_qcs <- rast(x = mess_raster_qcs %>% as.matrix, type = "xyz", crs = "EPSG:3005")
+writeRaster(mess_raster_qcs, file.path("./raster/mess_predictions_qcs.tif"), overwrite=TRUE)
