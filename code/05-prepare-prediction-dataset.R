@@ -499,11 +499,9 @@ ggsave("./figures/pre-analysis/Predictor_Hindcast_Transect_PCA_Plot_Ellipses.png
 #hindcast_MESS<- modEvA::MESS(transect_predictor_data, hindcast_predictor_data)
 # refer to elith et al for more details on MESS. measures the similarity of any given point to a reference set of points, with respect to the chosen predictor variables. It reports the closeness of the point to the distribution of reference points, gives negative values for dissimilar points and maps these values across the whole prediction region
 hindcast_MESS<- predicts::mess(x = hindcast_predictor_data, v= transect_predictor_data, full = FALSE)
-plot(hindcast_MESS)
+
 env_20m_all <- env_20m_all %>% cbind(hindcast_MESS)
 
-#save outputs####
-save(env_20m_all, file = "code/output_data/prediction_model_inputs.RData")
 
 mess_plot<-ggplot(env_20m_all)+
   geom_sf(data = coastline, linewidth = 0.1)+
@@ -551,3 +549,39 @@ mess_raster_qcs <- env_20m_all %>%
   select(X_m, Y_m, mess)
 mess_raster_qcs <- rast(x = mess_raster_qcs %>% as.matrix, type = "xyz", crs = "EPSG:3005")
 writeRaster(mess_raster_qcs, file.path("./raster/mess_predictions_qcs.tif"), overwrite=TRUE)
+
+
+
+# see if there is a difference between if we only use 1993-2012 data compared to the full 2013-2023 dataset
+
+transect_predictor_data_1993_2012 <- seagrass_data %>% 
+  filter(Year< 2013) %>%
+  select(rei_stnd, tidal_stnd, slope_stnd, NH4_stnd, NO3_stnd, saltmean_stnd, saltmin_stnd, PARmean_stnd, surftempmean_stnd, surftempmin_stnd, surftempmax_stnd, surftempcv_stnd,surftempdiff_stnd, tempmean_stnd, tempmin_stnd, tempmax_stnd, tempcv_stnd, tempdiff_stnd, DOmean_stnd)
+
+temporal_validation_MESS<- predicts::mess(x = hindcast_predictor_data, v= transect_predictor_data_1993_2012, full = FALSE)
+temporal_validation_MESS <- temporal_validation_MESS %>%
+  rename(mess_tv = mess)
+env_20m_all <- env_20m_all %>% cbind(temporal_validation_MESS)
+
+summary(env_20m_all)
+
+temporal_val_mess_plot<-ggplot(env_20m_all)+
+  geom_sf(data = coastline, linewidth = 0.1)+
+  geom_tile(aes(x = X_m, y = Y_m, colour=mess_tv, width=20,height=20))+
+  scale_colour_gradient2() +
+  theme(panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        # Remove panel background
+        panel.background = element_blank(),
+        axis.text.x = element_blank(),
+        axis.text.y = element_blank(),
+        axis.ticks = element_blank())+
+  coord_sf(expand = FALSE)+
+  ylab("")+
+  xlab("") 
+temporal_val_mess_plot
+ggsave("./figures/pre-analysis/hindcast_mess_tv.png", height = 6, width = 6)
+
+
+#save outputs####
+save(env_20m_all, file = "code/output_data/prediction_model_inputs.RData")

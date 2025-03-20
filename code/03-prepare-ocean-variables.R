@@ -281,6 +281,7 @@ bccm_NO3_5_mean_rast <- terra::rasterize(NO3_points, terra::rast(crs ="EPSG:3573
 #subset the salt data by these start and end year
 salt_sub <- BCCM_h_salt_data %>% dplyr::filter(year >= start & year <= end)
 #Summarise the predictor by year, want freshest month on average, and also monthly sd for each year 
+# cv is calculated as the sd for a year divided by the mean of the year *100. Then the mean across the decade is calculated from each year
 salt_summary_year <- salt_sub %>% dplyr::group_by(xi_rho, eta_rho, year) %>% dplyr::summarise(mean_5_year = mean(mean_5m, na.rm = TRUE), min_5_year = min(mean_5m, na.rm = TRUE), sd_5_year = sd(mean_5m, na.rm = TRUE)) %>%
   mutate(cv_5_year = sd_5_year/mean_5_year*100)
 #Summarise the salt data into the desired climatologies for the entire time period
