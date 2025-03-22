@@ -84,14 +84,13 @@ m_e_3 <- sdmTMB_cv(formula = presence ~ s(depth_stnd, k = 3) + substrate + slope
                    spatial = FALSE, 
                    data = data, 
                    fold_ids = "fold")
-roc <- pROC::roc(m_e_3$data$presence, plogis(m_e_3$data$cv_predicted))
-auc <- pROC::auc(roc)
-auc
+# roc <- pROC::roc(m_e_3$data$presence, plogis(m_e_3$data$cv_predicted))
+# auc <- pROC::auc(roc)
+# auc
 
 eval_cv <- evalStats( folds=1:numFolds,
                       m=m_e_3,
                       CV=cv_list_eelgrass$cv)
-
 
 # fit full model
 fmodel <- sdmTMB(formula = presence ~ s(depth_stnd, k = 3) + substrate + slope_stnd + rei_stnd + DOmin_stnd + saltmin_stnd + tempcv_stnd +tempmean_stnd,
@@ -170,7 +169,6 @@ relimp <- varImp( model=fmodel,
 # qqnorm(mcmc_res)
 # abline(0, 1)
 
-
 #analytical randomized quantile approach
 data$resids <- residuals(fmodel, type = "mle-mvn") # randomized quantile residuals
 # check
@@ -208,7 +206,6 @@ eelgrass_predictions <- eelgrass_predictions %>%
   mutate(est_p = plogis(est))
  
 save(eelgrass_predictions, file = "code/output_data/eelgrass_predictions.RData")
-
 
 #### test forecasting
 # left a few years gap 2010-2012 #trained model with 1993-2009
@@ -263,8 +260,6 @@ surfgrass_ffs <- glm_ffs(data)  ### variables that came out include depth, subst
 ### variables that came out include depth, rei sqrt, subtrate. Surftempmin_stnd (2); DOmin (1); Freshwater sqrt (1); Tempcvstn(1); Tempmin (1); Slope  (1); PAR mean (1)
 # so need to include some temp variable
 
-
-
 #make mesh # tested several mesh sizes between 20- 10 km and 15 had highest AUC
 mesh<- make_mesh(data = data, xy_cols = c("X", "Y"), cutoff = 12) 
 plot(mesh)
@@ -296,9 +291,6 @@ m_s_3 <- sdmTMB_cv(formula = presence ~ depth_stnd + rei_sqrt_stnd + tidal_sqrt_
                    spatial = FALSE, 
                    data = data, 
                    fold_ids = "fold")
-roc <- pROC::roc(m_s_3$data$presence, plogis(m_s_3$data$cv_predicted))
-auc <- pROC::auc(roc)
-auc 
 
 eval_cv <- evalStats( folds=1:numFolds,
                       m=m_s_3,
@@ -362,10 +354,6 @@ data$pred_PCC_thresh <- ifelse(data$fitted_vals < thresh$Predicted[thresh$Method
 eval_fmod <- evalfmod( x=data, thresh = thresh )
 # this model has good TSS, is well calibrated (miller). for calibration (Hosmer & Lemeshow goodness-of-fit) model seems to have issues at higher predicted probabilities
 
-
-
-
-
 # Variable importance (randomization and permutation method)
 prednames <- c("depth_stnd", "rei_sqrt_stnd", "tidal_sqrt_stnd", "substrate",  
                "saltcv_stnd", "PARmin_stnd", "DOmean_stnd", "surftempcv_stnd",  
@@ -376,8 +364,6 @@ relimp <- varImp( model=fmodel,
                   preds=prednames,
                   permute=10 ) # Number of permutations
 
-
-
 ####check residuals####
 # MCMC based randomized quantile residuals (takes a while to compute)
 # set.seed(123)
@@ -385,7 +371,6 @@ relimp <- varImp( model=fmodel,
 # mcmc_res <- residuals(fmodel, type = "mle-mcmc", mcmc_samples = samps)
 # qqnorm(mcmc_res)
 # abline(0, 1)
-
 
 #analytical randomized quantile approach
 data$resids <- residuals(fmodel, type = "mle-mvn") # randomized quantile residuals
@@ -407,7 +392,6 @@ predict(fmodel) %>%
   geom_abline(slope = 1, intercept = 0)+
   geom_jitter(width = 0.05, height = 0)
 
-
 #make predictions and get SE
 hold <- predict(fmodel, env_20m_all)
 sims <- predict(fmodel, newdata = env_20m_all, nsim = 100) #sim needs to be 500? ram is not working for this right now at 20m prediction cells
@@ -428,8 +412,7 @@ surfgrass_predictions <- surfgrass_predictions %>%
 save(surfgrass_predictions, file = "code/output_data/surfgrass_predictions.RData")
 
 #### test forecasting
-# left a few years gap 2010-2012
-#trained model with 1993-2009
+# left a few years gap 2010-2012 #trained model with 1993-2009
 data_pre2013 <- data %>% filter(Year < 2010)
 mesh_pre2013 <- make_mesh(data = data_pre2013, xy_cols = c("X", "Y"), cutoff = 15) # tested several mesh sizes between 20- 10 km and 15 had highest AUC
 plot(mesh_pre2013)
@@ -458,11 +441,6 @@ forecast_predict_surfgrass <- data.frame(TjurR2 = c(tjur(y = data.df$presence[da
 # removing spatial field makes model make  better predictions. So while having spatial random field makes current day predictions better, having it for forecasting makes it worse
 
 save(data, fmodel, relimp, thresh, r_ret, eval_cv, eval_fmod, forecast_predict_surfgrass, file = "code/output_data/final_surfgrass_model.RData")
-
-
-
-
-
 
 
 ####Plots####         
@@ -534,7 +512,7 @@ surfgrass_se_plot <- ggplot(surfgrass_predictions)+
 surfgrass_se_plot
 ggsave("./figures/surfgrass_se.png", height = 6, width = 6)
 
-# refere to https://pbs-assess.github.io/sdmTMB/articles/basic-intro.html to make plots of random spatial fields etc
+# refer to https://pbs-assess.github.io/sdmTMB/articles/basic-intro.html to make plots of random spatial fields etc
 
 
 #### save rasters ####
