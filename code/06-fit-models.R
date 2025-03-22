@@ -75,7 +75,7 @@ m_e_2 <- sdmTMB_cv(formula = presence ~ s(depth_stnd, k = 3) + substrate + slope
                    spatial = FALSE, 
                    data = data, 
                    fold_ids = "fold")
-# m_e_3 auc final is 0.9435. model indicated by looking at variable relative importance and also considering what is important for future change
+# m_e_3 auc final is 0.9932. model indicated by looking at variable relative importance and also considering what is important for future change
 # spatial field is causing under dispersion (means model is too complex)!  tried fitting model with spatial field and just depth, substrate, slope and rei but still underdispersion
 ## AUC (0.944 vs 0.932) and TSS drops when don't have spatial random field.
 m_e_3 <- sdmTMB_cv(formula = presence ~ s(depth_stnd, k = 3) + substrate + slope_stnd + rei_stnd + DOmin_stnd + saltmin_stnd + tempcv_stnd + tempmean_stnd,
@@ -88,7 +88,7 @@ roc <- pROC::roc(m_e_3$data$presence, plogis(m_e_3$data$cv_predicted))
 auc <- pROC::auc(roc)
 auc
 
-evaldat <- evalStats( folds=1:numFolds,
+eval_cv <- evalStats( folds=1:numFolds,
                       m=m_e_3,
                       CV=cv_list_eelgrass$cv)
 
@@ -120,27 +120,39 @@ visreg::visreg(fmodel, "tempcv_stnd")
 tidy(fmodel, conf.int = TRUE)
 sanity(fmodel)
 
-# Add fitted values to data
+# Add fitted values (preds) to data
 data$fitted_vals <- predict(fmodel, type="response")$est
 
 # Calculate optimal thresholds
-thresh <- calcThresh( x=data ) # TSS threshold is 0.03
+thresh <- calcThresh( x=data ) 
 
-pred <- predict(fmodel)
-pred$p <- plogis(pred$est)
-pred$pred_01 <- ifelse(pred$p < thresh$Predicted[thresh$Method == "MaxSens+Spec"], 0, 1) # use TSS threshold
-conmat <- table(pred$pred_01, pred$presence)
-true_neg <- conmat[1, 1]
-false_neg <- conmat[1, 2]
-false_pos <- conmat[2, 1]
-true_pos <- conmat[2, 2]
+#TSS pred thresh add to data
+data$pred_TSS_thresh <- ifelse(data$fitted_vals < thresh$Predicted[thresh$Method == "MaxSens+Spec"], 0, 1) 
 
-# Calculate TSS:
-true_pos_rate <- true_pos / (true_pos + false_neg)
-true_neg_rate <- true_neg / (true_neg + false_pos)
-TSS <- true_pos_rate + true_neg_rate - 1
-TSS #0.719
+##Kappa pred thresh add to data
+data$pred_kappa_thresh <- ifelse(data$fitted_vals < thresh$Predicted[thresh$Method == "MaxKappa"], 0, 1) 
+
+## PCC thresh add to data
+data$pred_PCC_thresh <- ifelse(data$fitted_vals < thresh$Predicted[thresh$Method == "MaxPCC"], 0, 1) 
+
+eval_fmod <- evalfmod( x=data, thresh = thresh )
+# this model has good TSS, is well calibrated (miller). for calibration (Hosmer & Lemeshow goodness-of-fit) model seems to have issues at mid to higher predicted probabilities
+
+###Notes on evaluation statistics
 # Values of TSS greater than 0.6 are considered good, between 0.2 and 0.6 moderate, and less than 0.2 poor (Jones et al. 2010; Landis and Koch 1977).
+
+# miller calibration statistic. If the model is well calibrated, the line should lie along (or at least be nearly parallel to) the reference diagonal, i.e. the slope should ideally equal 1 (i.e., 45 degrees) and the intercept 0
+# Miller's calibration statistics are mainly useful when projecting a model outside those training data.
+# A slope greater than 1 indicates that predicted values above 0.5 are underestimating, and predicted values below 0.5 are overestimating, the probability of presence. A slope smaller than 1 (while greater than 0) implies that predicted values below 0.5 are underestimating, and values above 0.5 are overestimating, the probability of presence (Pearce & Ferrier 2000). 
+#A Miller slope very different from 1 indicates a poorly calibrated model. Baquero et al. (2021) proposed that values between 0.5 and 1.5 can be considered not very different from 1.
+
+# Hosmer & Lemeshow goodness-of-fit. compares predicted probability to observed occurrence frequency at each portion of the probability range
+# an important facet of model evaluation is calibration or reliability, i.e., the relationship between predicted probability and observed occurrence frequency (Pearce & Ferrier 2000; Jimenez-Valverde et al. 2013).
+# The HLfit function measures model reliability with the Hosmer & Lemeshow goodness-of-fit statistic (Hosmer & Lemeshow 1980).
+# and the strong influence of the binning method on the results. try 'HLfit' with different binning methods to see how if the results are robust.
+# p-value of the Hosmer-Lemeshow test. Note that this is one of those tests for which higher p-values are better
+
+# The smaller the error measure (eer) returned values, the better the model predictions fit the observations.
 
 #get relative importance
 prednames <- c("depth_stnd", "substrate", "rei_stnd", "slope_stnd", "tempcv_stnd", "tempmean_stnd", "DOmin_stnd", "saltmin_stnd" )
@@ -196,7 +208,6 @@ eelgrass_predictions <- eelgrass_predictions %>%
   mutate(est_p = plogis(est))
  
 save(eelgrass_predictions, file = "code/output_data/eelgrass_predictions.RData")
-save(data, fmodel, relimp, thresh, r_ret, evaldat, TSS, file = "code/output_data/final_eelgrass_model.RData")
 
 
 #### test forecasting
@@ -223,188 +234,185 @@ forecast_predict_eelgrass <- data.frame(TjurR2 = c(tjur(y = data.df$presence[dat
                                          type = factor(c("forecast", "training"), levels = c("training", "forecast"), ordered =  TRUE))
 ## AUC dropped from 0.932 to 0.92 and Tjur dropped from 0.147 to 0.141 #tjur is quite a bit less when no spatial field
 
+save(data, fmodel, relimp, thresh, r_ret, eval_cv, eval_fmod, forecast_predict_eelgrass, file = "code/output_data/final_eelgrass_model.RData")
 
 
 
 
 #### Surfgrass model ####
-surfgrass <- filter(seagrass_data_long, species == "PH")
-print(paste("surfgrass present in ", round((sum(surfgrass$presence)/nrow(surfgrass))*100,2), "% of 20 m cells", sep = ""))
 
-# test correlation
-surfgrass_env<- surfgrass %>%
-  select(presence, depth_stnd, rei_sqrt_stnd, slope_stnd, saltcv_stnd, tidal_sqrt_stnd,
-         surftempmean_stnd, surftempmax_stnd, PARmin_stnd,
-         surftempcv_stnd, DOmean_stnd)
-corrplot::corrplot(cor(surfgrass_env), method = "number")
+sp = "PH"
+numFolds <- length(unique(seagrass_data$fold_seagrass))
+data <- filter(seagrass_data_long, species == sp) %>% rename(fold = fold_seagrass)
+print(paste(sp, " present in ", round((sum(data$presence)/nrow(data))*100,2), "% of observations", sep = ""))
 
-my_model_surfgrass <- lm(presence~  depth_stnd + rei_sqrt_stnd + tidal_sqrt_stnd  + 
-                           saltcv_stnd + PARmin_stnd + DOmean_stnd + surftempcv_stnd + surftempmean_stnd  +
-                           surftempmax_stnd, data = surfgrass_env)
-olsrr::ols_vif_tol(my_model_surfgrass)
-# As a general guideline, a Tolerance of <0.1 might indicate multicollinearity.
-# As a rule of thumb, a VIF exceeding 5 requires further investigation, whereas VIFs above 10 indicate multicollinearity. 
-# Ideally, the Variance Inflation Factors are below 3.
+## test VIF
+my_model <- lm(presence~ depth_stnd + rei_sqrt_stnd + tidal_sqrt_stnd + 
+                 saltcv_stnd + PARmin_stnd + DOmean_stnd + surftempcv_stnd + surftempmean_stnd  +
+                 surftempmax_stnd, data = data)
+olsrr::ols_vif_tol(my_model)
+# Tolerance of <0.1 might indicate multicollinearity. VIF exceeding 5 requires further investigation, whereas VIFs above 10 indicate multicollinearity. Ideally, the Variance Inflation Factors are below 3.
 
+# ensure PH on all substrates
+substrates_present <- data %>% group_by(substrate) %>% summarise(n_present = sum(presence))
+substrates_present # there are surgrass presence observations on all substrates
 
-### Forward feature selection test surfgrass
-k<-n_distinct(surfgrass$fold_seagrass)
-#Set up a list to hold the output for each fold
-Fold_Outputs_seagrass <- list()
-for(u in 1:k){
-  surfgrass_data <- surfgrass %>% dplyr::filter(fold_seagrass <=k) %>% dplyr::filter(fold_seagrass != u)
-  Test_Data <- surfgrass %>% dplyr::filter(fold_seagrass <=k) %>% dplyr::filter(fold_seagrass == u)
-  #create a vector for fold membership
-  foldmem <- seq(1:1:length(surfgrass_data$fold_seagrass))
-  folds <- unique(surfgrass_data$fold_seagrass)
-  new_folds <- seq(1:1:(k-1))
-  for (i in 1:length(surfgrass_data$fold_seagrass)){
-    for (j in 1:(k-1)){
-      if (surfgrass_data$fold_seagrass[[i]] == folds[j]){
-        foldmem[i] <- new_folds[j]
-      }
-    }
-  }
-  #Setting up an index list for the folds in the caret model training
-  index_list <- list()
-  for (i in 1:(k-1)){
-    index_list[[i]] <- which(foldmem == i)
-  }
-  #Setting up parameters for how my model is going to be fitted
-  fitControl <- caret::trainControl(method = "cv",
-                                    number = (k-1),
-                                    index = index_list)
-  #setting a seed in case that matters
-  set.seed(2024)
-  #performing model selection by glmStepAIC I think I may want to use glmboost instead
-  caret_model <- CAST::ffs(response = surfgrass_data$presence, 
-                           predictors = surfgrass_data[,6:37], 
-                           method = "glm", 
-                           family = "binomial",
-                           trControl = fitControl)
-  #Create the final glm model using the above determined formula
-  #Create a final formula using the selected variables
-  selectedVars <- caret_model$selectedvars
-  final_formula <- paste0("presence~",selectedVars[1])
-  for (i in 2: length(selectedVars)){
-    final_formula <- paste0(final_formula,"+",selectedVars[i])
-  }
-  #fit the model
-  caretmodel <- glm(as.formula(final_formula), data = surfgrass_data, family = binomial(link = "logit"))
-  #Calculate final model AUC on the testing fold
-  pred.caretModel <- predict(caretmodel, newdata = Test_Data, type = "response")
-  roc.caretModel <- pROC::roc(Test_Data$presence, pred.caretModel)
-  auc.caretModel <- pROC::auc(roc.caretModel)
-  Output <- list(caretmodel, auc.caretModel, caretmodel$formula)
-  Fold_Outputs_seagrass[[u]] <- Output
-}
-return(Fold_Outputs_seagrass)
+### Forward feature selection test (testing one method to limit variables )
+#tested removing depth, makes horrible models
+surfgrass_ffs <- glm_ffs(data)  ### variables that came out include depth, substrate, slope_stnd, rei_stnd
 ### variables that came out include depth, rei sqrt, subtrate. Surftempmin_stnd (2); DOmin (1); Freshwater sqrt (1); Tempcvstn(1); Tempmin (1); Slope  (1); PAR mean (1)
 # so need to include some temp variable
 
-# present on all
-substrates_present <- surfgrass %>%
-  group_by(substrate) %>%
-  summarise(n_present = sum(presence))
-substrates_present 
-# there are surfgrass presence observations on all substrates
 
-#make mesh
-mesh_surfgrass <- make_mesh(data = surfgrass, xy_cols = c("X", "Y"), cutoff = 15) # tested several mesh sizes between 20- 10 km and 15 had highest AUC
-plot(mesh_surfgrass)
-barrier_mesh_surfgrass <- add_barrier_mesh(mesh_surfgrass, barrier_sf = coastline, proj_scaling = 1000, plot = TRUE)
+
+#make mesh # tested several mesh sizes between 20- 10 km and 15 had highest AUC
+mesh<- make_mesh(data = data, xy_cols = c("X", "Y"), cutoff = 12) 
+plot(mesh)
+barrier_mesh <- add_barrier_mesh(mesh, barrier_sf = coastline, proj_scaling = 1000, plot = TRUE)
 
 #fit model
 plan(multisession)
 # model selected by ffs without spatial field AUC = 0.9443
 m_s_1 <- sdmTMB_cv(formula = presence ~ depth_stnd + substrate + rei_sqrt_stnd,
-                   mesh = barrier_mesh_surfgrass, 
+                   mesh = barrier_mesh, 
                    family = binomial(link = "logit"), 
                    spatial = FALSE, 
-                   data = surfgrass, 
-                   fold_ids = "fold_seagrass")
+                   data = data, 
+                   fold_ids = "fold")
 # model selected by ffs with spatial field AUC = 0.9551
-m_s_2 <- sdmTMB_cv(formula = presence ~depth_stnd + substrate + rei_sqrt_stnd,
-                   mesh = barrier_mesh_surfgrass, 
+m_s_2 <- sdmTMB_cv(formula = presence ~ depth_stnd + substrate + rei_sqrt_stnd,
+                   mesh = barrier_mesh, 
                    family = binomial(link = "logit"), 
                    spatial = TRUE, 
-                   data = surfgrass, 
-                   fold_ids = "fold_seagrass")
-# model selected by relimp with spatial field AUC = 0.9659
+                   data = data, 
+                   fold_ids = "fold")
+# model selected by relimp with spatial field AUC = 0.9613
+#having spatial field makes model underdispersed (means too complicated)
 m_s_3 <- sdmTMB_cv(formula = presence ~ depth_stnd + rei_sqrt_stnd + tidal_sqrt_stnd + substrate + 
                      saltcv_stnd + PARmin_stnd + DOmean_stnd + surftempcv_stnd + surftempmean_stnd  +
                      surftempmax_stnd,
-                   mesh = barrier_mesh_surfgrass, 
+                   mesh = barrier_mesh, 
                    family = binomial(link = "logit"), 
-                   spatial = TRUE, 
-                   data = surfgrass, 
-                   fold_ids = "fold_seagrass")
+                   spatial = FALSE, 
+                   data = data, 
+                   fold_ids = "fold")
 roc <- pROC::roc(m_s_3$data$presence, plogis(m_s_3$data$cv_predicted))
 auc <- pROC::auc(roc)
 auc 
 
+eval_cv <- evalStats( folds=1:numFolds,
+                      m=m_s_3,
+                      CV=cv_list_seagrass$cv)
+# If a model is unbiased bias should be close to zero
+# MAE want low values
+# AUC want high values above 0.9. According to Pearce and Ferrier (2000) and Jones et al. (2010) values of AUC greater than 0.9 are considered good, between 0.7 and 0.9 moderate, and less than 0.7 poor. values of 0.5 indicate that the model is no better than random.
+# TSS balances sensitivity (proportion of presence observations that are correctly classified) and specificity (proportion of absence observations that are correctly classified) and is independent of the prevalence of the observations (Allouche et al. 2006). Values of TSS greater than 0.6 are considered good, between 0.2 and 0.6 moderate, and less than 0.2 poor (Jones et al. 2010; Landis and Koch 1977). 
+# Accuracy is the percent of predictions which are correctly classified and varies from values of 0 to 1 where 1 is the highest accuracy.
+# Kappa is a measure of agreement between observed and predicted values that accounts for chance agreements and is dependent on prevalence of the observations. Kappa range from -1 to 1 with values less than 0 representing models that are no better than random and values of 1 indicating perfect agreement (Allouche et al. 2006). 
+
 #fit full model
-m_surfgrass <- sdmTMB(formula = presence ~ depth_stnd + rei_sqrt_stnd + tidal_sqrt_stnd + substrate + 
-                        saltcv_stnd + PARmin_stnd + DOmean_stnd + surftempcv_stnd + surftempmean_stnd  +
-                        surftempmax_stnd,
-                     mesh = barrier_mesh_surfgrass, 
+fmodel <- sdmTMB(formula = presence ~ depth_stnd + rei_sqrt_stnd + tidal_sqrt_stnd + substrate + 
+                     saltcv_stnd + PARmin_stnd + DOmean_stnd + surftempcv_stnd + surftempmean_stnd  +
+                     surftempmax_stnd,
+                     mesh = barrier_mesh, 
                      family = binomial(link = "logit"), 
-                     spatial = "on", 
-                     data = surfgrass)
+                     spatial = FALSE, 
+                     data = data)
 # look ar marginal effects plots, note temperature variables are correlated, so these are not correct 
-ggeffects::ggeffect(model = m_surfgrass,  terms = "depth_stnd[-3:4]") %>% plot() # found highest at shallow
-ggeffects::ggeffect(model = m_surfgrass,  terms = "rei_sqrt_stnd[-1:9]") %>% plot()  # increases with exposure
-ggeffects::ggeffect(model = m_surfgrass,  terms = "tidal_sqrt_stnd[-3:8]") %>% plot() 
-ggeffects::ggeffect(model = m_surfgrass,  terms = "substrate") %>% plot() # found on rock
-ggeffects::ggeffect(model = m_surfgrass,  terms = "saltcv_stnd[-1:57]") %>% plot()
-ggeffects::ggeffect(model = m_surfgrass,  terms = "PARmin_stnd[-3:2]") %>% plot()
-ggeffects::ggeffect(model = m_surfgrass,  terms = "DOmean_stnd[-7:3]") %>% plot()
-ggeffects::ggeffect(model = m_surfgrass,  terms = "surftempcv_stnd[-3:8]") %>% plot() # declines with increased variation
-ggeffects::ggeffect(model = m_surfgrass,  terms = "surftempmax_stnd[-4:5]") %>% plot() # declines with increased variation
-ggeffects::ggeffect(model = m_surfgrass,  terms = "surftempmean_stnd[-4:4]") %>% plot()
+ggeffects::ggeffect(model = fmodel,  terms = "depth_stnd[-3:4]") %>% plot() # found highest at shallow
+ggeffects::ggeffect(model = fmodel,  terms = "rei_sqrt_stnd[-1:9]") %>% plot()  # increases with exposure
+ggeffects::ggeffect(model = fmodel,  terms = "tidal_sqrt_stnd[-3:8]") %>% plot() # increases with tidal infleunce
+ggeffects::ggeffect(model = fmodel,  terms = "substrate") %>% plot() # found on rock
+ggeffects::ggeffect(model = fmodel,  terms = "saltcv_stnd[-1:57]") %>% plot() # highest in areas with stable salinity
+ggeffects::ggeffect(model = fmodel,  terms = "PARmin_stnd[-3:2]") %>% plot() # increases with min par
+ggeffects::ggeffect(model = fmodel,  terms = "DOmean_stnd[-7:3]") %>% plot() #increases with do
+ggeffects::ggeffect(model = fmodel,  terms = "surftempcv_stnd[-3:8]") %>% plot() # increases with increased variation
+ggeffects::ggeffect(model = fmodel,  terms = "surftempmax_stnd[-4:5]") %>% plot() # declines with increased max temps
+ggeffects::ggeffect(model = fmodel,  terms = "surftempmean_stnd[-4:4]") %>% plot() # increases with mean temps
 
-visreg::visreg(m_surfgrass, "depth_stnd")
-visreg::visreg(m_surfgrass, "rei_sqrt_stnd")
-visreg::visreg(m_surfgrass, "tidal_sqrt_stnd")
-visreg::visreg(m_surfgrass, "saltcv_stnd")
-visreg::visreg(m_surfgrass, "PARmin_stnd")
-visreg::visreg(m_surfgrass, "DOmean_stnd")
-visreg::visreg(m_surfgrass, "surftempcv_stnd")
-visreg::visreg(m_surfgrass, "surftempmax_stnd")
-visreg::visreg(m_surfgrass, "surftempmean_stnd")
+visreg::visreg(fmodel, "depth_stnd")
+visreg::visreg(fmodel, "rei_sqrt_stnd")
+visreg::visreg(fmodel, "tidal_sqrt_stnd")
+visreg::visreg(fmodel, "saltcv_stnd")
+visreg::visreg(fmodel, "PARmin_stnd")
+visreg::visreg(fmodel, "DOmean_stnd")
+visreg::visreg(fmodel, "surftempcv_stnd")
+visreg::visreg(fmodel, "surftempmax_stnd")
+visreg::visreg(fmodel, "surftempmean_stnd")
 
+# Model check
+tidy(fmodel, conf.int = TRUE)
+sanity(fmodel)
+
+# Add fitted values (preds) to data
+data$fitted_vals <- predict(fmodel, type="response")$est
+
+# Calculate optimal thresholds
+thresh <- calcThresh( x=data ) 
+
+#TSS pred thresh add to data
+data$pred_TSS_thresh <- ifelse(data$fitted_vals < thresh$Predicted[thresh$Method == "MaxSens+Spec"], 0, 1) 
+
+##Kappa pred thresh add to data
+data$pred_kappa_thresh <- ifelse(data$fitted_vals < thresh$Predicted[thresh$Method == "MaxKappa"], 0, 1) 
+
+## PCC thresh add to data
+data$pred_PCC_thresh <- ifelse(data$fitted_vals < thresh$Predicted[thresh$Method == "MaxPCC"], 0, 1) 
+
+eval_fmod <- evalfmod( x=data, thresh = thresh )
+# this model has good TSS, is well calibrated (miller). for calibration (Hosmer & Lemeshow goodness-of-fit) model seems to have issues at higher predicted probabilities
+
+
+
+
+
+# Variable importance (randomization and permutation method)
 prednames <- c("depth_stnd", "rei_sqrt_stnd", "tidal_sqrt_stnd", "substrate",  
                "saltcv_stnd", "PARmin_stnd", "DOmean_stnd", "surftempcv_stnd",  
                "surftempmax_stnd", "surftempmean_stnd")
 
-# Variable importance (randomization and permutation method)
-relimp <- varImp( model=m_surfgrass,
-                  dat=surfgrass,
+relimp <- varImp( model=fmodel,
+                  dat=data,
                   preds=prednames,
                   permute=10 ) # Number of permutations
 
-# test model convergence
-sanity(m_surfgrass)
 
+
+####check residuals####
+# MCMC based randomized quantile residuals (takes a while to compute)
+# set.seed(123)
+# samps <- sdmTMBextra::predict_mle_mcmc(fmodel, mcmc_iter = 800, mcmc_warmup = 400)
+# mcmc_res <- residuals(fmodel, type = "mle-mcmc", mcmc_samples = samps)
+# qqnorm(mcmc_res)
+# abline(0, 1)
+
+
+#analytical randomized quantile approach
+data$resids <- residuals(fmodel, type = "mle-mvn") # randomized quantile residuals
+# check
+ggplot(data, aes(X, Y, col = resids)) + scale_colour_gradient2() +
+  geom_point() + theme_bw()
+hist(data$resids)
+qqnorm(data$resids);abline(a = 0, b = 1)
+
+# simulation-based randomized quantile residuals
 set.seed(123)
-set<- simulate(m_surfgrass, nsim = 500, type = "mle-mvn") |>
-  dharma_residuals(m_surfgrass, return_DHARMa = TRUE)
-plot(set)
-set
-ggsave("./figures/surfgrass_DHARMa_res.png", height = 6, width = 6)
+ret<- simulate(fmodel, nsim = 500, type = "mle-mvn") 
+r_ret <-  dharma_residuals(ret, fmodel, return_DHARMa = TRUE)
+plot(r_ret)
+DHARMa::testResiduals(r_ret)
 
-DHARMa::testDispersion(set)
-
-predict(m_surfgrass) %>%
-  ggplot(aes(x = presence, y = m_surfgrass$family$linkinv(est)))+
+predict(fmodel) %>%
+  ggplot(aes(x = presence, y = fmodel$family$linkinv(est)))+
   geom_abline(slope = 1, intercept = 0)+
   geom_jitter(width = 0.05, height = 0)
 
-#NOT ABLE TO MAKE WORK ON COMPUTER, NEED HIGHER COMPUTING
+
 #make predictions and get SE
-hold <- predict(m_surfgrass, env_20m_all)
-sims <- predict(m_surfgrass, newdata = env_20m_all, nsim = 100) #ram is not working for this right now at 20m prediction cells
+hold <- predict(fmodel, env_20m_all)
+sims <- predict(fmodel, newdata = env_20m_all, nsim = 100) #sim needs to be 500? ram is not working for this right now at 20m prediction cells
 hold$SE <- apply(sims, 1, sd)
+hold$SD <- apply(pclog(sims), 1, sd)
 surfgrass_predictions <- env_20m_all
 surfgrass_predictions <- bind_cols(surfgrass_predictions, hold %>% select(est:SE))
 
@@ -412,6 +420,7 @@ surfgrass_predictions <- bind_cols(surfgrass_predictions, hold %>% select(est:SE
 #   group_by(X_m, Y_m) %>%
 #   summarise(CV = sd(exp(est), na.rm = TRUE)/mean(exp(est)), counts_ln = mean(est), SE = mean(SE))
 
+# change to 0-1 away from log-odds (logit) space
 surfgrass_predictions <- surfgrass_predictions %>%
   mutate(est_p = plogis(est))
 
@@ -421,31 +430,34 @@ save(surfgrass_predictions, file = "code/output_data/surfgrass_predictions.RData
 #### test forecasting
 # left a few years gap 2010-2012
 #trained model with 1993-2009
-surfgrass_pre2013 <- surfgrass %>% filter(Year < 2010)
-mesh_surfgrass_pre2013 <- make_mesh(data = surfgrass_pre2013, xy_cols = c("X", "Y"), cutoff = 15) # tested several mesh sizes between 20- 10 km and 15 had highest AUC
-plot(mesh_surfgrass_pre2013)
-barrier_mesh_surfgrass_pre2013 <- add_barrier_mesh(mesh_surfgrass_pre2013, barrier_sf = coastline, proj_scaling = 1000, plot = TRUE)
+data_pre2013 <- data %>% filter(Year < 2010)
+mesh_pre2013 <- make_mesh(data = data_pre2013, xy_cols = c("X", "Y"), cutoff = 15) # tested several mesh sizes between 20- 10 km and 15 had highest AUC
+plot(mesh_pre2013)
+barrier_mesh_pre2013 <- add_barrier_mesh(mesh_pre2013, barrier_sf = coastline, proj_scaling = 1000, plot = TRUE)
 
 m_surfgrass_forecast <- sdmTMB(formula = presence ~ depth_stnd + rei_sqrt_stnd + tidal_sqrt_stnd + substrate + 
-                        saltcv_stnd + PARmin_stnd + DOmean_stnd + surftempcv_stnd + surftempmean_stnd  +
-                        surftempmax_stnd,
-                      mesh = barrier_mesh_surfgrass_pre2013, 
+                                 saltcv_stnd + PARmin_stnd + DOmean_stnd + surftempcv_stnd + surftempmean_stnd  +
+                                 surftempmax_stnd,
+                      mesh = barrier_mesh_pre2013, 
                       family = binomial(link = "logit"), 
-                      spatial = "on", 
-                      data = surfgrass_pre2013) 
-surfgrass.df <- surfgrass %>% select(presence, X, Y, depth_stnd, rei_sqrt_stnd, tidal_sqrt_stnd, substrate, 
+                      spatial = FALSE, 
+                      data = data_pre2013) 
+data.df <- data %>% select(presence, X, Y, depth_stnd, rei_sqrt_stnd, tidal_sqrt_stnd, substrate, 
                                                               saltcv_stnd, PARmin_stnd, DOmean_stnd, surftempcv_stnd, surftempmean_stnd,
                                                               surftempmax_stnd, Year)
 
-forecast <- plogis(predict(m_surfgrass_forecast, newdata = surfgrass.df %>% filter(Year > 2012))$est)
-pre_2013 <- plogis(predict(m_surfgrass_forecast, newdata = surfgrass.df %>% filter(Year < 2010))$est)
+forecast <- plogis(predict(m_surfgrass_forecast, newdata = data.df %>% filter(Year > 2012))$est)
+pre_2013 <- plogis(predict(m_surfgrass_forecast, newdata = data.df %>% filter(Year < 2010))$est)
 
-forecast_predict_surfgrass <- data.frame(TjurR2 = c(tjur(y = surfgrass.df$presence[surfgrass.df$Year > 2012], pred = forecast),
-                                             tjur(y = surfgrass.df$presence[surfgrass.df$Year < 2010], pred = pre_2013)),
-                                  AUC = c(ModelMetrics::auc(surfgrass.df$presence[surfgrass.df$Year > 2012], forecast),
-                                          ModelMetrics::auc(surfgrass.df$presence[surfgrass.df$Year < 2010], pre_2013)),
+forecast_predict_surfgrass <- data.frame(TjurR2 = c(tjur(y = data.df$presence[data.df$Year > 2012], pred = forecast),
+                                             tjur(y = data.df$presence[data.df$Year < 2010], pred = pre_2013)),
+                                  AUC = c(ModelMetrics::auc(data.df$presence[data.df$Year > 2012], forecast),
+                                          ModelMetrics::auc(data.df$presence[data.df$Year < 2010], pre_2013)),
                                   type = factor(c("forecast", "training"), levels = c("training", "forecast"), ordered =  TRUE))
-## AUC dropped from 0.983 to 0.89 and Tjur dropped from 0.24 to 0.07
+## AUC dropped from 0.96 to 0.95 and Tjur dropped from 0.18 to 0.16
+# removing spatial field makes model make  better predictions. So while having spatial random field makes current day predictions better, having it for forecasting makes it worse
+
+save(data, fmodel, relimp, thresh, r_ret, eval_cv, eval_fmod, forecast_predict_surfgrass, file = "code/output_data/final_surfgrass_model.RData")
 
 
 
@@ -593,6 +605,36 @@ eelgrass_raster_qcs_se <- eelgrass_predictions %>%
   select(X_m, Y_m, SE)
 eelgrass_raster_qcs_se <- rast(x = eelgrass_raster_qcs_se %>% as.matrix, type = "xyz", crs = "EPSG:3005")
 writeRaster(eelgrass_raster_qcs_se, file.path("./raster/eelgrass_predictions_qcs_se.tif"), overwrite=TRUE)
+
+eelgrass_raster_hg_sd <- eelgrass_predictions %>%
+  filter(region == "Haida Gwaii") %>%
+  select(X_m, Y_m, SD)
+eelgrass_raster_hg_sd <- rast(x = eelgrass_raster_hg_sd %>% as.matrix, type = "xyz", crs = "EPSG:3005")
+writeRaster(eelgrass_raster_hg_sd, file.path("./raster/eelgrass_predictions_hg_sd.tif"), overwrite=TRUE)
+
+eelgrass_raster_ss_sd <- eelgrass_predictions %>%
+  filter(region == "Salish Sea") %>%
+  select(X_m, Y_m, SD)
+eelgrass_raster_ss_sd <- rast(x = eelgrass_raster_ss_sd %>% as.matrix, type = "xyz", crs = "EPSG:3005")
+writeRaster(eelgrass_raster_ss_sd, file.path("./raster/eelgrass_predictions_ss_sd.tif"), overwrite=TRUE)
+
+eelgrass_raster_wcvi_sd <- eelgrass_predictions %>%
+  filter(region == "West Coast Vancouver Island") %>%
+  select(X_m, Y_m, SD)
+eelgrass_raster_wcvi_sd <- rast(x = eelgrass_raster_wcvi_sd %>% as.matrix, type = "xyz", crs = "EPSG:3005")
+writeRaster(eelgrass_raster_wcvi_sd, file.path("./raster/eelgrass_predictions_wcvi_sd.tif"), overwrite=TRUE)
+
+eelgrass_raster_ncc_sd <- eelgrass_predictions %>%
+  filter(region == "North Central Coast") %>%
+  select(X_m, Y_m, SD)
+eelgrass_raster_ncc_sd <- rast(x = eelgrass_raster_ncc_sd %>% as.matrix, type = "xyz", crs = "EPSG:3005")
+writeRaster(eelgrass_raster_ncc_sd, file.path("./raster/eelgrass_predictions_ncc_sd.tif"), overwrite=TRUE)
+
+eelgrass_raster_qcs_sd <- eelgrass_predictions %>%
+  filter(region == "Queen Charlotte Strait") %>%
+  select(X_m, Y_m, SD)
+eelgrass_raster_qcs_sd <- rast(x = eelgrass_raster_qcs_sd %>% as.matrix, type = "xyz", crs = "EPSG:3005")
+writeRaster(eelgrass_raster_qcs_sd, file.path("./raster/eelgrass_predictions_qcs_sd.tif"), overwrite=TRUE)
 
 #save as raster, this changes to 100 m resolution though
 # surfgrass_raster <- surfgrass_predictions %>%

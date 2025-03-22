@@ -259,9 +259,11 @@ evalStats <- function( folds, m, CV ){
     # Calculate tjur R2
     test.tjur <- tjur(testobs, testpred)
     # sum log likelihood
-    ll<- m_e_3$sum_loglik
-    traintest.df <- data.frame(ll=ll, train.AUC = train.AUC, test.AUC=test.AUC, train.tjur = train.tjur, test.tjur = test.tjur, species = sp, fold = i)
-    traintest.df <- traintest.df %>% dplyr::summarise(mean_AUC_train = mean(train.AUC, na.rm = TRUE), mean_AUC_test = mean(test.AUC, na.rm = TRUE), mean_Tjur_train = mean(train.tjur, na.rm = TRUE), mean_Tjur_test = mean(test.tjur, na.rm = TRUE), sum_loglike = mean(ll, na.rm = TRUE))
+    ll<- m$sum_loglik
+    mae <- Metrics::mae(testobs, testpred)
+    bias <- Metrics::bias(testobs, testpred)
+        traintest.df <- data.frame(ll=ll, mae=mae, bias=bias, train.AUC = train.AUC, test.AUC=test.AUC, train.tjur = train.tjur, test.tjur = test.tjur, species = sp, fold = i)
+    traintest.df <- traintest.df %>% dplyr::summarise(mean_AUC_train = mean(train.AUC, na.rm = TRUE), mean_AUC_test = mean(test.AUC, na.rm = TRUE), mean_Tjur_train = mean(train.tjur, na.rm = TRUE), mean_Tjur_test = mean(test.tjur, na.rm = TRUE), sum_loglike = mean(ll, na.rm = TRUE), mean_mae = mean(mae, na.rm =TRUE), mean_bias = mean(bias, na.rm = TRUE))
   }
   return(traintest.df)
 } 
@@ -277,5 +279,32 @@ calcThresh <- function( x ){
     obspred, na.rm=T)
   # Return threshold
   return( thresh )
+  return(obspred)
 }
 
+
+evalfmod <- function( x, thresh ){
+  eval.df <- data.frame()
+  obspred <- data.frame( PlotID=1:nrow(x),
+                         Observed=x[,'presence'],
+                         Predicted=x[,'fitted_vals'] )
+  # Get confusion matrix based on TSS
+  cmx_tss<- PresenceAbsence::cmx(DATA = obspred, which.model = 1, thresh = thresh$Predicted[thresh$Method == "MaxSens+Spec"])
+  true_neg <- cmx_tss[1, 1]
+  false_neg <- cmx_tss[1, 2]
+  false_pos <- cmx_tss[2, 1]
+  true_pos <- cmx_tss[2, 2]
+  true_pos_rate <- true_pos / (true_pos + false_neg)
+  true_neg_rate <- true_neg / (true_neg + false_pos)
+  TSS <- true_pos_rate + true_neg_rate - 1
+  # Get confusion matrix based on Kappa
+  cmx_kappa<- PresenceAbsence::cmx(DATA = obspred, which.model = 1, thresh = thresh$Predicted[thresh$Method == "MaxKappa"])
+  kappa <- PresenceAbsence::Kappa(CMX = cmx_kappa, st.dev = TRUE)
+  miller<- modEvA::MillerCalib(model = NULL, obs = x$presence, pred = x$fitted_vals)
+  eer<- modEvA::errorMeasures(model = NULL, obs = x$presence, pred = x$fitted_vals)
+  hlgof_quant<- modEvA::HLfit(model = NULL, obs = x$presence, pred = x$fitted_vals, bin.method = "quantiles", n.bins = 3000) # these values are fine
+  hlgof_prob<- modEvA::HLfit(model = NULL, obs = x$presence, pred = x$fitted_vals, bin.method = "prob.bins") # these values are not great but the highest probs don't have many values
+  hlgof_nbin<- modEvA::HLfit(model = NULL, obs = x$presence, pred = x$fitted_vals, bin.method = "n.bins", n.bins = 8) # these values are fine
+  eval.df <- data.frame(kappa=kappa, TSS=TSS, miller = miller, eer=eer, hlgof_quant$chi.sq, hlgof_quant$p.value, hlgof_quant$RMSE,  hlgof_prob$chi.sq, hlgof_prob$p.value, hlgof_prob$RMSE, hlgof_nbin$chi.sq, hlgof_nbin$p.value, hlgof_nbin$RMSE, species = sp)
+  return(eval.df)
+} 
