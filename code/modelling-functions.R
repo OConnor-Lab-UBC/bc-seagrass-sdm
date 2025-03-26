@@ -241,7 +241,7 @@ evalStats <- function( folds, m, CV ){
     # Get train obs
     train <- CV[[i]][["train"]]
     sp_data_cv <- filter(seagrass_data_long, species == sp)
-    trainobs <- sp_data_cv[ train, 41]
+    trainobs <- sp_data_cv[ train, 42]
     # Get train preds
     trainpred <- plogis(predict(m$models[[i]])$est[train])
     # Calculate area under the receiver-operator curve (AUC))
@@ -250,7 +250,7 @@ evalStats <- function( folds, m, CV ){
     train.tjur <- tjur(trainobs, trainpred )
     # Get test indices
     test <- CV[[i]][["test"]]
-    testobs <- sp_data_cv[ test, 41]
+    testobs <- sp_data_cv[ test, 42]
     #testobs <- tobs$presence
     # Get test preds
     testpred <- plogis(predict(m$models[[i]])$est[test])

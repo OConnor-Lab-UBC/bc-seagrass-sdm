@@ -540,3 +540,9 @@ terra::writeRaster(Predictor_Hindcast_Climatologies, paste0("code/output_data/pr
 #NO3 is high in the Broughton and Holberg Inlet
 # salt mean looks good. Salt min only changes around Nass, Skeena, Fraser, and a few major inlets, otherwise looks similar to salt mean
 
+#### Culmulative effects layer from Murray, change from polygon to 20 m raster
+cul_eff <- vect(st_read(dsn = "raw_data/anthropogenic/Cumulative_Impacts_Pacfic_Canada.gdb", layer = "Cumulative_Impacts_Pacific_Canada")) # impact score representing impacts from all activities and all habitats in each PU grid cell.
+cul_eff_rast20 <- rasterize(cul_eff, bathy20m, field = "Cumul_Impact_ALL", fun = max) %>% 
+  terra::focal(w=21, fun = "mean", na.policy = "only", na.rm = TRUE) %>%  # only change cells that are NA to fill in holes and up to coastline
+  terra::mask(bathy20m) %>% terra::crop(bathy20m) 
+writeRaster(cul_eff_rast20, file.path("code/output_data/culmulative_effects_all_20m.tif"), overwrite=TRUE)

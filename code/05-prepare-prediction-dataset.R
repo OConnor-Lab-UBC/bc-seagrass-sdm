@@ -78,6 +78,8 @@ crs(substrate_hg) <- crs(substrate_ncc) <- crs(substrate_qcs) <- crs(substrate_w
 hindcast2013_2023 <- terra::rast("code/output_data/processed_ocean_variables/Predictor_Hindcast_Climatologies_2013-2023.tif")
 #hindcast1993_2023 <- terra::rast("code/output_data/processed_ocean_variables/Predictor_Hindcast_Climatologies_1993-2023.tif")
 
+culmulative_effects <- terra::rast("code/output_data/culmulative_effects_all_20m.tif")
+names(culmulative_effects) <- "cul_eff"
 
 ####make prediction data####
 max_depth <- quantile(seagrass_data$depth, probs = c(0.99))
@@ -96,6 +98,8 @@ env_20m_hg$slope <- hold$slope
 env_20m_hg$freshwater <- hold$freshwater
 hold <- extract(x = tidal_index_all, y = env_20m_hg_sf)
 env_20m_hg$tidal <- hold$tidal
+hold <- extract(x = culmulative_effects, y = env_20m_hg_sf)
+env_20m_hg$cul_eff <- hold$cul_eff
 env_20m_hg <- filter(env_20m_hg, !is.na(rei), !is.na(substrate), !is.na(tidal))
 env_20m_hg_sf <- st_as_sf(env_20m_hg, coords = c("X_m", "Y_m"), crs = "EPSG:3005")
 hold <- terra::extract(x = hindcast2013_2023, y = env_20m_hg_sf, fun = "mean", touches = TRUE, bind = TRUE) %>% terra::as.data.frame() 
@@ -145,6 +149,8 @@ env_20m_ncc$slope <- hold$slope
 env_20m_ncc$freshwater <- hold$freshwater
 hold <- extract(x = tidal_index_all, y = env_20m_ncc_sf)
 env_20m_ncc$tidal <- hold$tidal
+hold <- extract(x = culmulative_effects, y = env_20m_ncc_sf)
+env_20m_ncc$cul_eff <- hold$cul_eff
 env_20m_ncc <- filter(env_20m_ncc, !is.na(rei), !is.na(substrate), !is.na(tidal))
 env_20m_ncc_sf <- st_as_sf(env_20m_ncc, coords = c("X_m", "Y_m"), crs = "EPSG:3005")
 hold <- terra::extract(x = hindcast2013_2023, y = env_20m_ncc_sf, fun = "mean", touches = TRUE, bind = TRUE) %>% terra::as.data.frame() 
@@ -194,6 +200,8 @@ env_20m_qcs$slope <- hold$slope
 env_20m_qcs$freshwater <- hold$freshwater
 hold <- extract(x = tidal_index_all, y = env_20m_qcs_sf)
 env_20m_qcs$tidal <- hold$tidal
+hold <- extract(x = culmulative_effects, y = env_20m_qcs_sf)
+env_20m_qcs$cul_eff <- hold$cul_eff
 env_20m_qcs <- filter(env_20m_qcs, !is.na(rei), !is.na(substrate), !is.na(tidal))
 env_20m_qcs_sf <- st_as_sf(env_20m_qcs, coords = c("X_m", "Y_m"), crs = "EPSG:3005")
 hold <- terra::extract(x = hindcast2013_2023, y = env_20m_qcs_sf, fun = "mean", touches = TRUE, bind = TRUE) %>% terra::as.data.frame() 
@@ -244,6 +252,8 @@ env_20m_wcvi$slope <- hold$slope
 env_20m_wcvi$freshwater <- hold$freshwater
 hold <- extract(x = tidal_index_all, y = env_20m_wcvi_sf)
 env_20m_wcvi$tidal <- hold$tidal
+hold <- extract(x = culmulative_effects, y = env_20m_wcvi_sf)
+env_20m_wcvi$cul_eff <- hold$cul_eff
 env_20m_wcvi <- filter(env_20m_wcvi, !is.na(rei), !is.na(substrate), !is.na(tidal))
 env_20m_wcvi_sf <- st_as_sf(env_20m_wcvi, coords = c("X_m", "Y_m"), crs = "EPSG:3005")
 hold <- terra::extract(x = hindcast2013_2023, y = env_20m_wcvi_sf, fun = "mean", touches = TRUE, bind = TRUE) %>% terra::as.data.frame() 
@@ -293,6 +303,8 @@ env_20m_ss$slope <- hold$slope
 env_20m_ss$freshwater <- hold$freshwater
 hold <- extract(x = tidal_index_all, y = env_20m_ss_sf)
 env_20m_ss$tidal <- hold$tidal
+hold <- extract(x = culmulative_effects, y = env_20m_ss_sf)
+env_20m_ss$cul_eff <- hold$cul_eff
 env_20m_ss <- filter(env_20m_ss, !is.na(rei), !is.na(substrate), !is.na(tidal))
 env_20m_ss_sf <- st_as_sf(env_20m_ss, coords = c("X_m", "Y_m"), crs = "EPSG:3005")
 hold <- terra::extract(x = hindcast2013_2023, y = env_20m_ss_sf, fun = "mean", touches = TRUE, bind = TRUE) %>% terra::as.data.frame() 
@@ -344,11 +356,10 @@ summary(env_20m_all)
 env_20m_all <- env_20m_all %>%
   filter(#freshwater < quantile(seagrass_data$freshwater, probs = 0.99),  # we have no surveys in freshwater areas, so better to exclude
          salt_5m_mean > quantile(seagrass_data$saltmean, probs = 0.001), # same as above
-         #temperature > quantile(seagrass_data$temperature, probs = 0.001), # want to allow extrapolation into higher temperatures
+         !is.na(cul_eff), #temperature > quantile(seagrass_data$temperature, probs = 0.001), # want to allow extrapolation into higher temperatures
          #temperature < quantile(seagrass_data$temperature, probs = 0.999),
          tidal < quantile(seagrass_data$tidal, probs = 0.9999), # remove high current areas where we can't sample, neither species observed in high values in quadrats 
          rei < quantile(seagrass_data$rei, probs = 0.99999))   # remove high exposure areas where we can't sample? PH found in moderately high but not
-# goes from 15.1 million prediction cells to 14.3 million
 
 summary(env_20m_all)
 
@@ -388,7 +399,8 @@ env_20m_all <- env_20m_all %>%
          tempcv_stnd = scale_fun_ref(temp_5m_cv, reference = seagrass_data$tempcv),
          tempdiff_stnd = scale_fun_ref(temp_5m_diff, reference = seagrass_data$tempdiff),
          DOmean_stnd = scale_fun_ref(do_5m_mean, reference = seagrass_data$DOmean),
-         DOmin_stnd = scale_fun_ref(do_5m_min, reference = seagrass_data$DOmin)) %>%
+         DOmin_stnd = scale_fun_ref(do_5m_min, reference = seagrass_data$DOmin),
+         cul_eff_stnd = scale_fun_ref(cul_eff, reference = seagrass_data$cul_eff)) %>%
   mutate(ID = 1:nrow(env_20m_all),
          HKey = factor("new"),
          X = X_m/1000,

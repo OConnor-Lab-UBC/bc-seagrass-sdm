@@ -75,7 +75,15 @@ hindcast1993_2002 <- terra::rast("code/output_data/processed_ocean_variables/Pre
 hindcast2003_2012 <- terra::rast("code/output_data/processed_ocean_variables/Predictor_Hindcast_Climatologies_2003-2012.tif")
 hindcast2013_2023 <- terra::rast("code/output_data/processed_ocean_variables/Predictor_Hindcast_Climatologies_2013-2023.tif")
 
-#extract from environmental layers
+# read in cumulative effects
+culmulative_effects <- terra::rast("code/output_data/culmulative_effects_all_20m.tif")
+
+
+#extract from predictor layers
+culeff_extract <- terra::extract(culmulative_effects, spatialised_sf)
+summary(culeff_extract$focal_mean)
+spatialised_sf$cul_eff <- culeff_extract$focal_mean
+
 rei_extract <- terra::extract(rei_all, spatialised_sf)
 summary(rei_extract$rei)
 spatialised_sf$rei <- rei_extract$rei
@@ -106,7 +114,7 @@ spatialised_sf <- spatialised_sf %>%
 spatialised_sf$slope<- round(spatialised_sf$slope, digits = 0)
 
 spatialised_sf <- spatialised_sf %>%
-  filter(!is.na(rei), !is.na(substrate), !is.na(tidal))
+  filter(!is.na(rei), !is.na(substrate), !is.na(tidal), !is.na(cul_eff))
 
 #ocean layers have to be by decade slice
 spatialised_sf_1993_2002 <- spatialised_sf %>% filter(Year < 2003)
@@ -167,7 +175,8 @@ spatialised_sf <- spatialised_sf %>%
          tempcv_stnd = scale_fun(tempcv),
          tempdiff_stnd = scale_fun(tempdiff),
          DOmean_stnd = scale_fun(DOmean),
-         DOmin_stnd = scale_fun(DOmin)) 
+         DOmin_stnd = scale_fun(DOmin),
+         cul_eff_stnd = scale_fun(cul_eff)) 
 
 #ggpairs(spatialised_sf %>% dplyr::select(depth_stnd:DOmin_stnd) %>% st_set_geometry(NULL))
 # keep sqrt rei, tidal, freshwater. Maybe sqrt slope. Don't need sqrt of NO3 and NH4
@@ -266,7 +275,7 @@ seagrass_data$X_m <- XY$X*1000
 seagrass_data$Y_m <- XY$Y*1000
 
 seagrass_data_long <- seagrass_data %>%
-  select(HKey, ID, fold_eelgrass, fold_seagrass, Year, substrate, depth_stnd:DOmin_stnd, ZO, PH, mean_PerCovZO, X:Y_m) %>%
+  select(HKey, ID, fold_eelgrass, fold_seagrass, Year, substrate, depth_stnd:cul_eff_stnd, ZO, PH, mean_PerCovZO, X:Y_m) %>%
   gather(key = species, value = presence, ZO:PH) %>%
   mutate(presence = ifelse(presence > 1, 1, presence)) %>%
   mutate(HKey = factor(HKey), substrate = factor(substrate))

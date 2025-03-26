@@ -75,25 +75,25 @@ m_e_2 <- sdmTMB_cv(formula = presence ~ s(depth_stnd, k = 3) + substrate + slope
                    spatial = FALSE, 
                    data = data, 
                    fold_ids = "fold")
-# m_e_3 auc final is 0.9932. model indicated by looking at variable relative importance and also considering what is important for future change
+# m_e_3 auc final is 0.932. model indicated by looking at variable relative importance and also considering what is important for future change
 # spatial field is causing under dispersion (means model is too complex)!  tried fitting model with spatial field and just depth, substrate, slope and rei but still underdispersion
 ## AUC (0.944 vs 0.932) and TSS drops when don't have spatial random field.
-m_e_3 <- sdmTMB_cv(formula = presence ~ s(depth_stnd, k = 3) + substrate + slope_stnd + rei_stnd + DOmin_stnd + saltmin_stnd + tempcv_stnd + tempmean_stnd,
+m_e_3 <- sdmTMB_cv(formula = presence ~ s(depth_stnd, k = 3) + substrate + slope_stnd + rei_stnd + DOmin_stnd + saltmin_stnd + tempcv_stnd + tempmean_stnd + cul_eff_stnd,
                    mesh = barrier_mesh, 
                    family = binomial(link = "logit"), 
                    spatial = FALSE, 
                    data = data, 
                    fold_ids = "fold")
-# roc <- pROC::roc(m_e_3$data$presence, plogis(m_e_3$data$cv_predicted))
-# auc <- pROC::auc(roc)
-# auc
+roc <- pROC::roc(m_e_3$data$presence, plogis(m_e_3$data$cv_predicted))
+auc <- pROC::auc(roc)
+auc
 
 eval_cv <- evalStats( folds=1:numFolds,
                       m=m_e_3,
                       CV=cv_list_eelgrass$cv)
 
 # fit full model
-fmodel <- sdmTMB(formula = presence ~ s(depth_stnd, k = 3) + substrate + slope_stnd + rei_stnd + DOmin_stnd + saltmin_stnd + tempcv_stnd +tempmean_stnd,
+fmodel <- sdmTMB(formula = presence ~ s(depth_stnd, k = 3) + substrate + slope_stnd + rei_stnd + DOmin_stnd + saltmin_stnd + tempcv_stnd +tempmean_stnd + cul_eff_stnd,
                      mesh = barrier_mesh, 
                      family = binomial(link = "logit"), 
                      spatial = FALSE, 
@@ -107,6 +107,7 @@ ggeffects::ggeffect(model = fmodel,  terms = "tempmean_stnd[-4:5]") %>% plot() #
 ggeffects::ggeffect(model = fmodel,  terms = "tempcv_stnd[-3:6]") %>% plot() # as temp varability increases so does presence
 ggeffects::ggeffect(model = fmodel,  terms = "DOmin_stnd[-7:2]") %>% plot() # as min DO increases presence goes down
 ggeffects::ggeffect(model = fmodel,  terms = "substrate") %>% plot() 
+ggeffects::ggeffect(model = fmodel,  terms = "cul_eff_stnd[-2:5]") %>% plot() 
 visreg::visreg(fmodel, "depth_stnd")
 visreg::visreg(fmodel, "DOmin_stnd")
 visreg::visreg(fmodel, "slope_stnd")
@@ -154,12 +155,12 @@ eval_fmod <- evalfmod( x=data, thresh = thresh )
 # The smaller the error measure (eer) returned values, the better the model predictions fit the observations.
 
 #get relative importance
-prednames <- c("depth_stnd", "substrate", "rei_stnd", "slope_stnd", "tempcv_stnd", "tempmean_stnd", "DOmin_stnd", "saltmin_stnd" )
+prednames <- c("depth_stnd", "substrate", "rei_stnd", "slope_stnd", "tempcv_stnd", "tempmean_stnd", "DOmin_stnd", "saltmin_stnd", "cul_eff_stnd" )
 relimp <- varImp( model=fmodel,
                   dat=data,
                   preds=prednames,
                   permute=10 ) # Number of permutations
-# depth 80.3, substrate 14.6, slope 2.0, rei 1.9, do min 1.7, salt min 0.3, tempcv 0.1, tempmean 0.1
+# depth 80.3, substrate 14.6, slope 2.0, rei 1.9, do min 1.7, salt min 0.3, tempcv 0.1, tempmean 0.1, cul eff 0.1
 
 ####check residuals####
 # MCMC based randomized quantile residuals (takes a while to compute)
@@ -214,23 +215,35 @@ mesh_pre2013 <- make_mesh(data = data_pre2013, xy_cols = c("X", "Y"), cutoff = 1
 plot(mesh_pre2013)
 barrier_mesh_pre2013 <- add_barrier_mesh(mesh_pre2013, barrier_sf = coastline, proj_scaling = 1000, plot = TRUE)
 
-m_eelgrass_forecast <- sdmTMB(formula = presence ~ s(depth_stnd, k = 3) + substrate + slope_stnd + rei_stnd + saltmin_stnd + tempmean_stnd + tempcv_stnd + DOmin_stnd,
+m_eelgrass_forecast <- sdmTMB(formula = presence ~ s(depth_stnd, k = 3) + substrate + slope_stnd + rei_stnd + saltmin_stnd + tempmean_stnd + tempcv_stnd + DOmin_stnd + cul_eff_stnd,
                                mesh = barrier_mesh_pre2013, 
                                family = binomial(link = "logit"), 
                                spatial = FALSE, 
                                data = data_pre2013) 
-data.df <- data %>% select(presence, X, Y, depth_stnd, slope_stnd, rei_stnd, substrate, saltmin_stnd, DOmin_stnd, tempcv_stnd, tempmean_stnd, Year)
+m_eelgrass_forecast_spatial <- sdmTMB(formula = presence ~ s(depth_stnd, k = 3) + substrate + slope_stnd + rei_stnd + saltmin_stnd + tempmean_stnd + tempcv_stnd + DOmin_stnd + cul_eff_stnd,
+                              mesh = barrier_mesh_pre2013, 
+                              family = binomial(link = "logit"), 
+                              spatial = TRUE, 
+                              data = data_pre2013) 
+data.df <- data %>% select(presence, X, Y, depth_stnd, slope_stnd, rei_stnd, substrate, saltmin_stnd, DOmin_stnd, tempcv_stnd, tempmean_stnd, cul_eff_stnd, Year)
 
 forecast <- plogis(predict(m_eelgrass_forecast, newdata = data.df %>% filter(Year > 2012))$est)
+forecast_spatial <- plogis(predict(m_eelgrass_forecast_spatial, newdata = data.df %>% filter(Year > 2012))$est)
+
 pre_2013 <- plogis(predict(m_eelgrass_forecast, newdata = data.df %>% filter(Year < 2010))$est)
+pre_2013_spatial <- plogis(predict(m_eelgrass_forecast_spatial, newdata = data.df %>% filter(Year < 2010))$est)
 
-forecast_predict_eelgrass <- data.frame(TjurR2 = c(tjur(y = data.df$presence[data.df$Year > 2012], pred = forecast),
+forecast_predict_eelgrass <- data.frame(TjurR2_no_spatial = c(tjur(y = data.df$presence[data.df$Year > 2012], pred = forecast),
                                                     tjur(y = data.df$presence[data.df$Year < 2010], pred = pre_2013)),
-                                         AUC = c(ModelMetrics::auc(data.df$presence[data.df$Year > 2012], forecast),
+                                        TjurR2_spatial = c(tjur(y = data.df$presence[data.df$Year > 2012], pred = forecast_spatial),
+                                                              tjur(y = data.df$presence[data.df$Year < 2010], pred = pre_2013_spatial)),
+                                         AUC_no_spatial = c(ModelMetrics::auc(data.df$presence[data.df$Year > 2012], forecast),
                                                  ModelMetrics::auc(data.df$presence[data.df$Year < 2010], pre_2013)),
+                                        AUC_spatial = c(ModelMetrics::auc(data.df$presence[data.df$Year > 2012], forecast_spatial),
+                                                ModelMetrics::auc(data.df$presence[data.df$Year < 2010], pre_2013_spatial)),
                                          type = factor(c("forecast", "training"), levels = c("training", "forecast"), ordered =  TRUE))
-## AUC dropped from 0.932 to 0.92 and Tjur dropped from 0.147 to 0.141 #tjur is quite a bit less when no spatial field
-
+## AUC dropped from 0.932 to 0.92 and Tjur dropped from 0.147 to 0.141 when forecasted #tjur is quite a bit less when no spatial field
+# model did much better forcasting without spatial field
 save(data, fmodel, relimp, thresh, r_ret, eval_cv, eval_fmod, forecast_predict_eelgrass, file = "code/output_data/final_eelgrass_model.RData")
 
 
@@ -281,16 +294,21 @@ m_s_2 <- sdmTMB_cv(formula = presence ~ depth_stnd + substrate + rei_sqrt_stnd,
                    spatial = TRUE, 
                    data = data, 
                    fold_ids = "fold")
-# model selected by relimp with spatial field AUC = 0.9613
+# model selected by relimp without spatial field AUC = 0.9613
 #having spatial field makes model underdispersed (means too complicated)
+# cul_eff not important for surfgrass model so not included (makes auc go down and 0.0 in relimp. 
 m_s_3 <- sdmTMB_cv(formula = presence ~ depth_stnd + rei_sqrt_stnd + tidal_sqrt_stnd + substrate + 
                      saltcv_stnd + PARmin_stnd + DOmean_stnd + surftempcv_stnd + surftempmean_stnd  +
-                     surftempmax_stnd,
+                     surftempmax_stnd ,
                    mesh = barrier_mesh, 
                    family = binomial(link = "logit"), 
                    spatial = FALSE, 
                    data = data, 
                    fold_ids = "fold")
+
+roc <- pROC::roc(m_s_3$data$presence, plogis(m_s_3$data$cv_predicted))
+auc <- pROC::auc(roc)
+auc
 
 eval_cv <- evalStats( folds=1:numFolds,
                       m=m_s_3,
@@ -321,6 +339,7 @@ ggeffects::ggeffect(model = fmodel,  terms = "DOmean_stnd[-7:3]") %>% plot() #in
 ggeffects::ggeffect(model = fmodel,  terms = "surftempcv_stnd[-3:8]") %>% plot() # increases with increased variation
 ggeffects::ggeffect(model = fmodel,  terms = "surftempmax_stnd[-4:5]") %>% plot() # declines with increased max temps
 ggeffects::ggeffect(model = fmodel,  terms = "surftempmean_stnd[-4:4]") %>% plot() # increases with mean temps
+
 
 visreg::visreg(fmodel, "depth_stnd")
 visreg::visreg(fmodel, "rei_sqrt_stnd")
@@ -398,7 +417,7 @@ sims <- predict(fmodel, newdata = env_20m_all, nsim = 100) #sim needs to be 500?
 hold$SE <- apply(sims, 1, sd)
 hold$SD <- apply(pclog(sims), 1, sd)
 surfgrass_predictions <- env_20m_all
-surfgrass_predictions <- bind_cols(surfgrass_predictions, hold %>% select(est:SE))
+surfgrass_predictions <- bind_cols(surfgrass_predictions, hold %>% select(est:SD))
 
 # hold <- surfgrass_predictions %>%
 #   group_by(X_m, Y_m) %>%
@@ -425,18 +444,28 @@ m_surfgrass_forecast <- sdmTMB(formula = presence ~ depth_stnd + rei_sqrt_stnd +
                       family = binomial(link = "logit"), 
                       spatial = FALSE, 
                       data = data_pre2013) 
-data.df <- data %>% select(presence, X, Y, depth_stnd, rei_sqrt_stnd, tidal_sqrt_stnd, substrate, 
-                                                              saltcv_stnd, PARmin_stnd, DOmean_stnd, surftempcv_stnd, surftempmean_stnd,
-                                                              surftempmax_stnd, Year)
+m_surfgrass_forecast_spatial <- sdmTMB(formula = presence ~ s(depth_stnd, k = 3) + substrate + slope_stnd + rei_stnd + saltmin_stnd + tempmean_stnd + tempcv_stnd + DOmin_stnd,
+                                      mesh = barrier_mesh_pre2013, 
+                                      family = binomial(link = "logit"), 
+                                      spatial = TRUE, 
+                                      data = data_pre2013) 
+data.df <- data %>% select(presence, X, Y, depth_stnd, slope_stnd, rei_stnd, substrate, saltmin_stnd, DOmin_stnd, tempcv_stnd, tempmean_stnd, Year)
 
 forecast <- plogis(predict(m_surfgrass_forecast, newdata = data.df %>% filter(Year > 2012))$est)
-pre_2013 <- plogis(predict(m_surfgrass_forecast, newdata = data.df %>% filter(Year < 2010))$est)
+forecast_spatial <- plogis(predict(m_surfgrass_forecast_spatial, newdata = data.df %>% filter(Year > 2012))$est)
 
-forecast_predict_surfgrass <- data.frame(TjurR2 = c(tjur(y = data.df$presence[data.df$Year > 2012], pred = forecast),
-                                             tjur(y = data.df$presence[data.df$Year < 2010], pred = pre_2013)),
-                                  AUC = c(ModelMetrics::auc(data.df$presence[data.df$Year > 2012], forecast),
-                                          ModelMetrics::auc(data.df$presence[data.df$Year < 2010], pre_2013)),
-                                  type = factor(c("forecast", "training"), levels = c("training", "forecast"), ordered =  TRUE))
+pre_2013 <- plogis(predict(m_surfgrass_forecast, newdata = data.df %>% filter(Year < 2010))$est)
+pre_2013_spatial <- plogis(predict(m_surfgrass_forecast_spatial, newdata = data.df %>% filter(Year < 2010))$est)
+
+forecast_predict_surfgrass <- data.frame(TjurR2_no_spatial = c(tjur(y = data.df$presence[data.df$Year > 2012], pred = forecast),
+                                                              tjur(y = data.df$presence[data.df$Year < 2010], pred = pre_2013)),
+                                        TjurR2_spatial = c(tjur(y = data.df$presence[data.df$Year > 2012], pred = forecast_spatial),
+                                                           tjur(y = data.df$presence[data.df$Year < 2010], pred = pre_2013_spatial)),
+                                        AUC_no_spatial = c(ModelMetrics::auc(data.df$presence[data.df$Year > 2012], forecast),
+                                                           ModelMetrics::auc(data.df$presence[data.df$Year < 2010], pre_2013)),
+                                        AUC_spatial = c(ModelMetrics::auc(data.df$presence[data.df$Year > 2012], forecast_spatial),
+                                                        ModelMetrics::auc(data.df$presence[data.df$Year < 2010], pre_2013_spatial)),
+                                        type = factor(c("forecast", "training"), levels = c("training", "forecast"), ordered =  TRUE))
 ## AUC dropped from 0.96 to 0.95 and Tjur dropped from 0.18 to 0.16
 # removing spatial field makes model make  better predictions. So while having spatial random field makes current day predictions better, having it for forecasting makes it worse
 
@@ -651,3 +680,63 @@ surfgrass_raster_qcs <- surfgrass_predictions %>%
   select(X_m, Y_m, est_p)
 surfgrass_raster_qcs <- rast(x = surfgrass_raster_qcs %>% as.matrix, type = "xyz", crs = "EPSG:3005")
 writeRaster(surfgrass_raster_qcs, file.path("./raster/surfgrass_predictions_qcs.tif"), overwrite=TRUE)
+
+surfgrass_raster_hg_se <- surfgrass_predictions %>%
+  filter(region == "Haida Gwaii") %>%
+  select(X_m, Y_m, SE)
+surfgrass_raster_hg_se <- rast(x = surfgrass_raster_hg_se %>% as.matrix, type = "xyz", crs = "EPSG:3005")
+writeRaster(surfgrass_raster_hg_se, file.path("./raster/surfgrass_predictions_hg_se.tif"), overwrite=TRUE)
+
+surfgrass_raster_ss_se <- surfgrass_predictions %>%
+  filter(region == "Salish Sea") %>%
+  select(X_m, Y_m, SE)
+surfgrass_raster_ss_se <- rast(x = surfgrass_raster_ss_se %>% as.matrix, type = "xyz", crs = "EPSG:3005")
+writeRaster(surfgrass_raster_ss_se, file.path("./raster/surfgrass_predictions_ss_se.tif"), overwrite=TRUE)
+
+surfgrass_raster_wcvi_se <- surfgrass_predictions %>%
+  filter(region == "West Coast Vancouver Island") %>%
+  select(X_m, Y_m, SE)
+surfgrass_raster_wcvi_se <- rast(x = surfgrass_raster_wcvi_se %>% as.matrix, type = "xyz", crs = "EPSG:3005")
+writeRaster(surfgrass_raster_wcvi_se, file.path("./raster/surfgrass_predictions_wcvi_se.tif"), overwrite=TRUE)
+
+surfgrass_raster_ncc_se <- surfgrass_predictions %>%
+  filter(region == "North Central Coast") %>%
+  select(X_m, Y_m, SE)
+surfgrass_raster_ncc_se <- rast(x = surfgrass_raster_ncc_se %>% as.matrix, type = "xyz", crs = "EPSG:3005")
+writeRaster(surfgrass_raster_ncc_se, file.path("./raster/surfgrass_predictions_ncc_se.tif"), overwrite=TRUE)
+
+surfgrass_raster_qcs_se <- surfgrass_predictions %>%
+  filter(region == "Queen Charlotte Strait") %>%
+  select(X_m, Y_m, SE)
+surfgrass_raster_qcs_se <- rast(x = surfgrass_raster_qcs_se %>% as.matrix, type = "xyz", crs = "EPSG:3005")
+writeRaster(surfgrass_raster_qcs_se, file.path("./raster/surfgrass_predictions_qcs_se.tif"), overwrite=TRUE)
+
+surfgrass_raster_hg_sd <- surfgrass_predictions %>%
+  filter(region == "Haida Gwaii") %>%
+  select(X_m, Y_m, SD)
+surfgrass_raster_hg_sd <- rast(x = surfgrass_raster_hg_sd %>% as.matrix, type = "xyz", crs = "EPSG:3005")
+writeRaster(surfgrass_raster_hg_sd, file.path("./raster/surfgrass_predictions_hg_sd.tif"), overwrite=TRUE)
+
+surfgrass_raster_ss_sd <- surfgrass_predictions %>%
+  filter(region == "Salish Sea") %>%
+  select(X_m, Y_m, SD)
+surfgrass_raster_ss_sd <- rast(x = surfgrass_raster_ss_sd %>% as.matrix, type = "xyz", crs = "EPSG:3005")
+writeRaster(surfgrass_raster_ss_sd, file.path("./raster/surfgrass_predictions_ss_sd.tif"), overwrite=TRUE)
+
+surfgrass_raster_wcvi_sd <- surfgrass_predictions %>%
+  filter(region == "West Coast Vancouver Island") %>%
+  select(X_m, Y_m, SD)
+surfgrass_raster_wcvi_sd <- rast(x = surfgrass_raster_wcvi_sd %>% as.matrix, type = "xyz", crs = "EPSG:3005")
+writeRaster(surfgrass_raster_wcvi_sd, file.path("./raster/surfgrass_predictions_wcvi_sd.tif"), overwrite=TRUE)
+
+surfgrass_raster_ncc_sd <- surfgrass_predictions %>%
+  filter(region == "North Central Coast") %>%
+  select(X_m, Y_m, SD)
+surfgrass_raster_ncc_sd <- rast(x = surfgrass_raster_ncc_sd %>% as.matrix, type = "xyz", crs = "EPSG:3005")
+writeRaster(surfgrass_raster_ncc_sd, file.path("./raster/surfgrass_predictions_ncc_sd.tif"), overwrite=TRUE)
+
+surfgrass_raster_qcs_sd <- surfgrass_predictions %>%
+  filter(region == "Queen Charlotte Strait") %>%
+  select(X_m, Y_m, SD)
+surfgrass_raster_qcs_sd <- rast(x = surfgrass_raster_qcs_sd %>% as.matrix, type = "xyz", crs = "EPSG:3005")
+writeRaster(surfgrass_raster_qcs_sd, file.path("./raster/surfgrass_predictions_qcs_sd.tif"), overwrite=TRUE)
