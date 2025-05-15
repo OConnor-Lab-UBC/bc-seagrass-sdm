@@ -444,12 +444,15 @@ m_surfgrass_forecast <- sdmTMB(formula = presence ~ depth_stnd + rei_sqrt_stnd +
                       family = binomial(link = "logit"), 
                       spatial = FALSE, 
                       data = data_pre2013) 
-m_surfgrass_forecast_spatial <- sdmTMB(formula = presence ~ s(depth_stnd, k = 3) + substrate + slope_stnd + rei_stnd + saltmin_stnd + tempmean_stnd + tempcv_stnd + DOmin_stnd,
+m_surfgrass_forecast_spatial <- sdmTMB(formula = presence ~ depth_stnd + rei_sqrt_stnd + tidal_sqrt_stnd + substrate + 
+                                         saltcv_stnd + PARmin_stnd + DOmean_stnd + surftempcv_stnd + surftempmean_stnd  +
+                                         surftempmax_stnd,
                                       mesh = barrier_mesh_pre2013, 
                                       family = binomial(link = "logit"), 
                                       spatial = TRUE, 
                                       data = data_pre2013) 
-data.df <- data %>% select(presence, X, Y, depth_stnd, slope_stnd, rei_stnd, substrate, saltmin_stnd, DOmin_stnd, tempcv_stnd, tempmean_stnd, Year)
+data.df <- data %>% select(presence, X, Y, depth_stnd, rei_sqrt_stnd, tidal_sqrt_stnd, substrate, 
+                           saltcv_stnd, PARmin_stnd, DOmean_stnd, surftempcv_stnd, surftempmean_stnd, surftempmax_stnd, Year)
 
 forecast <- plogis(predict(m_surfgrass_forecast, newdata = data.df %>% filter(Year > 2012))$est)
 forecast_spatial <- plogis(predict(m_surfgrass_forecast_spatial, newdata = data.df %>% filter(Year > 2012))$est)
