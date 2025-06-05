@@ -490,7 +490,7 @@ att <- att[c("Survey","Year","Month","Day","HKey","ID" ,"X","Y",
               "LonDeep","LatDeep","LonShallow","LatShallow")]
 
 ## Quadrat attributes - Mean depth from quadrats aggregated to spatialised points
-mean_att <- aggregate( . ~ ID, mean, data = spatialised[c("ID", "CorDepthM", "Slope", "PerCovZO", "PH", "ZO")])
+mean_att <- aggregate( . ~ ID, mean, data = spatialised[c("ID", "CorDepthM", "Slope", "PerCovZO", "PH", "ZO")], na.action = na.pass)
 names(mean_att) <- c("ID", "mean_CorDepthM", "mean_slope", "mean_PerCovZO", "PH", "ZO")
 #
 ##Quadrat attributes - most common substrate
@@ -504,7 +504,7 @@ mode_att <- aggregate( . ~ ID, Mode, data = spatialised[c("ID", "Substrate")])
 ## Add back attributes
 att <- merge(att, mean_att, by="ID")
 spat <- merge(att, mode_att, by="ID")
-spat <- merge(spat, nquads, by="ID")
+#spat <- merge(spat, nquads, by="ID")
 spat <- spat[order(spat$HKey),]
 
 ## Ensure presence/absence

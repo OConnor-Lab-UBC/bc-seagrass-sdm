@@ -64,6 +64,9 @@ crs(substrate_all) <- "EPSG:3005"
 freshwater_all <- vrt(c("raw_data/freshwater-index/hg_freshwater_index.tif", "raw_data/freshwater-index/ncc_freshwater_index.tif", "raw_data/freshwater-index/qcs_freshwater_index.tif", "raw_data/freshwater-index/wcvi_freshwater_index.tif", "raw_data/freshwater-index/salish_sea_freshwater_index.tif"), "freshwater.vrt", overwrite=T)
 #plot(freshwater_all)
 
+bathy_all <- vrt(c("raw_data/envlayers-20m-hg//bathymetry.tif", "raw_data/envlayers-20m-ncc/bathymetry.tif", "raw_data/envlayers-20m-qcs/bathymetry.tif", "raw_data/envlayers-20m-wcvi/bathymetry.tif", "raw_data/envlayers-20m-shelfsalishsea/bathymetry.tif"), "bathy.vrt", overwrite=T)
+
+
 tidal_all <- vrt(c("raw_data/current_20m/Nearshore_CurrentSpeedIndex.tif"))
 names(tidal_all)<-"tidal_current_index"
 #change to index 0-1 scale
@@ -83,6 +86,10 @@ culmulative_effects <- terra::rast("code/output_data/culmulative_effects_all_20m
 culeff_extract <- terra::extract(culmulative_effects, spatialised_sf)
 summary(culeff_extract$focal_mean)
 spatialised_sf$cul_eff <- culeff_extract$focal_mean
+
+bathy_extract <- terra::extract(bathy_all, spatialised_sf)
+summary(bathy_extract$bathy)
+spatialised_sf$bathy <- bathy_extract$bathy
 
 rei_extract <- terra::extract(rei_all, spatialised_sf)
 summary(rei_extract$rei)
@@ -107,9 +114,9 @@ spatialised_sf$substrate_mod <- c("Rock", "Mixed", "Sand", "Mud")[spatialised_sf
 
 spatialised_sf <- spatialised_sf %>%
   mutate(slope = ifelse(is.na(Slope)|Slope > 90, slope_mod, Slope),
-         substrate = ifelse(is.na(Substrate), substrate_mod, Substrate)) %>%
-  rename(depth = CorDepthM) %>%
-  select(-c(Slope, Substrate, slope_mod, substrate_mod))
+         substrate = ifelse(is.na(Substrate), substrate_mod, Substrate),
+         depth = ifelse(is.na(CorDepthM), bathy, CorDepthM)) %>%
+  select(-c(Slope, Substrate, slope_mod, substrate_mod, CorDepthM, bathy))
 
 spatialised_sf$slope<- round(spatialised_sf$slope, digits = 0)
 
@@ -138,7 +145,7 @@ oceanvars_allyears <- rbind(oceanvars_1993_2002, oceanvars_2003_2012, oceanvars_
 
 spatialised_sf <- dplyr::full_join(spatialised_sf, oceanvars_allyears, by=c("ID")) %>% filter(!is.na(NH4))
 spatialised_sf$mean_PerCovZO<- round(spatialised_sf$mean_PerCovZO, digits = 0)
-#end with 91,420 obs
+#end with 93338 obs
 
 scale_fun <- function(x){
   (x  - mean(x)) / sd(x)

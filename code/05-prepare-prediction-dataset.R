@@ -408,17 +408,21 @@ env_20m_all <- env_20m_all %>%
          substrate = factor(substrate))
 
 summary(env_20m_all)
-  
+ 
+env_20m_all <- env_20m_all %>%
+  filter(!is.na(freshwater_sqrt_stnd)) 
 
 #env_20m_all_sf <- st_as_sf(env_20m_all, coords = c("X_m", "Y_m"), crs = "EPSG:3005")
   
 
 #### Compare the sampled predictor space to that of the total hindcast climatology
 #2013-2023 hindcast climatology without depth and substrate and turn into a dataframe
-hindcast_predictor_data <- env_20m_all %>% select(rei_stnd, tidal_stnd, slope_stnd, NH4_stnd, NO3_stnd, saltmean_stnd, saltmin_stnd, PARmean_stnd, surftempmean_stnd, surftempmin_stnd, surftempmax_stnd, surftempcv_stnd,surftempdiff_stnd, tempmean_stnd, tempmin_stnd, tempmax_stnd, tempcv_stnd, tempdiff_stnd, DOmean_stnd)
+
+hindcast_predictor_data <- env_20m_all %>% select(rei_stnd, tidal_stnd, slope_stnd, NH4_stnd, NO3_stnd, saltmin_stnd, saltcv_stnd, PARmin_stnd, surftempmean_stnd, surftempmin_stnd, surftempmax_stnd, surftempcv_stnd, tempmean_stnd, tempmin_stnd, tempmax_stnd, tempcv_stnd, DOmin_stnd, DOmean_stnd, freshwater_sqrt_stnd)
 
 # transect predictor data
-transect_predictor_data <- seagrass_data %>% select(rei_stnd, tidal_stnd, slope_stnd, NH4_stnd, NO3_stnd, saltmean_stnd, saltmin_stnd, PARmean_stnd, surftempmean_stnd, surftempmin_stnd, surftempmax_stnd, surftempcv_stnd,surftempdiff_stnd, tempmean_stnd, tempmin_stnd, tempmax_stnd, tempcv_stnd, tempdiff_stnd, DOmean_stnd)
+transect_predictor_data <- seagrass_data %>% select(rei_stnd, tidal_stnd, slope_stnd, NH4_stnd, NO3_stnd, saltmin_stnd, saltcv_stnd, PARmin_stnd, surftempmean_stnd, surftempmin_stnd, surftempmax_stnd, surftempcv_stnd, tempmean_stnd, tempmin_stnd, tempmax_stnd, tempcv_stnd, DOmin_stnd, DOmean_stnd, freshwater_sqrt_stnd)
+#transect_predictor_data <- seagrass_data %>% select(rei_stnd, tidal_stnd, slope_stnd, NH4_stnd, NO3_stnd, saltmean_stnd, saltmin_stnd, PARmean_stnd, surftempmean_stnd, surftempmin_stnd, surftempmax_stnd, surftempcv_stnd,surftempdiff_stnd, tempmean_stnd, tempmin_stnd, tempmax_stnd, tempcv_stnd, tempdiff_stnd, DOmean_stnd)
 
 #Create a PCA for the total predictor space of the hindcast
 Hindcast_PCA <- princomp(hindcast_predictor_data)
@@ -472,7 +476,7 @@ Density_Plot <- function(All_Scores, comp, title, x, y){
 
 #PCA_dense_plot <-  gridExtra::grid.arrange(Dense1, Dense2, nrow = 2)
 #Plot grid a density plot for the first four principal components
-PCA_dense_plot <- gridExtra::grid.arrange(Density_Plot(All_Scores, 1, "Principal Component 1 Value (39%)", 0.75, 0.81), 
+PCA_dense_plot <- gridExtra::grid.arrange(Density_Plot(All_Scores, 1, "Principal Component 1 Value (39%)", 0.25, 0.81), 
                                      Density_Plot(All_Scores, 2, "Principal Component 2 Value (19%)", 0.75, 0.81), 
                                      Density_Plot(All_Scores, 3, "Principal Component 3 Value (15%)", 0.75, 0.81), 
                                      Density_Plot(All_Scores, 4, "Principal Component 4 Value (9%)", 0.25, 0.81), nrow = 2)
@@ -514,11 +518,14 @@ hindcast_MESS<- predicts::mess(x = hindcast_predictor_data, v= transect_predicto
 
 env_20m_all <- env_20m_all %>% cbind(hindcast_MESS)
 
-
-mess_plot<-ggplot(env_20m_all)+
+env_20m_all_sub <- env_20m_all %>% mutate(mess_col = ifelse(mess < -0.01, "Below", "Above"),
+                                          mess_tv_col = ifelse(mess_tv < -0.01, "Below", "Above"))
+cols<- c("Above" = "grey", "Below" = "red")
+mess_plot<-ggplot(env_20m_all_sub)+
   geom_sf(data = coastline, linewidth = 0.1)+
-  geom_tile(aes(x = X_m, y = Y_m, colour=mess, width=20,height=20))+
-  scale_colour_gradient2() +
+  geom_tile(aes(x = X_m, y = Y_m, colour=mess_col, fill=mess_col, width=20,height=20))+
+  scale_colour_manual(values = cols) +
+  scale_fill_manual(values = cols) +
   theme(panel.grid.major = element_blank(),
         panel.grid.minor = element_blank(),
         # Remove panel background
@@ -566,21 +573,23 @@ writeRaster(mess_raster_qcs, file.path("./raster/mess_predictions_qcs.tif"), ove
 
 # see if there is a difference between if we only use 1993-2012 data compared to the full 2013-2023 dataset
 
-transect_predictor_data_1993_2012 <- seagrass_data %>% 
-  filter(Year< 2013) %>%
-  select(rei_stnd, tidal_stnd, slope_stnd, NH4_stnd, NO3_stnd, saltmean_stnd, saltmin_stnd, PARmean_stnd, surftempmean_stnd, surftempmin_stnd, surftempmax_stnd, surftempcv_stnd,surftempdiff_stnd, tempmean_stnd, tempmin_stnd, tempmax_stnd, tempcv_stnd, tempdiff_stnd, DOmean_stnd)
+transect_predictor_data_1993_2009 <- seagrass_data %>% 
+  filter(Year< 2010) %>%
+  select(rei_stnd, tidal_stnd, slope_stnd, NH4_stnd, NO3_stnd, saltmin_stnd, saltcv_stnd, PARmin_stnd, surftempmean_stnd, surftempmin_stnd, surftempmax_stnd, surftempcv_stnd, tempmean_stnd, tempmin_stnd, tempmax_stnd, tempcv_stnd, DOmin_stnd, DOmean_stnd, freshwater_sqrt_stnd)
 
-temporal_validation_MESS<- predicts::mess(x = hindcast_predictor_data, v= transect_predictor_data_1993_2012, full = FALSE)
+temporal_validation_MESS<- predicts::mess(x = hindcast_predictor_data, v= transect_predictor_data_1993_2009, full = FALSE)
 temporal_validation_MESS <- temporal_validation_MESS %>%
   rename(mess_tv = mess)
 env_20m_all <- env_20m_all %>% cbind(temporal_validation_MESS)
 
 summary(env_20m_all)
 
-temporal_val_mess_plot<-ggplot(env_20m_all)+
+temporal_val_mess_plot<-ggplot(env_20m_all_sub)+
   geom_sf(data = coastline, linewidth = 0.1)+
-  geom_tile(aes(x = X_m, y = Y_m, colour=mess_tv, width=20,height=20))+
-  scale_colour_gradient2() +
+  geom_tile(aes(x = X_m, y = Y_m, colour=mess_tv_col, fill = mess_tv_col, width=20,height=20))+
+  #scale_colour_gradient2() +
+  scale_colour_manual(values = cols) +
+  scale_fill_manual(values = cols) +
   theme(panel.grid.major = element_blank(),
         panel.grid.minor = element_blank(),
         # Remove panel background
@@ -593,6 +602,36 @@ temporal_val_mess_plot<-ggplot(env_20m_all)+
   xlab("") 
 temporal_val_mess_plot
 ggsave("./figures/pre-analysis/hindcast_mess_tv.png", height = 6, width = 6)
+
+mess_raster_hg_tv <- env_20m_all %>%
+  filter(region == "Haida Gwaii") %>%
+  select(X_m, Y_m, mess_tv)
+mess_raster_hg_tv <- rast(x = mess_raster_hg_tv %>% as.matrix, type = "xyz", crs = "EPSG:3005")
+writeRaster(mess_raster_hg_tv, file.path("./raster/mess_predictions_hg_tv.tif"), overwrite=TRUE)
+
+mess_raster_ss_tv <- env_20m_all %>%
+  filter(region == "Salish Sea") %>%
+  select(X_m, Y_m, mess_tv)
+mess_raster_ss_tv <- rast(x = mess_raster_ss_tv %>% as.matrix, type = "xyz", crs = "EPSG:3005")
+writeRaster(mess_raster_ss_tv, file.path("./raster/mess_predictions_ss_tv.tif"), overwrite=TRUE)
+
+mess_raster_wcvi_tv <- env_20m_all %>%
+  filter(region == "West Coast Vancouver Island") %>%
+  select(X_m, Y_m, mess_tv)
+mess_raster_wcvi_tv <- rast(x = mess_raster_wcvi_tv %>% as.matrix, type = "xyz", crs = "EPSG:3005")
+writeRaster(mess_raster_wcvi_tv, file.path("./raster/mess_predictions_wcvi_tv.tif"), overwrite=TRUE)
+
+mess_raster_ncc_tv <- env_20m_all %>%
+  filter(region == "North Central Coast") %>%
+  select(X_m, Y_m, mess_tv)
+mess_raster_ncc_tv <- rast(x = mess_raster_ncc_tv %>% as.matrix, type = "xyz", crs = "EPSG:3005")
+writeRaster(mess_raster_ncc_tv, file.path("./raster/mess_predictions_ncc_tv.tif"), overwrite=TRUE)
+
+mess_raster_qcs_tv <- env_20m_all %>%
+  filter(region == "Queen Charlotte Strait") %>%
+  select(X_m, Y_m, mess_tv)
+mess_raster_qcs_tv <- rast(x = mess_raster_qcs_tv %>% as.matrix, type = "xyz", crs = "EPSG:3005")
+writeRaster(mess_raster_qcs_tv, file.path("./raster/mess_predictions_qcs_tv.tif"), overwrite=TRUE)
 
 
 #save outputs####

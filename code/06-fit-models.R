@@ -30,16 +30,21 @@ sp = "ZO"
 numFolds <- length(unique(seagrass_data$fold_eelgrass))
 data <- filter(seagrass_data_long, species == sp) %>% rename(fold = fold_eelgrass)
 print(paste(sp, " present in ", round((sum(data$presence)/nrow(data))*100,2), "% of observations", sep = ""))
+# eelgrass in 3.69% of 20 m aggregated observations
 
 #test variable correlation
-data_env<- data %>%  select(6:34)
+data_env<- data %>%  dplyr::select(7:35)
 enames <- names(data_env)
 corrplot::corrplot(cor(data_env), method = "number")
 # Correlations close to-1 or +1 might indicate the existence of multicollinearity. one might suspect multicollinearity when the correlation between two (predictor) variables is below -0.9 or above +0.9.
 # correlated: PAR max and mean, salt min and mean and cv, surf temp min and surf temp cv, surf temp diff and surf temp max, surftempmean and temp mean, surftempmax and tempmax, temp diff and temp max, tempmean and temp max (but not temp min)
 
 ## test VIF
-my_model <- lm(presence~ depth_stnd + substrate + slope_stnd + rei_stnd + DOmin_stnd + saltmin_stnd + tempcv_stnd +tempmean_stnd, data = data)
+my_model <- lm(presence~ substrate + depth_stnd +rei_sqrt_stnd + tidal_sqrt_stnd + freshwater_sqrt_stnd + 
+                 slope_stnd + NO3_stnd + saltmin_stnd + PARmin_stnd + 
+                 surftempmax_stnd + surftempcv_stnd + 
+                 tempdiff_stnd + cul_eff_stnd, data = data)
+#my_model <- lm(presence~ depth_stnd + substrate + slope_stnd + rei_stnd + DOmin_stnd + saltmean_stnd + tempcv_stnd + tempmean_stnd + freshwater_sqrt_stnd + tidal_sqrt_stnd, data = data)
 olsrr::ols_vif_tol(my_model)
 # Tolerance of <0.1 might indicate multicollinearity. VIF exceeding 5 requires further investigation, whereas VIFs above 10 indicate multicollinearity. Ideally, the Variance Inflation Factors are below 3.
 VIFs <- CalcVIFs( dat=data_env[enames], VIFThresh=10 )
@@ -51,7 +56,8 @@ substrates_present # there are eelgrass presence observations on all substrates
 
 ### Forward feature selection test (testing one method to limit variables )
 #tested removing depth, makes horrible models
-eelgrass_ffs <- glm_ffs(data)  ### variables that came out include depth, substrate, slope_stnd, rei_stnd
+eelgrass_ffs <- glm_ffs(data)  ### variables that came out include depth, substrate, slope_stnd, rei_stnd, and twice tidal sqrt, and once each salt mean and freshwater and temp max
+save(eelgrass_ffs, file = "code/output_data/eelgrass_ffs_variables.RData")
 
 ####SDMtmb model####
 #make mesh
@@ -61,24 +67,32 @@ barrier_mesh <- add_barrier_mesh(mesh, barrier_sf = coastline, proj_scaling = 10
 
 #fit cv model of spatial blocking 
 plan(multisession)
-#model indicated by forward feature selection with no spatial field, AUC is 0.93
+#model indicated by forward feature selection (most important variables) with no spatial field, AUC is 0.9306, tjur = 0.243
 m_e_1 <- sdmTMB_cv(formula = presence ~ s(depth_stnd, k = 3) + substrate + slope_stnd + rei_stnd,
                           mesh = barrier_mesh, 
                           family = binomial(link = "logit"), 
                           spatial = FALSE, 
                           data = data, 
                           fold_ids = "fold")
-#model indicated by forward feature selection with spatial field, AUC is 0.9427
+roc <- pROC::roc(m_e_1$data$presence, plogis(m_e_1$data$cv_predicted))
+auc <- pROC::auc(roc)
+auc
+#model indicated by forward feature selection with spatial field, AUC is 0.9278, tjur 0.219
 m_e_2 <- sdmTMB_cv(formula = presence ~ s(depth_stnd, k = 3) + substrate + slope_stnd + rei_stnd,
                    mesh = barrier_mesh, 
                    family = binomial(link = "logit"), 
-                   spatial = FALSE, 
+                   spatial = TRUE, 
                    data = data, 
                    fold_ids = "fold")
-# m_e_3 auc final is 0.932. model indicated by looking at variable relative importance and also considering what is important for future change
-# spatial field is causing under dispersion (means model is too complex)!  tried fitting model with spatial field and just depth, substrate, slope and rei but still underdispersion
-## AUC (0.944 vs 0.932) and TSS drops when don't have spatial random field.
-m_e_3 <- sdmTMB_cv(formula = presence ~ s(depth_stnd, k = 3) + substrate + slope_stnd + rei_stnd + DOmin_stnd + saltmin_stnd + tempcv_stnd + tempmean_stnd + cul_eff_stnd,
+roc <- pROC::roc(m_e_2$data$presence, plogis(m_e_2$data$cv_predicted))
+auc <- pROC::auc(roc)
+auc
+# m_e_3 auc final is 0.9305, tjur = 0.2618. 
+# model indicated by looking at ffs (but also including the variables that showed up a few times ) at variable relative importance and also considering what is important for future change, and also what resulted in highest AUC
+# decision for salt mean vs salt min - even though salt mean shows up in ffs one, salt min resulted in higher auc. They are highly correlated
+# decision for temp mean vs temp max. Highly correlated, auc is same for one versus the other and marginal effects plots are same. Temp max is more correlated with temp cv but not enough to matter. Temp max is probably more intersting for future change
+# cumulative effects marginally increases AUC but relimp is 0 and it causes outliers significance in dharma residuals so was removed
+m_e_3 <- sdmTMB_cv(formula = presence ~ s(depth_stnd, k = 3) + substrate + slope_stnd + rei_stnd + DOmin_stnd + saltmin_stnd + tempmax_stnd + freshwater_sqrt_stnd + tidal_sqrt_stnd,
                    mesh = barrier_mesh, 
                    family = binomial(link = "logit"), 
                    spatial = FALSE, 
@@ -88,26 +102,40 @@ roc <- pROC::roc(m_e_3$data$presence, plogis(m_e_3$data$cv_predicted))
 auc <- pROC::auc(roc)
 auc
 
+# AUC = 0.928, Tjur = 0.22 . So having spatial random field makes it worse
+# having spatial field make model under dispersed (means model is too complex) and is not great for future projections as well.  tried fitting model with spatial field and just depth, substrate, slope and rei but still underdispersion
+m_e_4 <- sdmTMB_cv(formula = presence ~ s(depth_stnd, k = 3) + substrate + slope_stnd + rei_stnd + DOmin_stnd + saltmin_stnd + tempmax_stnd + freshwater_sqrt_stnd + tidal_sqrt_stnd,
+                   mesh = barrier_mesh, 
+                   family = binomial(link = "logit"), 
+                   spatial = TRUE, 
+                   data = data, 
+                   fold_ids = "fold")
+
 eval_cv <- evalStats( folds=1:numFolds,
                       m=m_e_3,
                       CV=cv_list_eelgrass$cv)
 
 # fit full model
-fmodel <- sdmTMB(formula = presence ~ s(depth_stnd, k = 3) + substrate + slope_stnd + rei_stnd + DOmin_stnd + saltmin_stnd + tempcv_stnd +tempmean_stnd + cul_eff_stnd,
+fmodel <- sdmTMB(formula = presence ~ s(depth_stnd, k = 3) + substrate + slope_stnd + rei_stnd + DOmin_stnd + saltmin_stnd + tempmax_stnd + freshwater_sqrt_stnd + tidal_sqrt_stnd,
                      mesh = barrier_mesh, 
                      family = binomial(link = "logit"), 
                      spatial = FALSE, 
                      data = data)
 
+
 #have a look at marginal effects
 ggeffects::ggeffect(model = fmodel,  terms = "rei_stnd[-1:8]") %>% plot() 
 ggeffects::ggeffect(model = fmodel,  terms = "slope_stnd[-1:8]") %>% plot()
 ggeffects::ggeffect(model = fmodel,  terms = "saltmin_stnd[-11:2]") %>% plot() # as salinity min increases so does presence
-ggeffects::ggeffect(model = fmodel,  terms = "tempmean_stnd[-4:5]") %>% plot() # as mean temp increases presence goes down
-ggeffects::ggeffect(model = fmodel,  terms = "tempcv_stnd[-3:6]") %>% plot() # as temp varability increases so does presence
+#ggeffects::ggeffect(model = fmodel,  terms = "tempmean_stnd[-4:5]") %>% plot() # as mean temp increases presence goes up
+ggeffects::ggeffect(model = fmodel,  terms = "tempmax_stnd[-4:5]") %>% plot() # as max temp increases presence goes up
+ggeffects::ggeffect(model = fmodel,  terms = "tidal_sqrt_stnd[-4:5]") %>% plot() # as tidal sqrt increases presence goes up
+#ggeffects::ggeffect(model = fmodel,  terms = "saltmean_stnd[-11:2]") %>% plot() # as salinity mean increases so does presence
+ggeffects::ggeffect(model = fmodel,  terms = "freshwater_sqrt_stnd[-11:2]") %>% plot() # as freshwater increases presence goes down
+#ggeffects::ggeffect(model = fmodel,  terms = "tempcv_stnd[-3:6]") %>% plot() # as temp varability increases so does presence
 ggeffects::ggeffect(model = fmodel,  terms = "DOmin_stnd[-7:2]") %>% plot() # as min DO increases presence goes down
 ggeffects::ggeffect(model = fmodel,  terms = "substrate") %>% plot() 
-ggeffects::ggeffect(model = fmodel,  terms = "cul_eff_stnd[-2:5]") %>% plot() 
+#ggeffects::ggeffect(model = fmodel,  terms = "cul_eff_stnd[-2:5]") %>% plot() 
 visreg::visreg(fmodel, "depth_stnd")
 visreg::visreg(fmodel, "DOmin_stnd")
 visreg::visreg(fmodel, "slope_stnd")
@@ -136,7 +164,7 @@ data$pred_kappa_thresh <- ifelse(data$fitted_vals < thresh$Predicted[thresh$Meth
 data$pred_PCC_thresh <- ifelse(data$fitted_vals < thresh$Predicted[thresh$Method == "MaxPCC"], 0, 1) 
 
 eval_fmod <- evalfmod( x=data, thresh = thresh )
-# this model has good TSS, is well calibrated (miller). for calibration (Hosmer & Lemeshow goodness-of-fit) model seems to have issues at mid to higher predicted probabilities
+# this model has good TSS (0.704), is well calibrated (miller). for calibration (Hosmer & Lemeshow goodness-of-fit) model seems to have issues at higher predicted probabilities
 
 ###Notes on evaluation statistics
 # Values of TSS greater than 0.6 are considered good, between 0.2 and 0.6 moderate, and less than 0.2 poor (Jones et al. 2010; Landis and Koch 1977).
@@ -155,12 +183,13 @@ eval_fmod <- evalfmod( x=data, thresh = thresh )
 # The smaller the error measure (eer) returned values, the better the model predictions fit the observations.
 
 #get relative importance
-prednames <- c("depth_stnd", "substrate", "rei_stnd", "slope_stnd", "tempcv_stnd", "tempmean_stnd", "DOmin_stnd", "saltmin_stnd", "cul_eff_stnd" )
+#prednames <- c("depth_stnd", "substrate", "rei_stnd", "slope_stnd", "tempcv_stnd", "tempmean_stnd", "DOmin_stnd", "saltmin_stnd" )
+prednames <- c("depth_stnd", "substrate", "rei_stnd", "slope_stnd", "tempmax_stnd", "DOmin_stnd", "saltmin_stnd", "freshwater_sqrt_stnd", "tidal_sqrt_stnd")
 relimp <- varImp( model=fmodel,
                   dat=data,
                   preds=prednames,
                   permute=10 ) # Number of permutations
-# depth 80.3, substrate 14.6, slope 2.0, rei 1.9, do min 1.7, salt min 0.3, tempcv 0.1, tempmean 0.1, cul eff 0.1
+# depth 71.6, substrate 22.8, slope 3.0, rei 0.5, do min 0.4, salt min 0.7, tempmax 0.9, freshwater 0.0, tidal sqrt 0.0
 
 ####check residuals####
 # MCMC based randomized quantile residuals (takes a while to compute)
@@ -215,17 +244,18 @@ mesh_pre2013 <- make_mesh(data = data_pre2013, xy_cols = c("X", "Y"), cutoff = 1
 plot(mesh_pre2013)
 barrier_mesh_pre2013 <- add_barrier_mesh(mesh_pre2013, barrier_sf = coastline, proj_scaling = 1000, plot = TRUE)
 
-m_eelgrass_forecast <- sdmTMB(formula = presence ~ s(depth_stnd, k = 3) + substrate + slope_stnd + rei_stnd + saltmin_stnd + tempmean_stnd + tempcv_stnd + DOmin_stnd + cul_eff_stnd,
+m_eelgrass_forecast <- sdmTMB(formula = presence ~ s(depth_stnd, k = 3) + substrate + slope_stnd + rei_stnd + DOmin_stnd + saltmin_stnd + tempmax_stnd + freshwater_sqrt_stnd + tidal_sqrt_stnd,
+                              #formula =  presence ~ s(depth_stnd, k = 3) + substrate + slope_stnd + rei_stnd + saltmin_stnd + tempmean_stnd + tempcv_stnd + DOmin_stnd,
                                mesh = barrier_mesh_pre2013, 
                                family = binomial(link = "logit"), 
                                spatial = FALSE, 
                                data = data_pre2013) 
-m_eelgrass_forecast_spatial <- sdmTMB(formula = presence ~ s(depth_stnd, k = 3) + substrate + slope_stnd + rei_stnd + saltmin_stnd + tempmean_stnd + tempcv_stnd + DOmin_stnd + cul_eff_stnd,
+m_eelgrass_forecast_spatial <- sdmTMB(formula = presence ~ s(depth_stnd, k = 3) + substrate + slope_stnd + rei_stnd + DOmin_stnd + saltmin_stnd + tempmax_stnd + freshwater_sqrt_stnd + tidal_sqrt_stnd,
                               mesh = barrier_mesh_pre2013, 
                               family = binomial(link = "logit"), 
                               spatial = TRUE, 
                               data = data_pre2013) 
-data.df <- data %>% select(presence, X, Y, depth_stnd, slope_stnd, rei_stnd, substrate, saltmin_stnd, DOmin_stnd, tempcv_stnd, tempmean_stnd, cul_eff_stnd, Year)
+data.df <- data %>% select(presence, X, Y, depth_stnd, slope_stnd, rei_stnd, substrate, saltmin_stnd, DOmin_stnd, tempmax_stnd, freshwater_sqrt_stnd, tidal_sqrt_stnd, Year)
 
 forecast <- plogis(predict(m_eelgrass_forecast, newdata = data.df %>% filter(Year > 2012))$est)
 forecast_spatial <- plogis(predict(m_eelgrass_forecast_spatial, newdata = data.df %>% filter(Year > 2012))$est)
@@ -242,8 +272,8 @@ forecast_predict_eelgrass <- data.frame(TjurR2_no_spatial = c(tjur(y = data.df$p
                                         AUC_spatial = c(ModelMetrics::auc(data.df$presence[data.df$Year > 2012], forecast_spatial),
                                                 ModelMetrics::auc(data.df$presence[data.df$Year < 2010], pre_2013_spatial)),
                                          type = factor(c("forecast", "training"), levels = c("training", "forecast"), ordered =  TRUE))
-## AUC dropped from 0.932 to 0.92 and Tjur dropped from 0.147 to 0.141 when forecasted #tjur is quite a bit less when no spatial field
-# model did much better forcasting without spatial field
+## AUC dropped from 0.923 to 0.921 and Tjur increased (?) from 0.197 to 0.254 when forecasted #tjur is quite a bit less when no spatial field
+# model did  better forcasting without spatial field for AUC (marginally), so while spatial random field may make a better prediction, it doesn't help with projection
 save(data, fmodel, relimp, thresh, r_ret, eval_cv, eval_fmod, forecast_predict_eelgrass, file = "code/output_data/final_eelgrass_model.RData")
 
 
@@ -255,11 +285,11 @@ sp = "PH"
 numFolds <- length(unique(seagrass_data$fold_seagrass))
 data <- filter(seagrass_data_long, species == sp) %>% rename(fold = fold_seagrass)
 print(paste(sp, " present in ", round((sum(data$presence)/nrow(data))*100,2), "% of observations", sep = ""))
+# present in 1.39% of 20 m cells
 
 ## test VIF
-my_model <- lm(presence~ depth_stnd + rei_sqrt_stnd + tidal_sqrt_stnd + 
-                 saltcv_stnd + PARmin_stnd + DOmean_stnd + surftempcv_stnd + surftempmean_stnd  +
-                 surftempmax_stnd, data = data)
+my_model <- lm(presence~ depth_stnd + substrate + rei_sqrt_stnd + tempmin_stnd +
+                 saltcv_stnd + PARmin_stnd + surftempmax_stnd + NO3_stnd, data = data)
 olsrr::ols_vif_tol(my_model)
 # Tolerance of <0.1 might indicate multicollinearity. VIF exceeding 5 requires further investigation, whereas VIFs above 10 indicate multicollinearity. Ideally, the Variance Inflation Factors are below 3.
 
@@ -270,8 +300,20 @@ substrates_present # there are surgrass presence observations on all substrates
 ### Forward feature selection test (testing one method to limit variables )
 #tested removing depth, makes horrible models
 surfgrass_ffs <- glm_ffs(data)  ### variables that came out include depth, substrate, slope_stnd, rei_stnd
-### variables that came out include depth, rei sqrt, subtrate. Surftempmin_stnd (2); DOmin (1); Freshwater sqrt (1); Tempcvstn(1); Tempmin (1); Slope  (1); PAR mean (1)
-# so need to include some temp variable
+save(surfgrass_ffs, file = "code/output_data/surfgrass_ffs_variables.RData")
+## variables that came out include most often depth, rei sqrt, rei, temp min, tidal sqrt, substrate. A few times slope, cul eff, freshwater came out
+
+library(MASS)
+# test stepwise model
+datasub <- data %>% dplyr::select(substrate:cul_eff_stnd, presence) %>% dplyr::select(-rei_stnd, -tidal_stnd, -saltmean_stnd, -PARmax_stnd)
+full_model <- glm(presence ~ ., data = datasub, family = binomial(link = "logit"))
+
+# Perform stepwise selection (both directions)
+stepwise_model <- step(full_model, direction = "both")
+
+# View the selected model
+summary(stepwise_model)
+
 
 #make mesh # tested several mesh sizes between 20- 10 km and 15 had highest AUC
 mesh<- make_mesh(data = data, xy_cols = c("X", "Y"), cutoff = 12) 
@@ -280,31 +322,93 @@ barrier_mesh <- add_barrier_mesh(mesh, barrier_sf = coastline, proj_scaling = 10
 
 #fit model
 plan(multisession)
-# model selected by ffs without spatial field AUC = 0.9443
-m_s_1 <- sdmTMB_cv(formula = presence ~ depth_stnd + substrate + rei_sqrt_stnd,
+# model selected by ffs without spatial field, none as splines AUC = 0.85, tjur 0.122. 
+#Making depth a spline makes it worse (AUC = 0.847; Tjur = 0.122), 
+#rei sqrt spline MAKES auc BETTER AND TJUR WORSE  AUC = 0.87, tjur = 0.104), #CHOOSE REI SQRT OVER REI rei instead of rei sqrt 0.83, tjur 0.125 # rei spline auc = 0.84 tjur = 0.07
+# make tidal a spline AUC = 0.87, tjur = 0.104 doesnt improve model
+m_s_1 <- sdmTMB_cv(formula = presence ~ depth_stnd + substrate + s(rei_sqrt_stnd, k = 3) + tempmin_stnd + tidal_sqrt_stnd,
                    mesh = barrier_mesh, 
                    family = binomial(link = "logit"), 
                    spatial = FALSE, 
                    data = data, 
                    fold_ids = "fold")
-# model selected by ffs with spatial field AUC = 0.9551
-m_s_2 <- sdmTMB_cv(formula = presence ~ depth_stnd + substrate + rei_sqrt_stnd,
+roc <- pROC::roc(m_s_1$data$presence, plogis(m_s_1$data$cv_predicted))
+auc <- pROC::auc(roc)
+auc
+
+# model selected by ffs with spatial field  AUC = 0.90, tjur 0.20
+m_s_2 <- sdmTMB_cv(formula = presence ~ depth_stnd + substrate + s(rei_sqrt_stnd, k = 3) + tempmin_stnd + tidal_sqrt_stnd,
                    mesh = barrier_mesh, 
                    family = binomial(link = "logit"), 
                    spatial = TRUE, 
                    data = data, 
                    fold_ids = "fold")
-# model selected by relimp without spatial field AUC = 0.9613
-#having spatial field makes model underdispersed (means too complicated)
-# cul_eff not important for surfgrass model so not included (makes auc go down and 0.0 in relimp. 
-m_s_3 <- sdmTMB_cv(formula = presence ~ depth_stnd + rei_sqrt_stnd + tidal_sqrt_stnd + substrate + 
-                     saltcv_stnd + PARmin_stnd + DOmean_stnd + surftempcv_stnd + surftempmean_stnd  +
-                     surftempmax_stnd ,
+roc <- pROC::roc(m_s_2$data$presence, plogis(m_s_2$data$cv_predicted))
+auc <- pROC::auc(roc)
+auc
+
+# model with all ffs auc = 0.874, tjur = 0.121. This is better than m_s_1
+m_s_3 <- sdmTMB_cv(formula = presence ~ depth_stnd + substrate + s(rei_sqrt_stnd, k = 3) + tempmin_stnd + tidal_sqrt_stnd +
+                     slope_stnd + freshwater_sqrt_stnd + cul_eff_stnd,
                    mesh = barrier_mesh, 
                    family = binomial(link = "logit"), 
                    spatial = FALSE, 
                    data = data, 
                    fold_ids = "fold")
+
+# model with all ffs and extra auc = 0.95, tjur 0.268
+m_s_4 <- sdmTMB_cv(formula = presence ~ depth_stnd + substrate + s(rei_sqrt_stnd, k = 3) + tempmin_stnd + tidal_sqrt_stnd +
+                     slope_stnd + freshwater_sqrt_stnd + cul_eff_stnd +
+                     saltcv_stnd + PARmin_stnd + DOmean_stnd + surftempcv_stnd + surftempmean_stnd + surftempmax_stnd ,
+                   mesh = barrier_mesh, 
+                   family = binomial(link = "logit"), 
+                   spatial = FALSE, 
+                   data = data, 
+                   fold_ids = "fold")
+# remove freshwater auc=95, tjur = 0.258
+# remove cul effect auc = 0.948, tjur 0.225
+#remove slope auc =0.95, tjur 0.261, and relim <0.09 so remove
+# remove surf temp mean auc =0.95, tjur = 0.23 # if remove temp cv auc = 0.95 tjur 0.23
+# salt cv slightly higher over sal min
+# do min and mean the same
+# removed spline from rei auc 0.949 tjur 0.242
+# adding NO3 auc 0.952 tjur 0.242
+#remove tidal 0.95 tjur 0.242
+# remove domin auc 0.95 tjur 0.246
+#remove freshwater auc 0.95 tjur 0.243 (so tjur goes slightly down)
+# remove cul eff auc 0.95 tjur 0.233
+m_s_5 <- sdmTMB_cv(formula = presence ~ depth_stnd + substrate + rei_sqrt_stnd + tempmin_stnd +
+                                         saltcv_stnd + PARmin_stnd + surftempmax_stnd + NO3_stnd,
+                   mesh = barrier_mesh, 
+                   family = binomial(link = "logit"), 
+                   spatial = FALSE, 
+                   data = data, 
+                   fold_ids = "fold")
+# adding in spatial field now makes it go down! auc 0.926 tjur 0.199
+m_s_5a <- sdmTMB_cv(formula = presence  ~ depth_stnd + substrate + rei_sqrt_stnd + tempmin_stnd +
+                      cul_eff_stnd + 
+                      saltcv_stnd + PARmin_stnd + surftempmax_stnd + NO3_stnd,
+                   mesh = barrier_mesh, 
+                   family = binomial(link = "logit"), 
+                   spatial = TRUE, 
+                   data = data, 
+                   fold_ids = "fold")
+eval_cv <- evalStats( folds=1:numFolds,
+                      m=m_s_5,
+                      CV=cv_list_seagrass$cv)
+
+# model from stepwise, auc = 0.928, tjur =0.23
+m_s_6 <- sdmTMB_cv(formula = presence ~ substrate + depth_stnd  + s(rei_sqrt_stnd, k = 3) + tidal_sqrt_stnd + freshwater_sqrt_stnd + 
+                     slope_stnd + NO3_stnd + saltmin_stnd + PARmin_stnd + 
+                     surftempmax_stnd + surftempcv_stnd + 
+                     tempdiff_stnd + cul_eff_stnd,
+                   mesh = barrier_mesh, 
+                   family = binomial(link = "logit"), 
+                   spatial = FALSE, 
+                   data = data, 
+                   fold_ids = "fold")
+
+
 
 roc <- pROC::roc(m_s_3$data$presence, plogis(m_s_3$data$cv_predicted))
 auc <- pROC::auc(roc)
@@ -321,35 +425,39 @@ eval_cv <- evalStats( folds=1:numFolds,
 # Kappa is a measure of agreement between observed and predicted values that accounts for chance agreements and is dependent on prevalence of the observations. Kappa range from -1 to 1 with values less than 0 representing models that are no better than random and values of 1 indicating perfect agreement (Allouche et al. 2006). 
 
 #fit full model
-fmodel <- sdmTMB(formula = presence ~ depth_stnd + rei_sqrt_stnd + tidal_sqrt_stnd + substrate + 
-                     saltcv_stnd + PARmin_stnd + DOmean_stnd + surftempcv_stnd + surftempmean_stnd  +
-                     surftempmax_stnd,
+fmodel <- sdmTMB(formula = presence ~ depth_stnd + substrate + rei_sqrt_stnd + tempmin_stnd +
+                   saltcv_stnd + PARmin_stnd + surftempmax_stnd + NO3_stnd,
                      mesh = barrier_mesh, 
                      family = binomial(link = "logit"), 
                      spatial = FALSE, 
                      data = data)
 # look ar marginal effects plots, note temperature variables are correlated, so these are not correct 
-ggeffects::ggeffect(model = fmodel,  terms = "depth_stnd[-3:4]") %>% plot() # found highest at shallow
+ggeffects::ggeffect(model = fmodel,  terms = "depth_stnd[-3:6]") %>% plot() # found highest at shallow
 ggeffects::ggeffect(model = fmodel,  terms = "rei_sqrt_stnd[-1:9]") %>% plot()  # increases with exposure
-ggeffects::ggeffect(model = fmodel,  terms = "tidal_sqrt_stnd[-3:8]") %>% plot() # increases with tidal infleunce
+#ggeffects::ggeffect(model = fmodel,  terms = "tidal_sqrt_stnd[-3:8]") %>% plot() # increases with tidal infleunce
+ggeffects::ggeffect(model = fmodel,  terms = "tempmin_stnd[-5:3]") %>% plot() # increases with min temp
 ggeffects::ggeffect(model = fmodel,  terms = "substrate") %>% plot() # found on rock
+#ggeffects::ggeffect(model = fmodel,  terms = "slope_stnd[-2:9]") %>% plot() # decreases with higher slopes
+#ggeffects::ggeffect(model = fmodel,  terms = "freshwater_sqrt_stnd[-1:18]") %>% plot() # increases with freshwater
+#ggeffects::ggeffect(model = fmodel,  terms = "cul_eff_stnd[-2:5]") %>% plot() # increases with cul eff
 ggeffects::ggeffect(model = fmodel,  terms = "saltcv_stnd[-1:57]") %>% plot() # highest in areas with stable salinity
 ggeffects::ggeffect(model = fmodel,  terms = "PARmin_stnd[-3:2]") %>% plot() # increases with min par
-ggeffects::ggeffect(model = fmodel,  terms = "DOmean_stnd[-7:3]") %>% plot() #increases with do
-ggeffects::ggeffect(model = fmodel,  terms = "surftempcv_stnd[-3:8]") %>% plot() # increases with increased variation
+#ggeffects::ggeffect(model = fmodel,  terms = "DOmin_stnd[-7:2]") %>% plot() #increases with do
+#ggeffects::ggeffect(model = fmodel,  terms = "surftempcv_stnd[-3:8]") %>% plot() # increases with increased variation
 ggeffects::ggeffect(model = fmodel,  terms = "surftempmax_stnd[-4:5]") %>% plot() # declines with increased max temps
-ggeffects::ggeffect(model = fmodel,  terms = "surftempmean_stnd[-4:4]") %>% plot() # increases with mean temps
-
+#ggeffects::ggeffect(model = fmodel,  terms = "surftempmean_stnd[-4:4]") %>% plot() # increases with mean temps
+ggeffects::ggeffect(model = fmodel,  terms = "NO3_stnd[-3:42]") %>% plot() # as NO3 increases presence decreases
 
 visreg::visreg(fmodel, "depth_stnd")
 visreg::visreg(fmodel, "rei_sqrt_stnd")
-visreg::visreg(fmodel, "tidal_sqrt_stnd")
+#visreg::visreg(fmodel, "tidal_sqrt_stnd")
 visreg::visreg(fmodel, "saltcv_stnd")
 visreg::visreg(fmodel, "PARmin_stnd")
-visreg::visreg(fmodel, "DOmean_stnd")
-visreg::visreg(fmodel, "surftempcv_stnd")
+visreg::visreg(fmodel, "tempmin_stnd")
+#visreg::visreg(fmodel, "surftempcv_stnd")
 visreg::visreg(fmodel, "surftempmax_stnd")
-visreg::visreg(fmodel, "surftempmean_stnd")
+visreg::visreg(fmodel, "NO3_stnd")
+# all of these look like linear relationships. There are some outliars of high NO3 and high salt cv (does this matter??)
 
 # Model check
 tidy(fmodel, conf.int = TRUE)
@@ -374,14 +482,16 @@ eval_fmod <- evalfmod( x=data, thresh = thresh )
 # this model has good TSS, is well calibrated (miller). for calibration (Hosmer & Lemeshow goodness-of-fit) model seems to have issues at higher predicted probabilities
 
 # Variable importance (randomization and permutation method)
-prednames <- c("depth_stnd", "rei_sqrt_stnd", "tidal_sqrt_stnd", "substrate",  
-               "saltcv_stnd", "PARmin_stnd", "DOmean_stnd", "surftempcv_stnd",  
-               "surftempmax_stnd", "surftempmean_stnd")
+prednames <- c("depth_stnd", "rei_sqrt_stnd", "substrate", "tempmin_stnd",
+               "saltcv_stnd", "PARmin_stnd", "surftempmax_stnd", "NO3_stnd")
+
 
 relimp <- varImp( model=fmodel,
                   dat=data,
                   preds=prednames,
                   permute=10 ) # Number of permutations
+
+# depth 55.9, PARmin 10.1, rei_sqrt 1.8, salt cv 1.9, substrate 8.2, surftemp max 10.3, temp min 7.9, NO3 3.8
 
 ####check residuals####
 # MCMC based randomized quantile residuals (takes a while to compute)
@@ -437,22 +547,19 @@ mesh_pre2013 <- make_mesh(data = data_pre2013, xy_cols = c("X", "Y"), cutoff = 1
 plot(mesh_pre2013)
 barrier_mesh_pre2013 <- add_barrier_mesh(mesh_pre2013, barrier_sf = coastline, proj_scaling = 1000, plot = TRUE)
 
-m_surfgrass_forecast <- sdmTMB(formula = presence ~ depth_stnd + rei_sqrt_stnd + tidal_sqrt_stnd + substrate + 
-                                 saltcv_stnd + PARmin_stnd + DOmean_stnd + surftempcv_stnd + surftempmean_stnd  +
-                                 surftempmax_stnd,
+m_surfgrass_forecast <- sdmTMB(formula = presence ~ depth_stnd + substrate + rei_sqrt_stnd + tempmin_stnd +
+                                 saltcv_stnd + PARmin_stnd + surftempmax_stnd + NO3_stnd,
                       mesh = barrier_mesh_pre2013, 
                       family = binomial(link = "logit"), 
                       spatial = FALSE, 
                       data = data_pre2013) 
-m_surfgrass_forecast_spatial <- sdmTMB(formula = presence ~ depth_stnd + rei_sqrt_stnd + tidal_sqrt_stnd + substrate + 
-                                         saltcv_stnd + PARmin_stnd + DOmean_stnd + surftempcv_stnd + surftempmean_stnd  +
-                                         surftempmax_stnd,
+m_surfgrass_forecast_spatial <- sdmTMB(formula = presence ~ depth_stnd + substrate + rei_sqrt_stnd + tempmin_stnd +
+                                         saltcv_stnd + PARmin_stnd + surftempmax_stnd + NO3_stnd,
                                       mesh = barrier_mesh_pre2013, 
                                       family = binomial(link = "logit"), 
                                       spatial = TRUE, 
                                       data = data_pre2013) 
-data.df <- data %>% select(presence, X, Y, depth_stnd, rei_sqrt_stnd, tidal_sqrt_stnd, substrate, 
-                           saltcv_stnd, PARmin_stnd, DOmean_stnd, surftempcv_stnd, surftempmean_stnd, surftempmax_stnd, Year)
+data.df <- data %>% dplyr::select(presence, X, Y, depth_stnd, rei_sqrt_stnd, substrate, tempmin_stnd, saltcv_stnd, PARmin_stnd, surftempmax_stnd, NO3_stnd,  Year)
 
 forecast <- plogis(predict(m_surfgrass_forecast, newdata = data.df %>% filter(Year > 2012))$est)
 forecast_spatial <- plogis(predict(m_surfgrass_forecast_spatial, newdata = data.df %>% filter(Year > 2012))$est)
@@ -469,8 +576,8 @@ forecast_predict_surfgrass <- data.frame(TjurR2_no_spatial = c(tjur(y = data.df$
                                         AUC_spatial = c(ModelMetrics::auc(data.df$presence[data.df$Year > 2012], forecast_spatial),
                                                         ModelMetrics::auc(data.df$presence[data.df$Year < 2010], pre_2013_spatial)),
                                         type = factor(c("forecast", "training"), levels = c("training", "forecast"), ordered =  TRUE))
-## AUC dropped from 0.96 to 0.95 and Tjur dropped from 0.18 to 0.16
-# removing spatial field makes model make  better predictions. So while having spatial random field makes current day predictions better, having it for forecasting makes it worse
+## AUC doesnt drop, stays at 0.95 and Tjur drops from 0.17 to 0.14
+# having spatial random field makes current day predictions better, having it for forecasting makes it worse
 
 save(data, fmodel, relimp, thresh, r_ret, eval_cv, eval_fmod, forecast_predict_surfgrass, file = "code/output_data/final_surfgrass_model.RData")
 

@@ -157,7 +157,7 @@ glm_ffs <- function(data, NumFolds){
     set.seed(2024)
     #performing model selection by glmStepAIC 
     caret_model <- CAST::ffs(response = sp_data$presence, 
-                             predictors = sp_data[,6:37], 
+                             predictors = sp_data[,6:35], 
                              method = "glm", 
                              family = "binomial",
                              trControl = fitControl)
