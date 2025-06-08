@@ -308,3 +308,20 @@ evalfmod <- function( x, thresh ){
   eval.df <- data.frame(kappa=kappa, TSS=TSS, miller = miller, eer=eer, hlgof_quant$chi.sq, hlgof_quant$p.value, hlgof_quant$RMSE,  hlgof_prob$chi.sq, hlgof_prob$p.value, hlgof_prob$RMSE, hlgof_nbin$chi.sq, hlgof_nbin$p.value, hlgof_nbin$RMSE, species = sp)
   return(eval.df)
 } 
+
+
+
+
+#Rasterizing function
+rasterize_eelgrass_year <- function(year, poly_data, line_data, point_data, template_rast) {
+  poly_year <- poly_data[poly_data$Year == year, ]
+  line_year <- line_data[line_data$Year == year, ]
+  point_year <- point_data[point_data$Year == year, ]
+  
+  poly_r <- rasterize(poly_year, template_rast, field = 1, background = NA, touches = TRUE)
+  line_r <- rasterize(line_year, template_rast, field = 1, background = NA, touches = TRUE)
+  point_r <- rasterize(point_year, template_rast, field = 1, background = NA, touches = TRUE)
+  
+  result_r <- ifel(!is.na(poly_r) | !is.na(line_r) | !is.na(point_r), 1, NA)
+  return(result_r)
+}
