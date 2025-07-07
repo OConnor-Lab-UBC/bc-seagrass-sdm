@@ -67,11 +67,11 @@ names(tidal_all)<-"tidal"
 tidal_index_all <- tidal_all/(maxFn(tidal_all))
 crs(tidal_index_all) <- "EPSG:3005"
 
-substrate_hg <- rast("raw_data/substrate_20m/hg_20m.tif")
-substrate_ncc <- rast("raw_data/substrate_20m/ncc_20m.tif")
-substrate_qcs <- rast("raw_data/substrate_20m/qcs_20m.tif")
-substrate_wcvi <- rast("raw_data/substrate_20m/wcvi_20m.tif")
-substrate_ss <- rast("raw_data/substrate_20m/sog_20m.tif")
+substrate_hg <- rast("raw_data/substrate_20m/updated/hg_20m.tif")
+substrate_ncc <- rast("raw_data/substrate_20m/updated/ncc_20m.tif")
+substrate_qcs <- rast("raw_data/substrate_20m/updated/qcs_20m.tif")
+substrate_wcvi <- rast("raw_data/substrate_20m/updated/wcvi_20m.tif")
+substrate_ss <- rast("raw_data/substrate_20m/updated/sog_20m.tif")
 names(substrate_hg) <- names(substrate_ncc) <- names(substrate_qcs) <- names(substrate_wcvi) <- names(substrate_ss) <- "substrate"
 crs(substrate_hg) <- crs(substrate_ncc) <- crs(substrate_qcs) <- crs(substrate_wcvi) <- crs(substrate_ss) <- "EPSG:3005"
 

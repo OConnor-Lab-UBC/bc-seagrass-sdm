@@ -56,7 +56,7 @@ rei_all <- terra::vrt(c("raw_data/REI/rei_hg.tif", "raw_data/REI/rei_ncc.tif", "
 slope_all <- terra::vrt(c("raw_data/envlayers-20m-hg/slope.tif", "raw_data/envlayers-20m-ncc/slope.tif", "raw_data/envlayers-20m-qcs/slope.tif", "raw_data/envlayers-20m-wcvi/slope.tif", "raw_data/envlayers-20m-shelfsalishsea/slope.tif"), "slope.vrt", overwrite=T)
 #plot(slope_all)
 
-substrate_all <- terra::vrt(c("raw_data/substrate_20m/hg_20m.tif", "raw_data/substrate_20m/ncc_20m.tif", "raw_data/substrate_20m/qcs_20m.tif", "raw_data/substrate_20m/sog_20m.tif", "raw_data/substrate_20m/wcvi_20m.tif"), "substrate.vrt", overwrite=T)
+substrate_all <- terra::vrt(c("raw_data/substrate_20m/updated/hg_20m.tif", "raw_data/substrate_20m/updated/ncc_20m.tif", "raw_data/substrate_20m/updated/qcs_20m.tif", "raw_data/substrate_20m/updated/sog_20m.tif", "raw_data/substrate_20m/updated/wcvi_20m.tif"), "substrate.vrt", overwrite=T)
 names(substrate_all)<-"substrate"
 crs(substrate_all) <- "EPSG:3005"
 #plot(substrate_all)

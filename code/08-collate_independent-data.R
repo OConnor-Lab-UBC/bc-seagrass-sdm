@@ -22,27 +22,25 @@ library(sf)
 library(tidyverse)
 library(terra)
 
+#### Load modelling functions ####
+source("code/modelling-functions.R")
+
 #load netforce data
 poly<- vect("raw_data/netforce/netforce_eelgrass_BC_polygons.shp")
 #only use data that have the spatial accuracy we need
 poly <- poly[poly$QC_Score >= 3, ]
-#poly_subset_post2012 <- poly[poly$Year >= 2013 & poly$Year <= 2023, ]
 
 lines1<- vect("raw_data/netforce/netforce_eelgrass_BC_line.shp")
 names(lines1)[names(lines1) == "YEAR"] <- "Year"
 lines1<- lines1[lines1$QC_Score >= 3, ]
-#lines1_subset_post2012 <- lines1[lines1$Year >= 2013 & lines1$Year <= 2023, ]
 
 lines2<- vect("raw_data/netforce/netforce_eelgrass_BC_line_Transects.shp")
 lines2 <- lines2[lines2$QC_Score >= 3, ]
-#lines2_subset_post2012 <- lines2[lines2$Year >= 2013 & lines2$Year <= 2023, ]
-
 lines<-rbind(lines1, lines2)
 
 points<- vect("raw_data/netforce/netforce_eelgrass_BC_points.shp")
 names(points)[names(points) == "QC_score"] <- "QC_Score"
 points <- points[points$QC_Score >= 3, ]
-#points_subset_post2012 <- points[points$Year >= 2013 & points$Year <= 2023, ]
 
 # template raster
 template_rast <- rast(c("raw_data/current_20m/Nearshore_CurrentSpeedIndex.tif"))
@@ -50,6 +48,15 @@ template_rast <- rast(c("raw_data/current_20m/Nearshore_CurrentSpeedIndex.tif"))
 # Identify all unique years
 all_years <- sort(unique(c(poly$Year, lines1$Year, lines2$Year, points$Year)))
 all_years <- all_years[all_years != "-999"] 
+years_to_remove <- c("1974", "1975", "1976", "1977", "1978", "1979", "1980", 
+                     "1981", "1995", "1996", "1997", "1999", "2000", "2002", 
+                     "2003", "2004", "2005", "2006", "2007", "2008", "2009",
+                     "2010", "2011", "2012", "2013", "2014", "2015", "2016", 
+                     "2017", "2018", "2019", "2020", "2021", "2022", "2023",
+                     "2024")
+
+# Filter all_years to exclude the unwanted years
+all_years <- all_years[!all_years %in% years_to_remove]
 
 # Initialize a list to store rasters
 eelgrass_rasters <- list()
@@ -62,9 +69,14 @@ for (yr in all_years) {
     poly_data = poly,
     line_data = lines,
     point_data = points,
-    template_rast = template_rast)
+    template_rast = template_rast
+    )
   # Store in list
   eelgrass_rasters[[as.character(yr)]] <- r
+  
+  # Save raster to file 
+  writeRaster(r, filename = paste0("code/output_data/eelgrass_netforce_raster_", yr, ".tif"), 
+              overwrite = TRUE)
 }
 
 save(eelgrass_rasters, file = "code/output_data/eelgrass_netforce_rasters.RData")
