@@ -7,15 +7,18 @@
 ##
 # Objective:
 # ---------
-# Generate independent datasets to validate SDMs. NETforce for eelgrass and ShoreZone for surfgrass
+# Generate independent datasets to validate SDMs. Primaraly NETforce for eelgrass and ShoreZone for surfgrass
 #
 ###############################################################################
-
+# Eelgrass
 # raster of netforce eelgrass polygon, point and line data: want full netforce data, years prior to sdm obs (1974-1992), years from obs to fit sdm (1993-2023)
-# raster of shorezone surfgrass, make assumption that surfgrass is found near high water line that is used by shorezone. Could make polygons that extend down to 0 (ask Kayleigh she did with bottom patches)
 
-# what about GBIF, Inat? reeflife
-# Matt's ROV surfgrass points
+# Surfgrass
+# raster of shorezone surfgrass, make assumption that surfgrass is found near high water line that is used by shorezone. 
+# shorezone surfgrass data: selected lines from 2014-2024 (could exclude cammano if jsut want up to 2023) and only kept records with along line occurence >25% (SURF_L). = 310 records. Buffered line by 40 m to capture where surfgrass likely
+# still underrepresented where surfgrass is likely to be on shoreline so selected bottom patches depth ribbons within 100 m from shoreline unit. Manually went through and selected appropriate polygons. Combined buffered unit length and BoPs for final surfgrass validation layer. 
+# went through gbif records and most were i naturalist so went back to origional photos to verify they were not drift
+# also used Matt's ROV points. Used the lat long that we closest to shroe as this is likely where the surfgrass was observed
 
 #load packages####
 library(sf)
@@ -25,7 +28,7 @@ library(terra)
 #### Load modelling functions ####
 source("code/modelling-functions.R")
 
-#load netforce data
+#load netforce eelgrass  data
 poly<- vect("raw_data/netforce/netforce_eelgrass_BC_polygons.shp")
 #only use data that have the spatial accuracy we need
 poly <- poly[poly$QC_Score >= 3, ]
@@ -47,16 +50,17 @@ template_rast <- rast(c("raw_data/current_20m/Nearshore_CurrentSpeedIndex.tif"))
 
 # Identify all unique years
 all_years <- sort(unique(c(poly$Year, lines1$Year, lines2$Year, points$Year)))
-all_years <- all_years[all_years != "-999"] 
-years_to_remove <- c("1974", "1975", "1976", "1977", "1978", "1979", "1980", 
-                     "1981", "1995", "1996", "1997", "1999", "2000", "2002", 
-                     "2003", "2004", "2005", "2006", "2007", "2008", "2009",
-                     "2010", "2011", "2012", "2013", "2014", "2015", "2016", 
-                     "2017", "2018", "2019", "2020", "2021", "2022", "2023",
-                     "2024")
-
-# Filter all_years to exclude the unwanted years
-all_years <- all_years[!all_years %in% years_to_remove]
+all_years <- all_years[all_years != "-999"]
+# r was crashing so had to write each year directly to disk and start over a few times
+# years_to_remove <- c("1974", "1975", "1976", "1977", "1978", "1979", "1980", 
+#                      "1981", "1995", "1996", "1997", "1999", "2000", "2002", 
+#                      "2003", "2004", "2005", "2006", "2007", "2008", "2009",
+#                      "2010", "2011", "2012", "2013", "2014", "2015", "2016", 
+#                      "2017", "2018", "2019", "2020", "2021", "2022", "2023",
+#                      "2024")
+# 
+# # Filter all_years to exclude the unwanted years
+# all_years <- all_years[!all_years %in% years_to_remove]
 
 # Initialize a list to store rasters
 eelgrass_rasters <- list()
@@ -75,53 +79,76 @@ for (yr in all_years) {
   eelgrass_rasters[[as.character(yr)]] <- r
   
   # Save raster to file 
-  writeRaster(r, filename = paste0("code/output_data/eelgrass_netforce_raster_", yr, ".tif"), 
+  writeRaster(r, filename = paste0("code/output_data/independent_validation/eelgrass_netforce_raster_", yr, ".tif"), 
               overwrite = TRUE)
 }
 
-save(eelgrass_rasters, file = "code/output_data/eelgrass_netforce_rasters.RData")
+
+
+# Subset the list to only the years of interest
+prediction_years <- 2013:2023
+pre_prediction_years <-1974:2012
+
+# Create full file paths for prediction years
+prediction_year_rasters <- paste0("code/output_data/independent_validation/eelgrass_netforce_raster_", prediction_years, ".tif")
+
+# Load first raster
+r <- rast(prediction_year_rasters[1])
+presence_count <- ifel(!is.na(r) & r > 0, 1, 0)  # Count 1 if presence, 0 if absence or NA
+
+# Loop through remaining rasters
+for (i in 2:length(prediction_year_rasters)) {
+  r <- rast(prediction_year_rasters[i])
+  presence_count <- presence_count + ifel(!is.na(r) & r > 0, 1, 0)
+  gc()
+}
+
+# Set cells to NA if they were NA in *all* years
+presence_count[presence_count == 0] <- NA
+
+writeRaster(presence_count, "code/output_data/independent_validation/BCeelgrass_netforce_2013_2023.tif", overwrite = TRUE)
+
+# Create full file paths for pre-prediction years
+preprediction_year_rasters <- paste0("code/output_data/independent_validation/eelgrass_netforce_raster_", pre_prediction_years, ".tif")
+
+# Load first raster
+r <- rast(preprediction_year_rasters[1])
+presence_count <- ifel(!is.na(r) & r > 0, 1, 0)  # Count 1 if presence, 0 if absence 
+
+# Loop through remaining rasters
+for (i in 2:length(preprediction_year_rasters)) {
+  r <- rast(preprediction_year_rasters[i])
+  presence_count <- presence_count + ifel(!is.na(r) & r > 0, 1, 0)
+  gc()
+}
+
+# Set cells to NA if they were NA in *all* years
+presence_count[presence_count == 0] <- NA
+
+writeRaster(presence_count, "code/output_data/independent_validation/BCeelgrass_netforce_1974_2012.tif", overwrite = TRUE)
 
 
 
-# Subset the list to only the years of interest, Combine the yearly rasters into a SpatRaster stack
-netforce_start_year <- 1974
-presurvey_start_year <- 1992
-survey_start_year <- 1993
-survey_end_year <- 2023
-prediction_start_year <- 2013
-preprediction_start_year <-2012
-presurvey_years_1974_1992 <- as.character(seq(netforce_start_year, presurvey_start_year))
-survey_years_1993_2012 <- as.character(seq(survey_start_year, preprediction_start_year))
-predicted_years_2013_2023 <- as.character(seq(prediction_start_year, survey_end_year))
+#### phyllospadix, there is so little data with overlap will not be separating by years and doing a count, just a yes or no
 
-# Sum across years (ignoring NA, only counting 1s)
-# Set cells that were NA in all years back to NA
-# Save rasters
+#load shorezone surfgrass  data
+poly_sg<- vect("raw_data/shorezone/phyllospadix2014_2024_shorezone_BOP_depthribbons.shp")
 
-# selected_stack_1974_2023 <- rast(eelgrass_rasters)
-# eelgrass_years_observed_1974_2023 <- sum(selected_stack_1974_2023, na.rm = TRUE)
-# eelgrass_years_observed_1974_2023[sum(is.na(selected_stack_1974_2023)) == nlyr(selected_stack_1974_2023)] <- NA
-# writeRaster(eelgrass_years_observed_1974_2023, "netforce_1974_2023.tif", overwrite = TRUE)
-# remove(selected_stack_1974_2023, eelgrass_years_observed_1974_2023)
+# load Matt's rov data 2020-2023 (though removed most 2020 data as there was only one deep lat and long and not the shore one)
+points_sg1<- vect("raw_data/Baum/ROV_Phyllospadix_obs.shp")
+#load gbif data
+points_sg2<- vect("raw_data/gbif/phyllospadix_gbif.shp")
 
-selected_rasters_1974_1992 <- eelgrass_rasters[names(eelgrass_rasters) %in% as.character(presurvey_years_1974_1992)]
-selected_stack_1974_1992 <- rast(selected_rasters_1974_1992)
-eelgrass_years_observed_1974_1992 <- sum(selected_stack_1974_1992, na.rm = TRUE)
-eelgrass_years_observed_1974_1992[sum(is.na(selected_stack_1974_1992)) == nlyr(selected_stack_1974_1992)] <- NA
-writeRaster(eelgrass_years_observed_1974_1992, "netforce_1974_1992.tif", overwrite = TRUE)
-remove(selected_rasters_1974_1992, selected_stack_1974_1992, eelgrass_years_observed_1974_1992)
+# template raster
+template_rast <- rast(c("raw_data/current_20m/Nearshore_CurrentSpeedIndex.tif"))
 
-selected_rasters_1993_2012 <- eelgrass_rasters[names(eelgrass_rasters) %in% as.character(survey_years_1993_2012)]
-selected_stack_1993_2012 <- rast(selected_rasters_1993_2012)
-eelgrass_years_observed_1993_2012 <- sum(selected_stack_1993_2012, na.rm = TRUE)
-eelgrass_years_observed_1993_2012[sum(is.na(selected_stack_1993_2012)) == nlyr(selected_stack_1993_2012)] <- NA
-writeRaster(eelgrass_years_observed_1993_2012, "netforce_1993_2012.tif", overwrite = TRUE)
-remove(selected_rasters_1993_2012, selected_stack_1993_2012, eelgrass_years_observed_1993_2012)
+# Rasterize all with value = 1
+r_poly  <- rasterize(poly_sg, template_rast, field = 1, background = NA, touches = TRUE)
+r_pts1  <- rasterize(points_sg1, template_rast, field = 1, background = NA, touches = TRUE)
+r_pts2  <- rasterize(points_sg2, template_rast, field = 1, background = NA, touches = TRUE)
 
-selected_rasters_2013_2023 <- eelgrass_rasters[names(eelgrass_rasters) %in% as.character(predicted_years_2013_2023)]
-selected_stack_2013_2023 <- rast(selected_rasters_2013_2023)
-eelgrass_years_observed_2013_2023 <- sum(selected_stack_2013_2023, na.rm = TRUE)
-eelgrass_years_observed_2013_2023[sum(is.na(selected_stack_2013_2023)) == nlyr(selected_stack_2013_2023)] <- NA
-writeRaster(eelgrass_years_observed_2013_2023, "netforce_2013_2023.tif", overwrite = TRUE)
-remove(selected_rasters_2013_2023, selected_stack_2013_2023, eelgrass_years_observed_2013_2023)
+# Combine them using cover()
+surfgrass_combined <- cover(r_pts1, r_poly)
+surfgrass_combined <- cover(r_pts2, surfgrass_combined)
 
+writeRaster(surfgrass_combined, "code/output_data/independent_validation/surfgrass_validation_raster_2013_2024.tif", overwrite = TRUE)

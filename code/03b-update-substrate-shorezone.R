@@ -28,6 +28,8 @@ substrate_ncc <- rast("raw_data/substrate_20m/ncc_20m.tif")
 substrate_qcs <- rast("raw_data/substrate_20m/qcs_20m.tif")
 substrate_wcvi <- rast("raw_data/substrate_20m/wcvi_20m.tif")
 substrate_ss <- rast("raw_data/substrate_20m/sog_20m.tif")
+names(substrate_hg) <- names(substrate_ncc) <- names(substrate_qcs) <- names(substrate_wcvi) <- names(substrate_ss) <- "substrate"
+crs(substrate_hg) <- crs(substrate_ncc) <- crs(substrate_qcs) <- crs(substrate_wcvi) <- crs(substrate_ss) <- "EPSG:3005"
 
 substrate<-mosaic(substrate_hg, substrate_ncc, substrate_qcs, substrate_wcvi, substrate_ss, fun = "max")
 names(substrate) <- "substrate"
@@ -47,16 +49,20 @@ substrate_sandupdate <- ifel(!is.na(sand_raster_27_28_30), sand_raster_27_28_30,
 substrate_sandupdate2 <- ifel(!is.na(sand_raster_16_17), sand_raster_16_17, substrate_sandupdate)
 substrate_update <- ifel(!is.na(mud_raster), mud_raster, substrate_sandupdate2)
 
-writeRaster(substrate_update, file.path("code/output_data/substrate_update.tif"), overwrite=TRUE)
-writeRaster(substrate, file.path("code/output_data/substrate.tif"), overwrite=TRUE)
+substrate_update_hg<- terra::crop(substrate_update, substrate_hg)
+substrate_update_hg <- resample(substrate_update_hg, substrate_hg, method = "near")
 
+substrate_update_ncc<- terra::crop(substrate_update, substrate_ncc)
+substrate_update_ncc <- resample(substrate_update_ncc, substrate_ncc, method = "near")
 
+substrate_update_qcs<- terra::crop(substrate_update, substrate_qcs)
+substrate_update_qcs <- resample(substrate_update_qcs, substrate_qcs, method = "near")
 
-substrate_update_hg<- substrate_update %>% terra::mask(substrate_hg) %>% terra::crop(substrate_hg)
-substrate_update_ncc<- substrate_update %>% terra::mask(substrate_ncc) %>% terra::crop(substrate_ncc)
-substrate_update_qcs<- substrate_update %>% terra::mask(substrate_qcs) %>% terra::crop(substrate_qcs)
-substrate_update_wcvi<- substrate_update %>% terra::mask(substrate_wcvi) %>% terra::crop(substrate_wcvi)
-substrate_update_ss<- substrate_update %>% terra::mask(substrate_ss) %>% terra::crop(substrate_ss)
+substrate_update_wcvi<- terra::crop(substrate_update, substrate_wcvi)
+substrate_update_wcvi <- resample(substrate_update_wcvi, substrate_wcvi, method = "near")
+
+substrate_update_ss<- terra::crop(substrate_update, substrate_ss)
+substrate_update_ss <- resample(substrate_update_ss, substrate_ss, method = "near")
 
 writeRaster(substrate_update_hg, file.path("raw_data/substrate_20m/updated/hg_20m.tif"), overwrite=TRUE)
 writeRaster(substrate_update_ncc, file.path("raw_data/substrate_20m/updated/ncc_20m.tif"), overwrite=TRUE)

@@ -518,27 +518,6 @@ hindcast_MESS<- predicts::mess(x = hindcast_predictor_data, v= transect_predicto
 
 env_20m_all <- env_20m_all %>% cbind(hindcast_MESS)
 
-env_20m_all_sub <- env_20m_all %>% mutate(mess_col = ifelse(mess < -0.01, "Below", "Above"),
-                                          mess_tv_col = ifelse(mess_tv < -0.01, "Below", "Above"))
-cols<- c("Above" = "grey", "Below" = "red")
-mess_plot<-ggplot(env_20m_all_sub)+
-  geom_sf(data = coastline, linewidth = 0.1)+
-  geom_tile(aes(x = X_m, y = Y_m, colour=mess_col, fill=mess_col, width=20,height=20))+
-  scale_colour_manual(values = cols) +
-  scale_fill_manual(values = cols) +
-  theme(panel.grid.major = element_blank(),
-        panel.grid.minor = element_blank(),
-        # Remove panel background
-        panel.background = element_blank(),
-        axis.text.x = element_blank(),
-        axis.text.y = element_blank(),
-        axis.ticks = element_blank())+
-  coord_sf(expand = FALSE)+
-  ylab("")+
-  xlab("") 
-mess_plot
-ggsave("./figures/pre-analysis/hindcast_mess.png", height = 6, width = 6)
-
 mess_raster_hg <- env_20m_all %>%
   filter(region == "Haida Gwaii") %>%
   select(X_m, Y_m, mess)
@@ -582,6 +561,26 @@ temporal_validation_MESS <- temporal_validation_MESS %>%
   rename(mess_tv = mess)
 env_20m_all <- env_20m_all %>% cbind(temporal_validation_MESS)
 
+env_20m_all_sub <- env_20m_all %>% mutate(mess_col = ifelse(mess < -0.01, "Below", "Above"),
+                                          mess_tv_col = ifelse(mess_tv < -0.01, "Below", "Above"))
+cols<- c("Above" = "grey", "Below" = "red")
+mess_plot<-ggplot(env_20m_all_sub)+
+  geom_sf(data = coastline, linewidth = 0.1)+
+  geom_tile(aes(x = X_m, y = Y_m, colour=mess_col, fill=mess_col, width=20,height=20))+
+  scale_colour_manual(values = cols) +
+  scale_fill_manual(values = cols) +
+  theme(panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        # Remove panel background
+        panel.background = element_blank(),
+        axis.text.x = element_blank(),
+        axis.text.y = element_blank(),
+        axis.ticks = element_blank())+
+  coord_sf(expand = FALSE)+
+  ylab("")+
+  xlab("") 
+mess_plot
+ggsave("./figures/pre-analysis/hindcast_mess.png", height = 6, width = 6)
 summary(env_20m_all)
 
 temporal_val_mess_plot<-ggplot(env_20m_all_sub)+
