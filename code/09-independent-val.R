@@ -71,8 +71,8 @@ ggplot(eelgrass_sf, aes(x = as.factor(obs), y = mod, fill = rock_group)) +
 eelgrass_sf_norock <- eelgrass_sf %>% filter(substrate != "Rock")
 
 boxplot(mod ~ obs, data = eelgrass_sf_norock,
-        main = "Modelled Probability by Observation Frequency",
-        xlab = "Years with Observed Eelgrass (1–10)",
+        #main = "Modelled Probability by Observation Frequency",
+        xlab = "Years with Observed Eelgrass",
         ylab = "Modelled Probability")
 
 # to help estimate a threshold should use high confidence locations - ie where eelgrass has been observed more than once

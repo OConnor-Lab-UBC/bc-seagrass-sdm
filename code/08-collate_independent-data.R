@@ -87,7 +87,7 @@ for (yr in all_years) {
 
 # Subset the list to only the years of interest
 prediction_years <- 2013:2023
-pre_prediction_years <-1974:2012
+pre_prediction_years <-c(1974:1981, 1995, 1996, 1997, 1999, 2000, 2002:2012)
 
 # Create full file paths for prediction years
 prediction_year_rasters <- paste0("code/output_data/independent_validation/eelgrass_netforce_raster_", prediction_years, ".tif")
