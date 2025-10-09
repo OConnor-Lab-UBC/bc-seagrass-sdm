@@ -384,7 +384,6 @@ save(NEP36_month_data, NEP36_month_grid, file = "code/output_data/intermediate_o
 ####CHELSA######
 #################
 # 1km monthly from 1981 to 2019
-# need to restrict areas to BC coast
 # Has temp, temp max, temp min, precipitation, surface downwelling shorewave flux, wind speeds
 # tas is Daily mean air temperatures at 2 metres from hourly ERA5 data in units K/10. no scale or offset
 # pr is "Amount" means mass per unit area. "Precipitation" in the earth's atmosphere means precipitation of water in all phases. units are kg m-2 month-1/100. no scale or offset
@@ -392,13 +391,14 @@ save(NEP36_month_data, NEP36_month_grid, file = "code/output_data/intermediate_o
 
 library(curl)
 library(terra)
-library(dplyr)
+library(tidyverse)
 
+# would crash so just downloaded seperate variables, sometimes would have to restart a certain year/month
 url_file <- "raw_data/CHELSA/envidatS3paths.txt"
 urls <- trimws(readLines(url_file))
 urls <- urls[nchar(urls) > 0] # remove blank lines
 
-out_csv <- "raw_data/CHELSA/CHELSA_BC_data_PR.csv"
+out_csv <- "raw_data/CHELSA/CHELSA_BC_data_PR2.csv"
 
 # If it already exists, remove it (to start clean)
 if (file.exists(out_csv)) file.remove(out_csv)
@@ -459,26 +459,70 @@ process_url <- function(u) {
     
     unlink(tmp)
   }, error = function(e) {
-    message("⚠️ Failed: ", fname, " (", e$message, ")")
+    message("Failed: ", fname, " (", e$message, ")")
   })
 }
-# ---------------------------
-# 3. Loop through all URLs
-# ---------------------------
+
 for (u in urls) {
   process_url(u)
 }
 
-message("✅ Extraction complete. Data saved to: ", out_csv)
+message("Extraction complete. Data saved to: ", out_csv)
 
 
 #then bring csv together with 
-Chelsa_month_pr <- read_csv("raw_data/CHELSA/CHELSA_BC_data_PR.csv") %>%
+Chelsa_month_pr1 <- read_csv("raw_data/CHELSA/CHELSA_BC_data_PR.csv") 
+Chelsa_month_pr2 <- read_csv("raw_data/CHELSA/CHELSA_BC_data_PR2.csv")
+unique_year_month1 <- Chelsa_month_pr1 %>%
+  distinct(year, month)
+unique_year_month2 <- Chelsa_month_pr2 %>%
+  distinct(year, month)
+Chelsa_month_pr1<- Chelsa_month_pr1 %>% 
+  filter(month < 5)
+# missing may, download may seperately. 
+
+Chelsa_month_pr3 <- read_csv("raw_data/CHELSA/CHELSA_BC_data_PR3.csv")
+Chelsa_month_pr <- rbind(Chelsa_month_pr1, Chelsa_month_pr2, Chelsa_month_pr3)
+rm(Chelsa_month_pr1)
+rm(Chelsa_month_pr2)
+rm(Chelsa_month_pr3)
+
+Chelsa_month_pr <- Chelsa_month_pr %>% 
   rename(precip = value) %>% select(-variable)
-Chelsa_month_tas <- read_csv("raw_data/CHELSA/CHELSA_BC_data_tas.csv")%>%
+unique_year_month <- Chelsa_month_pr %>%
+  distinct(year, month)
+
+
+Chelsa_month_tas1 <- read_csv("raw_data/CHELSA/CHELSA_BC_data_tas.csv")
+Chelsa_month_tas2 <- read_csv("raw_data/CHELSA/CHELSA_BC_data_tas2.csv")
+unique_year_month1 <- Chelsa_month_tas1 %>%
+  distinct(year, month)
+unique_year_month2 <- Chelsa_month_tas2 %>%
+  distinct(year, month)
+# not missing any 
+
+Chelsa_month_tas <- rbind(Chelsa_month_tas1, Chelsa_month_tas2)%>%
   rename(tempmean_air = value) %>% select(-variable)
-Chelsa_month_rsds <- read_csv("raw_data/CHELSA/CHELSA_BC_data_rsds.csv")%>%
+rm(Chelsa_month_tas1)
+rm(Chelsa_month_tas2)
+unique_year_month <- Chelsa_month_tas %>%
+  distinct(year, month)
+
+
+Chelsa_month_rsds1 <- read_csv("raw_data/CHELSA/CHELSA_BC_data_rsds.csv")
+Chelsa_month_rsds2 <- read_csv("raw_data/CHELSA/CHELSA_BC_data_rsds2.csv")
+unique_year_month1 <- Chelsa_month_rsds1 %>%
+  distinct(year, month)
+unique_year_month2 <- Chelsa_month_rsds2 %>%
+  distinct(year, month)
+# not missing any
+
+
+Chelsa_month_rsds <- rbind(Chelsa_month_rsds1, Chelsa_month_rsds2)%>%
   rename(rsds = value) %>% select(-variable)
+rm(Chelsa_month_rsds1)
+rm(Chelsa_month_rsds2)
+
 
 CHELSA_month_data <- Chelsa_month_pr %>%
   full_join(Chelsa_month_tas, by = join_by(x, y, month, year)) %>%

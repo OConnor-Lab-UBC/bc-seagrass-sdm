@@ -279,8 +279,9 @@ ssc_salt_5_cv_rast <- terra::rasterize(month_5_points, terra::rast(crs ="EPSG:35
 
 
 
-#NEED TO TEST NEP36 DATA, ALSO GRID RANGES BETWEEN 1.5 and 2.25km, choose 2 km, does that make sense??
+
 #### NEP36 Yearly data for NH4, NO3, PAR, DO####
+#GRID RANGES BETWEEN 1.5 and 2.25km, choose 2 km
 
 #subset the year data by these start and end year, and just surface values
 Year_surf_sub <- NEP36_year_data %>% 
@@ -334,8 +335,6 @@ NEP36_DO_5_mean_rast <- terra::rasterize(year_5_points, terra::rast(crs ="EPSG:3
   terra::merge(NEP36_DO_sur_mean_rast, na.rm=TRUE)
 NEP36_DO_5_min_rast <- terra::rasterize(year_5_points, terra::rast(crs ="EPSG:3573", extent = terra::ext(year_5_points), res=2000),field = "DO_min_5", fun=mean)%>%
   terra::merge(NEP36_DO_sur_min_rast, na.rm=TRUE)
-
-
 
 #### NEP36 Monthly data for temperature and salinity####
 
@@ -410,6 +409,7 @@ NEP36_salt_5_min_rast <- terra::rasterize(month_5_points, terra::rast(crs ="EPSG
   terra::merge(NEP36_salt_sur_min_rast, na.rm=TRUE)
 NEP36_salt_5_cv_rast <- terra::rasterize(month_5_points, terra::rast(crs ="EPSG:3573", extent = terra::ext(month_5_points), res=2000),field = "salt_cv_5", fun=mean)%>%
   terra::merge(NEP36_salt_sur_cv_rast, na.rm=TRUE)
+
 
 
 
