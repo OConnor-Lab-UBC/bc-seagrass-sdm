@@ -159,9 +159,9 @@ year_surf_summary <- Year_surf_sub %>% dplyr::group_by(x, y) %>%
                    DO_mean_sur = mean(DOmean, na.rm = TRUE), DO_min_sur = mean(DOmin, na.rm = TRUE))
 
 #Combine the above dataframe with the NH4 grid and filter out erroneous entries
-year_surf_summary_grid <- dplyr::full_join(year_surf_summary, SSC_dfo_year_grid, by=c("x","y")) %>% na.omit() %>% dplyr::filter(DO_mean_sur > 0)
+year_surf_summary_grid <- dplyr::full_join(year_surf_summary, dfo_grid, by=c("x","y")) %>% na.omit() %>% dplyr::filter(DO_mean_sur > 0)
 #Convert to spatial points and transform to grid crs
-year_surf_points <- sf::st_as_sf(year_surf_summary_grid, coords=(c("nav_lon", "nav_lat")), crs = sf::st_crs(4326)) %>% sf::st_transform(crs = sf::st_crs(3573))
+year_surf_points <- sf::st_as_sf(year_surf_summary_grid, coords=(c("longitude", "latitude")), crs = sf::st_crs(4326)) %>% sf::st_transform(crs = sf::st_crs(3573))
 #Rasterize all  predictors of interest onto the 500m equal area grid (size of salishseacast pixels) with mean = akin to project, merge with surface values because loose very shallow areas
 ssc_PAR_sur_mean_rast <- terra::rasterize(year_surf_points, terra::rast(crs ="EPSG:3573", extent = terra::ext(year_surf_points), res=500),field = "PAR_mean_sur", fun=mean)
 ssc_PAR_sur_max_rast <- terra::rasterize(year_surf_points, terra::rast(crs ="EPSG:3573", extent = terra::ext(year_surf_points), res=500),field = "PAR_max_sur", fun=mean)
@@ -182,9 +182,9 @@ year_5_summary <- Year_5_sub %>% dplyr::group_by(x, y) %>%
                    DO_mean_5 = mean(DOmean, na.rm = TRUE), DO_min_5 = mean(DOmin, na.rm = TRUE))
 
 #Combine the above dataframe with the grid and filter out erroneous entries
-year_5_summary_grid <- dplyr::full_join(year_5_summary, SSC_dfo_year_grid, by=c("x","y")) %>% na.omit() %>% dplyr::filter(DO_mean_5 > 0)
+year_5_summary_grid <- dplyr::full_join(year_5_summary, dfo_grid, by=c("x","y")) %>% na.omit() %>% dplyr::filter(DO_mean_5 > 0)
 #Convert to spatial points and transform to grid crs
-year_5_points <- sf::st_as_sf(year_5_summary_grid, coords=(c("nav_lon", "nav_lat")), crs = sf::st_crs(4326)) %>% sf::st_transform(crs = sf::st_crs(3573))
+year_5_points <- sf::st_as_sf(year_5_summary_grid, coords=(c("longitude", "latitude")), crs = sf::st_crs(4326)) %>% sf::st_transform(crs = sf::st_crs(3573))
 #Rasterize all  predictors of intrerest onto the 500m equal area grid (size of salishseacast pixels) with mean = akin to project, merge with surface values because loose very shallow areas
 ssc_PAR_5_mean_rast <- terra::rasterize(year_5_points, terra::rast(crs ="EPSG:3573", extent = terra::ext(year_5_points), res=500),field = "PAR_mean_5", fun=mean) %>%
   terra::merge(ssc_PAR_sur_mean_rast, na.rm=TRUE)
@@ -222,9 +222,9 @@ month_surf_summary <- month_surf_summary_year %>% dplyr::group_by(x, y) %>%
                    temp_diff_sur = mean(temp_diff_sur_year, na.rm = TRUE), temp_cv_sur = mean(temp_cv_sur_year, na.rm = TRUE))
 
 #Combine the above dataframe with the grid and filter out erroneous entries
-month_surf_summary_grid <- dplyr::full_join(month_surf_summary, SSC_dfo_month_grid, by=c("x","y")) %>% na.omit() %>% dplyr::filter(salt_mean_sur > 0)
+month_surf_summary_grid <- dplyr::full_join(month_surf_summary, dfo_mgrid, by=c("x","y")) %>% na.omit() %>% dplyr::filter(salt_mean_sur > 0)
 #Convert to spatial points and transform to grid crs
-month_surf_points <- sf::st_as_sf(month_surf_summary_grid, coords=(c("nav_lon", "nav_lat")), crs = sf::st_crs(4326)) %>% sf::st_transform(crs = sf::st_crs(3573))
+month_surf_points <- sf::st_as_sf(month_surf_summary_grid, coords=(c("longitude", "latitude")), crs = sf::st_crs(4326)) %>% sf::st_transform(crs = sf::st_crs(3573))
 #Rasterize all  predictors of intrerest onto the 500m equal area grid (size of salishseacast pixels) with mean = akin to project, merge with surface values because loose very shallow areas
 ssc_temp_sur_mean_rast <- terra::rasterize(month_surf_points, terra::rast(crs ="EPSG:3573", extent = terra::ext(month_surf_points), res=500),field = "temp_mean_sur", fun=mean)
 ssc_temp_sur_max_rast <- terra::rasterize(month_surf_points, terra::rast(crs ="EPSG:3573", extent = terra::ext(month_surf_points), res=500),field = "temp_max_sur", fun=mean)
@@ -254,9 +254,9 @@ month_5_summary <- month_5_summary_year %>% dplyr::group_by(x, y) %>%
                    temp_diff_5 = mean(temp_diff_5_year, na.rm = TRUE), temp_cv_5 = mean(temp_cv_5_year, na.rm = TRUE))
 
 #Combine the above dataframe with the NH4 grid and filter out erroneous entries
-month_5_summary_grid <- dplyr::full_join(month_5_summary, SSC_dfo_month_grid, by=c("x","y")) %>% na.omit() %>% dplyr::filter(salt_mean_5 > 0)
+month_5_summary_grid <- dplyr::full_join(month_5_summary, dfo_mgrid, by=c("x","y")) %>% na.omit() %>% dplyr::filter(salt_mean_5 > 0)
 #Convert to spatial points and transform to grid crs
-month_5_points <- sf::st_as_sf(month_5_summary_grid, coords=(c("nav_lon", "nav_lat")), crs = sf::st_crs(4326)) %>% sf::st_transform(crs = sf::st_crs(3573))
+month_5_points <- sf::st_as_sf(month_5_summary_grid, coords=(c("longitude", "latitude")), crs = sf::st_crs(4326)) %>% sf::st_transform(crs = sf::st_crs(3573))
 #Rasterize all  predictors of intrerest onto the 500m equal area grid (size of salishseacast pixels) with mean = akin to project, merge with surface values because loose very shallow areas
 ssc_temp_5_mean_rast <- terra::rasterize(month_5_points, terra::rast(crs ="EPSG:3573", extent = terra::ext(month_5_points), res=500),field = "temp_mean_5", fun=mean) %>%
   terra::merge(ssc_temp_sur_mean_rast, na.rm=TRUE)
@@ -435,7 +435,7 @@ month_surf_summary <- month_surf_summary_year %>% dplyr::group_by(x, y) %>%
                    rsds_mean = mean(rsds_mean_year, na.rm = TRUE), rsds_max = mean(rsds_max_year, na.rm = TRUE), rsds_min = mean(rsds_min_year, na.rm = TRUE), rsds_cv = mean(rsds_cv_year, na.rm = TRUE))
 
 #Convert to spatial points and transform to grid crs #NEED TO CHECK WHAT COORDINATE ARE IN AND MAKE SURE THIS WORKS
-#month_surf_points <- sf::st_as_sf(month_surf_summary_grid, coords=(c("nav_lon", "nav_lat")), crs = sf::st_crs(4326)) %>% sf::st_transform(crs = sf::st_crs(3573))
+month_surf_points <- sf::st_as_sf(month_surf_summary, coords=(c("x", "y")), crs = sf::st_crs(4326)) %>% sf::st_transform(crs = sf::st_crs(3573))
 
 #Rasterize all  predictors of interest onto the 1000m equal area grid with mean = akin to project, merge with surface values because loose very shallow areas
 chelsa_temp_air_mean_rast <- terra::rasterize(month_surf_points, terra::rast(crs ="EPSG:3573", extent = terra::ext(month_surf_points), res=1000),field = "temp_mean_air", fun=mean)
@@ -450,7 +450,6 @@ chelsa_rsds_mean_rast <- terra::rasterize(month_surf_points, terra::rast(crs ="E
 chelsa_rsds_max_rast <- terra::rasterize(month_surf_points, terra::rast(crs ="EPSG:3573", extent = terra::ext(month_surf_points), res=1000),field = "rsds_max", fun=mean)
 chelsa_rsds_min_rast <- terra::rasterize(month_surf_points, terra::rast(crs ="EPSG:3573", extent = terra::ext(month_surf_points), res=1000),field = "rsds_min", fun=mean)
 chelsa_rsds_cv_rast <- terra::rasterize(month_surf_points, terra::rast(crs ="EPSG:3573", extent = terra::ext(month_surf_points), res=1000),field = "rsds_cv", fun=mean)
-
 
 
 
