@@ -41,8 +41,8 @@ bathy20m <- mosaic(bathy_hg, bathy_ncc, bathy_qcs, bathy_wcvi, bathy_ss)
 # For seagrass climatologies were created in decadal slices as wanted to match data based on climatologies, not annual data as eelgrass is a perennial species that spreads by colonal growth;
 # Beds are usually stable over time even if they expand and contract 
 # 1993-2002, 2003-2012, 2013-2023. 
-start <- 2003
-end <- 2012
+start <- 2013
+end <- 2023
 
 
 #Summarise and make rasters
@@ -454,10 +454,6 @@ chelsa_rsds_cv_rast <- terra::rasterize(month_surf_points, terra::rast(crs ="EPS
 
 
 
-
-
-
-
 #Stack all of the layers together
 BCCM_layers <- c(bccm_NH4_5_mean_rast, bccm_NO3_5_mean_rast, bccm_salt_5_mean_rast, bccm_salt_5_min_rast, bccm_PAR_5_mean_rast, bccm_PAR_5_min_rast, 
                  bccm_PAR_5_max_rast, bccm_temp_s_mean_rast, bccm_temp_s_max_rast, bccm_temp_s_min_rast, bccm_temp_5_mean_rast, bccm_temp_5_max_rast, 
@@ -475,21 +471,53 @@ CHELSA_layers <- c(chelsa_temp_air_mean_rast, chelsa_temp_air_max_rast, chelsa_t
                    chelsa_precip_mean_rast, chelsa_precip_max_rast, chelsa_precip_min_rast, chelsa_precip_cv_rast,
                    chelsa_rsds_mean_rast, chelsa_rsds_max_rast, chelsa_rsds_min_rast, chelsa_rsds_cv_rast)
 
+
+rm(bccm_NH4_5_mean_rast, bccm_NO3_5_mean_rast, bccm_salt_5_mean_rast, bccm_salt_5_min_rast, bccm_PAR_5_mean_rast, bccm_PAR_5_min_rast, 
+   bccm_PAR_5_max_rast, bccm_temp_s_mean_rast, bccm_temp_s_max_rast, bccm_temp_s_min_rast, bccm_temp_5_mean_rast, bccm_temp_5_max_rast, 
+   bccm_temp_5_min_rast, bccm_do_5_mean_rast, bccm_do_5_min_rast, bccm_salt_5_cv_rast, bccm_temp_5_cv_rast, bccm_temp_5_diff_rast,
+   bccm_temp_s_cv_rast, bccm_temp_s_diff_rast, ssc_NH4_5_mean_rast, ssc_NO3_5_mean_rast, ssc_salt_5_mean_rast, ssc_salt_5_min_rast, ssc_PAR_5_mean_rast, ssc_PAR_5_min_rast, 
+   ssc_PAR_5_max_rast, ssc_temp_sur_mean_rast, ssc_temp_sur_max_rast, ssc_temp_sur_min_rast, ssc_temp_5_mean_rast, ssc_temp_5_max_rast, 
+   ssc_temp_5_min_rast, ssc_DO_5_mean_rast, ssc_DO_5_min_rast, ssc_salt_5_cv_rast, ssc_temp_5_cv_rast, ssc_temp_5_diff_rast,
+   ssc_temp_sur_cv_rast, ssc_temp_sur_diff_rast, NEP36_NH4_5_mean_rast, NEP36_NO3_5_mean_rast, NEP36_salt_5_mean_rast, NEP36_salt_5_min_rast, NEP36_PAR_5_mean_rast, NEP36_PAR_5_min_rast, 
+   NEP36_PAR_5_max_rast, NEP36_temp_sur_mean_rast, NEP36_temp_sur_max_rast, NEP36_temp_sur_min_rast, NEP36_temp_5_mean_rast, NEP36_temp_5_max_rast, 
+   NEP36_temp_5_min_rast, NEP36_DO_5_mean_rast, NEP36_DO_5_min_rast, NEP36_salt_5_cv_rast, NEP36_temp_5_cv_rast, NEP36_temp_5_diff_rast,
+   NEP36_temp_sur_cv_rast, NEP36_temp_sur_diff_rast, chelsa_temp_air_mean_rast, chelsa_temp_air_max_rast, chelsa_temp_air_min_rast, chelsa_temp_air_cv_rast,
+   chelsa_precip_mean_rast, chelsa_precip_max_rast, chelsa_precip_min_rast, chelsa_precip_cv_rast,
+   chelsa_rsds_mean_rast, chelsa_rsds_max_rast, chelsa_rsds_min_rast, chelsa_rsds_cv_rast, bathy_hg, bathy_ncc, bathy_qcs, bathy_ss, bathy_wcvi,
+   BCCM_h_do_data, BCCM_h_do_grid, BCCM_h_NH4_data, BCCM_h_NH4_grid, BCCM_h_NO3_data, BCCM_h_NO3_grid, BCCM_h_salt_data, BCCM_h_salt_grid, BCCM_h_temp_data, BCCM_h_temp_grid, BCCM_h_urad_data, BCCM_h_urad_grid,
+   CHELSA_month_data, dfo_grid, dfo_mgrid, do_points, do_sub, do_summary, do_summary_grid, do_summary_year, 
+   month_5_points, month_5_summary, month_5_summary_grid, month_5_summary_year, month_surf_points, month_surf_summary, month_surf_summary_grid, month_surf_summary_year, Month_5_sub,
+   Month_surf_sub, NEP36_month_data, NEP36_month_grid, NEP36_year_data, NEP36_year_grid, NEP36_DO_sur_mean_rast, NEP36_DO_sur_min_rast, NEP36_NH4_sur_mean_rast, NEP36_NO3_sur_mean_rast, NEP36_PAR_sur_max_rast,
+   NEP36_PAR_sur_mean_rast, NEP36_PAR_sur_min_rast, NEP36_salt_sur_cv_rast, NEP36_salt_sur_mean_rast, NEP36_salt_sur_min_rast, 
+   NH4_points, NH4_sub, NH4_summary, NH4_summary_grid, NH4_summary_year, NO3_points, NO3_sub, NO3_summary, NO3_summary_grid, NO3_summary_year, 
+   PAR_points, PAR_summary, PAR_summary_grid, PAR_summary_year, salt_points, salt_sub, salt_summary, salt_summary_grid, salt_summary_year, 
+   year_5_points, year_5_summary, year_5_summary_grid, year_surf_points, year_surf_summary, year_surf_summary_grid, Year_5_sub, Year_surf_sub, 
+   temp_points, temp_sub, temp_summary, temp_summary_grid, temp_summary_year, urad_sub, 
+   SSC_month_data, SSC_year_data, ssc_DO_sur_mean_rast, ssc_DO_sur_min_rast, 
+   ssc_NH4_sur_mean_rast, ssc_NO3_sur_mean_rast, ssc_PAR_sur_max_rast, ssc_PAR_sur_mean_rast, ssc_PAR_sur_min_rast, 
+   ssc_salt_sur_cv_rast, ssc_salt_sur_mean_rast, ssc_salt_sur_min_rast)
+
+gc()
+
 # resample (and reproject) onto DFO bathy grid
 BCCM_Resampled <- terra::sapp(BCCM_layers, function(x){
   terra::focal(x,w=3, fun = "mean", na.policy = "only", na.rm = TRUE) %>% terra::project(bathy20m, method="cubicspline") 
 })
+rm(BCCM_layers)
 #applied larger w to ssc layers otherwise was having bccm layers selected over ssc in nearshore shallow areas
 #extrapolation didn't seem too unreasonable 
 SSC_Resampled <- terra::sapp(SSC_layers, function(x){
   terra::focal(x,w=7, fun = "mean", na.policy = "only", na.rm = TRUE) %>% terra::project(bathy20m, method="cubicspline") 
 })
+rm(SSC_layers)
 NEP36_Resampled <- terra::sapp(NEP36_layers, function(x){
   terra::focal(x,w=3, fun = "mean", na.policy = "only", na.rm = TRUE) %>% terra::project(bathy20m, method="cubicspline") 
 })
+rm(NEP36_layers)
 CHELSA_Resampled <- terra::sapp(CHELSA_layers, function(x){
   terra::focal(x,w=3, fun = "mean", na.policy = "only", na.rm = TRUE) %>% terra::project(bathy20m, method="cubicspline") 
 })
+rm(CHELSA_layers)
 
 #merge ssc and bccm layers, chooses ssc layer over bccm or nep36 if present in same cells. Mask it by bathy layer
 NH4_5_mean_rast_bccm <- terra::merge(SSC_Resampled[[1]], BCCM_Resampled[[1]], na.rm=TRUE) %>% terra::mask(bathy20m) %>% terra::crop(bathy20m)
@@ -571,10 +599,42 @@ names(Predictor_Hindcast_Climatologies) <- c("NH4_5m_mean_bccm", "NO3_5m_mean_bc
                                              "precip_mean", "precip_max", "precip_min", "precip_cv",
                                              "rsds_mean","rsds_max", "rsds_min", "rsds_cv")
 
+# your SpatRaster with names already assigned:
+r <- Predictor_Hindcast_Climatologies
+layer_names <- names(r)
+
+# Name the folder using the year range
+out_dir <- paste0(
+  "code/output_data/processed_ocean_variables/years_",
+  start, "-", end
+)
+
+dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
+
+for (i in seq_len(nlyr(r))) {
+  terra::writeRaster(
+    r[[i]],
+    filename = file.path(out_dir, paste0(layer_names[i], ".tif")),
+    overwrite = TRUE,
+    datatype = "FLT4S",
+    gdal = c("COMPRESS=LZW", "TILED=YES")
+  )
+}
+
+#remove temp files
+terra::tmpFiles()
+terra::tmpFiles(remove = TRUE)
+
+
 #Save the hindcast predictor raster
-terra::writeRaster(Predictor_Hindcast_Climatologies, paste0("code/output_data/processed_ocean_variables/Predictor_Hindcast_Climatologies_", paste(start),"-",paste(end),".tif"), overwrite = TRUE)
-#checking individual rasters
-#terra::writeRaster(Predictor_Hindcast_Climatologies[[15]], paste0("code/output_data/processed_ocean_variables/Predictor_Hindcast_Climatologies_", names(Predictor_Hindcast_Climatologies[[15]]),".tif"), overwrite = TRUE)
+# terra::writeRaster(Predictor_Hindcast_Climatologies,
+#   filename = paste0("code/output_data/processed_ocean_variables/Predictor_Hindcast_Climatologies_", paste(start),"-",paste(end),".tif"), 
+#   overwrite = TRUE)
+
+
+
+
+
 
 # comparing 2013-2023 data
 # PARs all look weird across Salish Sea and BCCM boundaries.

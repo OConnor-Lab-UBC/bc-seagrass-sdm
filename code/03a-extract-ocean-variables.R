@@ -471,26 +471,12 @@ message("Extraction complete. Data saved to: ", out_csv)
 
 
 #then bring csv together with 
-Chelsa_month_pr1 <- read_csv("raw_data/CHELSA/CHELSA_BC_data_PR.csv") 
-Chelsa_month_pr2 <- read_csv("raw_data/CHELSA/CHELSA_BC_data_PR2.csv")
-unique_year_month1 <- Chelsa_month_pr1 %>%
-  distinct(year, month)
-unique_year_month2 <- Chelsa_month_pr2 %>%
-  distinct(year, month)
-Chelsa_month_pr1<- Chelsa_month_pr1 %>% 
-  filter(month < 5)
-# missing may, download may seperately. 
-
-Chelsa_month_pr3 <- read_csv("raw_data/CHELSA/CHELSA_BC_data_PR3.csv")
-Chelsa_month_pr <- rbind(Chelsa_month_pr1, Chelsa_month_pr2, Chelsa_month_pr3)
-rm(Chelsa_month_pr1)
-rm(Chelsa_month_pr2)
-rm(Chelsa_month_pr3)
-
-Chelsa_month_pr <- Chelsa_month_pr %>% 
-  rename(precip = value) %>% select(-variable)
+Chelsa_month_pr <- read_csv("raw_data/CHELSA/CHELSA_BC_data_PR.csv") 
 unique_year_month <- Chelsa_month_pr %>%
   distinct(year, month)
+
+Chelsa_month_pr <- Chelsa_month_pr %>% 
+  rename(precip = value) %>% select(-c(variable, cell))
 
 
 Chelsa_month_tas1 <- read_csv("raw_data/CHELSA/CHELSA_BC_data_tas.csv")
@@ -499,10 +485,11 @@ unique_year_month1 <- Chelsa_month_tas1 %>%
   distinct(year, month)
 unique_year_month2 <- Chelsa_month_tas2 %>%
   distinct(year, month)
-# not missing any 
+
+Chelsa_month_tas1 <- Chelsa_month_tas1 %>% filter(month < 9)
 
 Chelsa_month_tas <- rbind(Chelsa_month_tas1, Chelsa_month_tas2)%>%
-  rename(tempmean_air = value) %>% select(-variable)
+  rename(tempmean_air = value) %>% select(-c(variable, cell))
 rm(Chelsa_month_tas1)
 rm(Chelsa_month_tas2)
 unique_year_month <- Chelsa_month_tas %>%
@@ -519,7 +506,7 @@ unique_year_month2 <- Chelsa_month_rsds2 %>%
 
 
 Chelsa_month_rsds <- rbind(Chelsa_month_rsds1, Chelsa_month_rsds2)%>%
-  rename(rsds = value) %>% select(-variable)
+  rename(rsds = value) %>% select(-c(variable, cell))
 rm(Chelsa_month_rsds1)
 rm(Chelsa_month_rsds2)
 
