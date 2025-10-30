@@ -10,7 +10,6 @@
 # fit sdm models with sdmTMB 
 #
 ###############################################################################
-#test
 #### Load modelling functions ####
 source("code/modelling-functions.R")
 
