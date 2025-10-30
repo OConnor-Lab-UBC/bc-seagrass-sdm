@@ -20,24 +20,30 @@ UsePackages(c("sdmTMB", "sdmTMBextra", "tidyverse", "sf", "future", "terra", "fu
 ####load model input and prediction data####
 load("code/output_data/seagrass_model_inputs.RData")
 load("code/output_data/prediction_model_inputs.RData")
-seagrass_data_long <- seagrass_data_long %>% select(-saltmean_sq_stnd, -slope_sqrt_stnd, -saltmin_sq_stnd)
-
+seagrass_data_long <- seagrass_data_long %>% select(-saltmean_bccm_sq_stnd, -saltmean_nep_sq_stnd, -slope_sqrt_stnd, -saltmin_bccm_sq_stnd, -saltmin_nep_sq_stnd)
+seagrass_data_long <- seagrass_data_long %>%
+  mutate(Survey = as.factor(substr(HKey, 1, 3)),
+         HKey = as.factor(HKey))
 #  categorical predictors in environmental layers
-facVars <- "substrate"
+facVars <- c("substrate", "Survey")
 
 ####Eelgrass model####
 sp = "ZO"
 numFolds <- length(unique(seagrass_data$fold_eelgrass))
 data <- filter(seagrass_data_long, species == sp) %>% rename(fold = fold_eelgrass)
+data <- data %>% mutate(Survey = as.factor(Survey)) # was still not recognizing i changed survye to factor so did it again
 print(paste(sp, " present in ", round((sum(data$presence)/nrow(data))*100,2), "% of observations", sep = ""))
-# eelgrass in 3.69% of 20 m aggregated observations
+# eelgrass in 3.71% of 20 m aggregated observations
 
 #test variable correlation
-data_env<- data %>%  dplyr::select(7:35)
-enames <- names(data_env)
-corrplot::corrplot(cor(data_env), method = "number")
+data_env_bccm<- data[, !grepl("nep", names(data), ignore.case = TRUE)] %>%  dplyr::select(7:47)
+#enames <- names(data_env)
+corrplot::corrplot(cor(data_env_bccm, use = "pairwise.complete.obs"), method = "color",  col = colorRampPalette(c("red", "orange", "white", "blue", "purple"))(200), is.corr = TRUE, tl.cex = 0.6, tl.col = "black", number.cex = 0.5, order = "hclust", type = "upper")
 # Correlations close to-1 or +1 might indicate the existence of multicollinearity. one might suspect multicollinearity when the correlation between two (predictor) variables is below -0.9 or above +0.9.
-# correlated: PAR max and mean, salt min and mean and cv, surf temp min and surf temp cv, surf temp diff and surf temp max, surftempmean and temp mean, surftempmax and tempmax, temp diff and temp max, tempmean and temp max (but not temp min)
+data_env_nep<- data[, !grepl("bccm", names(data), ignore.case = TRUE)] %>%  dplyr::select(7:47)
+#enames <- names(data_env)
+corrplot::corrplot(cor(data_env_nep, use = "pairwise.complete.obs"), method = "color",  col = colorRampPalette(c("red", "orange", "white", "blue", "purple"))(200), is.corr = TRUE, tl.cex = 0.6, tl.col = "black", number.cex = 0.5, order = "hclust", type = "upper")
+
 
 ## test VIF
 my_model <- lm(presence~ substrate + depth_stnd +rei_sqrt_stnd + tidal_sqrt_stnd + freshwater_sqrt_stnd + 
@@ -58,98 +64,176 @@ substrates_present # there are eelgrass presence observations on all substrates
 #tested removing depth, makes horrible models
 eelgrass_ffs <- glm_ffs(data)  ### variables that came out include depth, substrate, slope_stnd, rei_stnd, and twice tidal sqrt, and once each salt mean and freshwater and temp max
 save(eelgrass_ffs, file = "code/output_data/eelgrass_ffs_variables.RData")
+# most important variables in all 10 folds are substrate, depth, slope. Airtemp min and rei was important in 5 folds, tidal sqrt in 2 folds and surf temp min bccm in 1 fold
 
 ####SDMtmb model####
 #make mesh
-mesh<- make_mesh(data = data, xy_cols = c("X", "Y"), cutoff = 12) # going to 10 km makes the model not run, likely will need to reduce fixed effects to make it work
+mesh<- make_mesh(data = data, xy_cols = c("X", "Y"), cutoff = 53) 
+#anything 30 and under makes the model underdispersed if no other variables (too complicated).
+# anythign under 53 with other variables is underdispersed
+#going to 10 km makes the model not run, likely will need to reduce fixed effects to make it work
 plot(mesh)
 barrier_mesh <- add_barrier_mesh(mesh, barrier_sf = coastline, proj_scaling = 1000, plot = TRUE)
 
 #fit cv model of spatial blocking 
 plan(multisession)
-#model indicated by forward feature selection (most important variables) with no spatial field, AUC is 0.9306, tjur = 0.243
-m_e_1 <- sdmTMB_cv(formula = presence ~ s(depth_stnd, k = 3) + substrate + slope_stnd + rei_stnd,
-                          mesh = barrier_mesh, 
-                          family = binomial(link = "logit"), 
-                          spatial = FALSE, 
-                          data = data, 
-                          fold_ids = "fold")
-roc <- pROC::roc(m_e_1$data$presence, plogis(m_e_1$data$cv_predicted))
-auc <- pROC::auc(roc)
-auc
-#model indicated by forward feature selection with spatial field, AUC is 0.9278, tjur 0.219
-m_e_2 <- sdmTMB_cv(formula = presence ~ s(depth_stnd, k = 3) + substrate + slope_stnd + rei_stnd,
-                   mesh = barrier_mesh, 
-                   family = binomial(link = "logit"), 
-                   spatial = TRUE, 
-                   data = data, 
-                   fold_ids = "fold")
-roc <- pROC::roc(m_e_2$data$presence, plogis(m_e_2$data$cv_predicted))
-auc <- pROC::auc(roc)
-auc
-# m_e_3 auc final is 0.9305, tjur = 0.2618. 
-# model indicated by looking at ffs (but also including the variables that showed up a few times ) at variable relative importance and also considering what is important for future change, and also what resulted in highest AUC
-# decision for salt mean vs salt min - even though salt mean shows up in ffs one, salt min resulted in higher auc. They are highly correlated
-# decision for temp mean vs temp max. Highly correlated, auc is same for one versus the other and marginal effects plots are same. Temp max is more correlated with temp cv but not enough to matter. Temp max is probably more intersting for future change
-# cumulative effects marginally increases AUC but relimp is 0 and it causes outliers significance in dharma residuals so was removed
-m_e_3 <- sdmTMB_cv(formula = presence ~ s(depth_stnd, k = 3) + substrate + slope_stnd + rei_stnd + DOmin_stnd + saltmin_stnd + tempmax_stnd + freshwater_sqrt_stnd + tidal_sqrt_stnd,
+#model indicated by forward feature selection (most important variables) with no spatial field, and no random effect
+# having the 0 means that there is no intercept. This allows you to see the effect size for each substrate type rather than having one as the reference.
+#AUC is 0.926, tjur = 0.190, loglike -9327
+m_e_0 <- sdmTMB_cv(formula = presence ~ s(depth_stnd, k = 3) + substrate + slope_stnd + rei_stnd  + tidal_sqrt_stnd + airtempmin_stnd, 
                    mesh = barrier_mesh, 
                    family = binomial(link = "logit"), 
                    spatial = FALSE, 
                    data = data, 
                    fold_ids = "fold")
-roc <- pROC::roc(m_e_3$data$presence, plogis(m_e_3$data$cv_predicted))
-auc <- pROC::auc(roc)
-auc
 
-# AUC = 0.928, Tjur = 0.22 . So having spatial random field makes it worse
-# having spatial field make model under dispersed (means model is too complex) and is not great for future projections as well.  tried fitting model with spatial field and just depth, substrate, slope and rei but still underdispersion
-m_e_4 <- sdmTMB_cv(formula = presence ~ s(depth_stnd, k = 3) + substrate + slope_stnd + rei_stnd + DOmin_stnd + saltmin_stnd + tempmax_stnd + freshwater_sqrt_stnd + tidal_sqrt_stnd,
+#model indicated by forward feature selection (most important variables) with no spatial field, but add random effect for survey type (observations from the same survey may be similar, difference in detection, observer training)
+#AUC is 0.930, tjur = 0.196, loglike -9282 so need to keep random effect for survey
+# having spline on depth makes model better, spline on any other variable makes no change
+m_e_1 <- sdmTMB_cv(formula = presence ~ s(depth_stnd, k = 3) + substrate + slope_stnd + rei_stnd + tidal_sqrt_stnd + airtempmin_stnd + (1|Survey), 
+                          mesh = barrier_mesh, 
+                          family = binomial(link = "logit"), 
+                          spatial = FALSE, 
+                          data = data, 
+                          fold_ids = "fold")
+
+# having a hkey random effect (1|HKey), 
+#auc 0.921 tjur 0.002, loglike -25695 makes Tjur and loglike so bad, so not worth including. Likely because a transect goes from deep to shallow so observations on a transect would not be similar to each other in terms of eelgrass as there would be no eelgrass deep
+m_e_1a <- sdmTMB_cv(formula = presence ~ s(depth_stnd, k = 3) + substrate + slope_stnd + rei_stnd + tidal_sqrt_stnd + airtempmin_stnd + (1 | HKey), 
+                   mesh = barrier_mesh, 
+                   family = binomial(link = "logit"), 
+                   spatial = FALSE, 
+                   data = data, 
+                   fold_ids = "fold")
+
+#model indicated by forward feature selection with spatial field, 
+#AUC is 0.941, tjur 0.308, loglike -9480 so to have spatial fields makes tjur and auc better but loglike worse
+m_e_2 <- sdmTMB_cv(formula = presence ~ s(depth_stnd, k = 3) + substrate + slope_stnd + rei_stnd + tidal_sqrt_stnd + airtempmin_stnd + (1|Survey),
                    mesh = barrier_mesh, 
                    family = binomial(link = "logit"), 
                    spatial = TRUE, 
                    data = data, 
                    fold_ids = "fold")
 
-eval_cv <- evalStats( folds=1:numFolds,
-                      m=m_e_3,
-                      CV=cv_list_eelgrass$cv)
 
-# fit full model
-fmodel <- sdmTMB(formula = presence ~ s(depth_stnd, k = 3) + substrate + slope_stnd + rei_stnd + DOmin_stnd + saltmin_stnd + tempmax_stnd + freshwater_sqrt_stnd + tidal_sqrt_stnd,
+# m_e_3 bccm model add freshwater AUC is 0.930, tjur 0.196, loglike -9288, so don't keep it doesn't make model better or worse
+# m_e_3 add domin AUC is 0.931, tjur 0.197, loglike -9290, # m_e_3 add domean AUC is 0.930, tjur 0.197, loglike -9303, Do make model worse domin has 0 relimp
+# m_e_3 add salt min AUC is 0.932, tjur 0.200, loglike -9279 # m_e_3 add salt mean AUC is 0.932, tjur 0.198, loglike -9281 
+# m_e_3 add salt cv AUC is 0.932, tjur 0.204, loglike -9264; this makes model better
+# m_e_3 add temp diff AUC is 0.926, tjur 0.213, loglike -9285 # m_e_3 add temp cv AUC is 0.924, tjur 0.208, loglike -9276 
+# m_e_3 add temp max AUC is 0.922, tjur 0.209, loglike -9288# m_e_3 add temp mean AUC is 0.927, tjur 0.208, loglike -9283
+# m_e_3 add temp min AUC is 0.932, tjur 0.203, loglike -9270; no temps make the model better, temp min makes less worse
+# m_e_3 add NH4 AUC is 0.931, tjur 0.211, loglike -9241 ,  makes model better add NH4
+# m_e_3 add NO3 AUC is 0.929, tjur 0.211, loglike -9274, don't add N03
+# m_e_3 add cul_eff AUC is 0.930, tjur 0.212, loglike -9254 , also has 0 relimp
+# m_e_3 add PARmean AUC is 0.931, tjur 0.211, loglike -9253# m_e_3 add PARmax AUC is 0.931, tjur 0.209, loglike -9250
+# m_e_3 add PARmin AUC is 0.931, tjur 0.214, loglike -9262 # PAR doesn't make the models better
+#m_e_3 add surftempmax_bccm_stnd AUC is 0.927, tjur 0.210, loglike -9257#m_e_3 add surftempmean_bccm_stnd AUC is 0.929, tjur 0.210, loglike -9258
+#m_e_3 add surftempmin_bccm_stnd AUC is 0.931, tjur 0.212, loglike -9255#m_e_3 addsurftempdiff_bccm_stnd AUC is 0.927, tjur 0.214, loglike -9252
+#m_e_3 add surftempcv_bccm_stnd AUC is 0.930, tjur 0.212, loglike -9251 # surf temp doesn't make the models better, and cv has 0 relimp
+#m_e_3 prmax_stnd AUC is 0.931, tjur 0.207, loglike -9254 #m_e_3 prmean_stnd AUC is 0.931, tjur 0.208, loglike -9253
+#m_e_3 prmin_stnd AUC is 0.931, tjur 0.208, loglike -9248 
+#m_e_3 prcv_stnd AUC is 0.931, tjur 0.210, loglike -9245 # pr doesn't make model better but if had to add do prmcv
+#m_e_3 rsdsmin_stnd AUC is 0.932, tjur 0.216, loglike -9238, makes model better! add rsdsmin
+#m_e_3 rsdsmean_stnd AUC is 0.931, tjur 0.215, loglike -9243 #m_e_3 rsdsmax_stnd AUC is 0.931, tjur 0.215, loglike -9246
+#m_e_3 rsdscv_stnd AUC is 0.932, tjur 0.216, loglike -9238 (rsds min and cv highly correlated so pick one)
+# tidal ends up not important, if you remove tidal log likelihood increases
+
+#m_e_3 AUC is 0.933, tjur 0.213, loglike -9234, spline on depth makes better model
+# model indicated by looking at ffs (but also including the variables that showed up a few times ) at variable relative importance and also considering what is important for future change, and also what resulted in highest AUC, Tjur and sum loglikelihood
+m_e_3 <- sdmTMB_cv(formula = presence ~ s(depth_stnd, k = 3) + substrate + slope_stnd + rei_stnd +  
+                     airtempmin_stnd + rsdsmin_stnd + prcv_stnd + #chelsa variables
+                     saltcv_bccm_stnd + NH4_bccm_stnd + #bccm variables
+                     (1|Survey),  #random effect
+                   mesh = barrier_mesh, 
+                   family = binomial(link = "logit"), 
+                   spatial = FALSE, 
+                   data = data, 
+                   fold_ids = "fold")
+
+# same model with spatial AUC 0.942, tjur 0.304, loglike -9450
+m_e_3a <- sdmTMB_cv(formula = presence ~ s(depth_stnd, k = 3) + substrate + slope_stnd + rei_stnd +  
+                     airtempmin_stnd + rsdsmin_stnd + prcv_stnd + #chelsa variables
+                     saltcv_bccm_stnd + NH4_bccm_stnd + #bccm variables
+                     (1|Survey),  #random effect
+                   mesh = barrier_mesh, 
+                   family = binomial(link = "logit"), 
+                   spatial = TRUE, 
+                   data = data, 
+                   fold_ids = "fold")
+
+# no nep variables auc 0.931, tjur = 0.196, loglike -9293
+# m_e_4 nep add saltmin auc 0.935, tjur = 0.216, loglike -9251
+# m_e_4 nep add saltmean auc 0.935, tjur = 0.216, loglike -9251
+# m_e_4 nep add saltcv auc 0.933, tjur = 0.214, loglike -9247; all salts basically the same, so just add same as bccm
+# m_e_4 nep add nh4 auc 0.932, tjur = 0.220, loglike -9271;doesn't make model better
+# m_e_4 nep add no3 auc 0.933, tjur = 0.228, loglike -9270 ;doesn't make model better
+# m_e_3 add cul_eff AUC is 0.933, tjur 0.214, loglike -9263; deoesn't make model better 
+# m_e_3 add temp diff AUC is 0.929, tjur 0.224, loglike -9264 
+# m_e_3 add temp cv AUC is 0.930, tjur 0.226, loglike -9237
+# m_e_3 add temp max AUC is 0.927, tjur 0.213, loglike -9258
+# m_e_3 add temp mean AUC is 0.930, tjur 0.208, loglike -9272
+# m_e_3 add temp min AUC is 0.935, tjur 0.224, loglike -9232; makes model better
+
+# m_e_4 nep model auc  is , tjur = , loglike 
+m_e_4 <- sdmTMB_cv(formula = presence ~ s(depth_stnd, k = 3) + substrate + slope_stnd + rei_stnd +  
+                     airtempmin_stnd + rsdsmin_stnd + prcv_stnd + #chelsa variables
+                     saltcv_nep_stnd + tempmin_nep_stnd + #nep36 variables
+                     (1|Survey),  #random effect
+                   mesh = barrier_mesh, 
+                   family = binomial(link = "logit"), 
+                   spatial = FALSE, 
+                   data = data, 
+                   fold_ids = "fold")
+
+eval_cv <- evalStats( folds=1:numFolds,
+                      m=m_e_3a,
+                      CV=cv_list_eelgrass$cv)
+eval_cv
+
+# fit full model bccm 
+fmodel_e_bccm <- sdmTMB(formula = presence ~ s(depth_stnd, k = 3) + substrate + slope_stnd + rei_stnd + 
+                          airtempmin_stnd + rsdsmin_stnd + prcv_stnd + #chelsa variables
+                          saltcv_bccm_stnd + NH4_bccm_stnd + #bccm variables
+                          (1|Survey),  #random effect
                      mesh = barrier_mesh, 
                      family = binomial(link = "logit"), 
-                     spatial = FALSE, 
+                     spatial = TRUE, 
                      data = data)
 
+#PROBABLY NEED TO TEST SURVEY AND THEN MAKE PREDICTIONS JUST BASED ON ONE SURVEY TYPE??
 
 #have a look at marginal effects
-ggeffects::ggeffect(model = fmodel,  terms = "rei_stnd[-1:8]") %>% plot() 
-ggeffects::ggeffect(model = fmodel,  terms = "slope_stnd[-1:8]") %>% plot()
-ggeffects::ggeffect(model = fmodel,  terms = "saltmin_stnd[-11:2]") %>% plot() # as salinity min increases so does presence
-#ggeffects::ggeffect(model = fmodel,  terms = "tempmean_stnd[-4:5]") %>% plot() # as mean temp increases presence goes up
-ggeffects::ggeffect(model = fmodel,  terms = "tempmax_stnd[-4:5]") %>% plot() # as max temp increases presence goes up
-ggeffects::ggeffect(model = fmodel,  terms = "tidal_sqrt_stnd[-4:5]") %>% plot() # as tidal sqrt increases presence goes up
-#ggeffects::ggeffect(model = fmodel,  terms = "saltmean_stnd[-11:2]") %>% plot() # as salinity mean increases so does presence
-ggeffects::ggeffect(model = fmodel,  terms = "freshwater_sqrt_stnd[-11:2]") %>% plot() # as freshwater increases presence goes down
-#ggeffects::ggeffect(model = fmodel,  terms = "tempcv_stnd[-3:6]") %>% plot() # as temp varability increases so does presence
-ggeffects::ggeffect(model = fmodel,  terms = "DOmin_stnd[-7:2]") %>% plot() # as min DO increases presence goes down
-ggeffects::ggeffect(model = fmodel,  terms = "substrate") %>% plot() 
-#ggeffects::ggeffect(model = fmodel,  terms = "cul_eff_stnd[-2:5]") %>% plot() 
-visreg::visreg(fmodel, "depth_stnd")
-visreg::visreg(fmodel, "DOmin_stnd")
-visreg::visreg(fmodel, "slope_stnd")
-visreg::visreg(fmodel, "rei_stnd")
-visreg::visreg(fmodel, "saltmin_stnd")
-visreg::visreg(fmodel, "tempmean_stnd")
-visreg::visreg(fmodel, "tempcv_stnd")
+ggeffects::ggpredict(model = fmodel_e_bccm,  terms = "depth_stnd[all]") %>% plot()
+ggeffects::ggeffect(model = fmodel_e_bccm,  terms = "substrate") %>% plot() # more in sand and mud
+ggeffects::ggeffect(model = fmodel_e_bccm,  terms = "slope_stnd[-2:8]") %>% plot() # presence declines with slope
+ggeffects::ggeffect(model = fmodel_e_bccm,  terms = "rei_stnd[-1:20]") %>% plot() #presence declines with exposure
+#ggeffects::ggeffect(model = fmodel_e_bccm,  terms = "tidal_sqrt_stnd[-2:16]") %>% plot() # as tidal sqrt increases presence goes up
+ggeffects::ggeffect(model = fmodel_e_bccm,  terms = "airtempmin_stnd[-6:2]") %>% plot() # presence decreases as air temp min increases??
+ggeffects::ggeffect(model = fmodel_e_bccm,  terms = "rsdsmin_stnd[-4:5]") %>% plot() # presence increases as rsds min increases
+ggeffects::ggeffect(model = fmodel_e_bccm,  terms = "saltcv_bccm_stnd[-1:57]") %>% plot() # as salinity variability increases presence goes down
+ggeffects::ggeffect(model = fmodel_e_bccm,  terms = "prcv_stnd[-2:3]") %>% plot() # as precipitation variability increases presence decreases
+ggeffects::ggeffect(model = fmodel_e_bccm,  terms = "NH4_bccm_stnd[-2:19]") %>% plot() # as ammonium increases presence goes up
+#ggeffects::ggeffect(model = fmodel_e_bccm,  terms = "saltmean_stnd[-11:2]") %>% plot() # as salinity mean increases so does presence
+#ggeffects::ggeffect(model = fmodel_e_bccm,  terms = "freshwater_sqrt_stnd[-1:17]") %>% plot() # as freshwater increases presence goes down
+#ggeffects::ggeffect(model = fmodel_e_bccm,  terms = "tempcv_stnd[-3:6]") %>% plot() # as temp varability increases so does presence
+#ggeffects::ggeffect(model = fmodel_e_bccm,  terms = "DOmin_stnd[-7:2]") %>% plot() # as min DO increases presence goes down
+
+#ggeffects::ggeffect(model = fmodel_e_bccm,  terms = "cul_eff_stnd[-2:5]") %>% plot() 
+visreg::visreg(fmodel_e_bccm, "depth_stnd")
+visreg::visreg(fmodel_e_bccm, "DOmin_stnd")
+visreg::visreg(fmodel_e_bccm, "slope_stnd")
+visreg::visreg(fmodel_e_bccm, "rei_stnd")
+visreg::visreg(fmodel_e_bccm, "saltmin_stnd")
+visreg::visreg(fmodel_e_bccm, "tempmean_stnd")
+visreg::visreg(fmodel_e_bccm, "airtempmin_stnd")
 
 # Model check
-tidy(fmodel, conf.int = TRUE)
-sanity(fmodel)
+tidy(fmodel_e_bccm, conf.int = TRUE)
+sanity(fmodel_e_bccm)
 
 # Add fitted values (preds) to data
-data$fitted_vals <- predict(fmodel, type="response")$est
+data$fitted_vals <- predict(fmodel_e_bccm, type="response")$est
 
 # Calculate optimal thresholds
 thresh <- calcThresh( x=data ) 
@@ -164,7 +248,7 @@ data$pred_kappa_thresh <- ifelse(data$fitted_vals < thresh$Predicted[thresh$Meth
 data$pred_PCC_thresh <- ifelse(data$fitted_vals < thresh$Predicted[thresh$Method == "MaxPCC"], 0, 1) 
 
 eval_fmod <- evalfmod( x=data, thresh = thresh )
-# this model has good TSS (0.704), is well calibrated (miller). for calibration (Hosmer & Lemeshow goodness-of-fit) model seems to have issues at higher predicted probabilities
+# this model has good TSS (0.71), is well calibrated (miller). for calibration (Hosmer & Lemeshow goodness-of-fit) model seems to have issues at higher predicted probabilities
 
 ###Notes on evaluation statistics
 # Values of TSS greater than 0.6 are considered good, between 0.2 and 0.6 moderate, and less than 0.2 poor (Jones et al. 2010; Landis and Koch 1977).
@@ -183,24 +267,24 @@ eval_fmod <- evalfmod( x=data, thresh = thresh )
 # The smaller the error measure (eer) returned values, the better the model predictions fit the observations.
 
 #get relative importance
-#prednames <- c("depth_stnd", "substrate", "rei_stnd", "slope_stnd", "tempcv_stnd", "tempmean_stnd", "DOmin_stnd", "saltmin_stnd" )
-prednames <- c("depth_stnd", "substrate", "rei_stnd", "slope_stnd", "tempmax_stnd", "DOmin_stnd", "saltmin_stnd", "freshwater_sqrt_stnd", "tidal_sqrt_stnd")
-relimp <- varImp( model=fmodel,
+prednames <- c("depth_stnd", "substrate", "rei_stnd", "slope_stnd", "tidal_sqrt_stnd", "Survey")
+prednames <- c("depth_stnd", "substrate", "rei_stnd", "slope_stnd", "Survey", "rsdsmin_stnd", "airtempmin_stnd", "saltcv_bccm_stnd", "NH4_bccm_stnd", "prcv_stnd")
+relimp_e_bccm <- varImp( model=fmodel_e_bccm,
                   dat=data,
                   preds=prednames,
                   permute=10 ) # Number of permutations
-# depth 71.6, substrate 22.8, slope 3.0, rei 0.5, do min 0.4, salt min 0.7, tempmax 0.9, freshwater 0.0, tidal sqrt 0.0
+# depth 71.1, substrate 22.2, slope 3.7, rei 0.5, air temp min 0.3, rsdsmin 0.3, salt cv 0.5, NH4 0.2, prcv 0.1
 
 ####check residuals####
 # MCMC based randomized quantile residuals (takes a while to compute)
 # set.seed(123)
-# samps <- sdmTMBextra::predict_mle_mcmc(fmodel, mcmc_iter = 800, mcmc_warmup = 400)
-# mcmc_res <- residuals(fmodel, type = "mle-mcmc", mcmc_samples = samps)
+# samps <- sdmTMBextra::predict_mle_mcmc(fmodel_e_bccm, mcmc_iter = 800, mcmc_warmup = 400)
+# mcmc_res <- residuals(fmodel_e_bccm, type = "mle-mcmc", mcmc_samples = samps)
 # qqnorm(mcmc_res)
 # abline(0, 1)
 
 #analytical randomized quantile approach
-data$resids <- residuals(fmodel, type = "mle-mvn") # randomized quantile residuals
+data$resids <- residuals(fmodel_e_bccm, type = "mle-mvn") # randomized quantile residuals
 # check
 ggplot(data, aes(X, Y, col = resids)) + scale_colour_gradient2() +
   geom_point() + theme_bw()
@@ -209,13 +293,13 @@ qqnorm(data$resids);abline(a = 0, b = 1)
 
 # simulation-based randomized quantile residuals, no under dispersion when spatial random field removed
 set.seed(123)
-ret<- simulate(fmodel, nsim = 500, type = "mle-mvn") 
-r_ret <-  dharma_residuals(ret, fmodel, return_DHARMa = TRUE)
+ret<- simulate(fmodel_e_bccm, nsim = 500, type = "mle-mvn") 
+r_ret <-  dharma_residuals(ret, fmodel_e_bccm, return_DHARMa = TRUE)
 plot(r_ret)
 DHARMa::testResiduals(r_ret)
 
-predict(fmodel) %>%
-  ggplot(aes(x = presence, y = fmodel$family$linkinv(est)))+
+predict(fmodel_e_bccm) %>%
+  ggplot(aes(x = presence, y = fmodel_e_bccm$family$linkinv(est)))+
   geom_abline(slope = 1, intercept = 0)+
   geom_jitter(width = 0.05, height = 0)
 
@@ -223,22 +307,27 @@ predict(fmodel) %>%
 #### test forecasting
 # left a few years gap 2010-2012 #trained model with 1993-2009
 data_pre2013 <- data %>% filter(Year < 2010)
-mesh_pre2013 <- make_mesh(data = data_pre2013, xy_cols = c("X", "Y"), cutoff = 12) # tested several mesh sizes between 20- 10 km and 15 had highest AUC
+mesh_pre2013 <- make_mesh(data = data_pre2013, xy_cols = c("X", "Y"), cutoff = 53) # tested several mesh sizes between 20- 10 km and 15 had highest AUC
 plot(mesh_pre2013)
 barrier_mesh_pre2013 <- add_barrier_mesh(mesh_pre2013, barrier_sf = coastline, proj_scaling = 1000, plot = TRUE)
 
-m_eelgrass_forecast <- sdmTMB(formula = presence ~ s(depth_stnd, k = 3) + substrate + slope_stnd + rei_stnd + DOmin_stnd + saltmin_stnd + tempmax_stnd + freshwater_sqrt_stnd + tidal_sqrt_stnd,
-                              #formula =  presence ~ s(depth_stnd, k = 3) + substrate + slope_stnd + rei_stnd + saltmin_stnd + tempmean_stnd + tempcv_stnd + DOmin_stnd,
+m_eelgrass_forecast <- sdmTMB(formula = presence ~ s(depth_stnd, k = 3) + substrate + slope_stnd + rei_stnd + 
+                                airtempmin_stnd + rsdsmin_stnd + prcv_stnd + #chelsa variables
+                                saltcv_bccm_stnd + NH4_bccm_stnd, #bccm variables
+                                #(1|Survey), doesn't work with random factor yet
                                mesh = barrier_mesh_pre2013, 
                                family = binomial(link = "logit"), 
                                spatial = FALSE, 
                                data = data_pre2013) 
-m_eelgrass_forecast_spatial <- sdmTMB(formula = presence ~ s(depth_stnd, k = 3) + substrate + slope_stnd + rei_stnd + DOmin_stnd + saltmin_stnd + tempmax_stnd + freshwater_sqrt_stnd + tidal_sqrt_stnd,
+m_eelgrass_forecast_spatial <- sdmTMB(formula = presence ~ s(depth_stnd, k = 3) + substrate + slope_stnd + rei_stnd + 
+                                        airtempmin_stnd + rsdsmin_stnd + prcv_stnd + #chelsa variables
+                                        saltcv_bccm_stnd + NH4_bccm_stnd , #bccm variables
+                                      #(1|Survey), doesn't work with random factor yet 
                               mesh = barrier_mesh_pre2013, 
                               family = binomial(link = "logit"), 
                               spatial = TRUE, 
                               data = data_pre2013) 
-data.df <- data %>% select(presence, X, Y, depth_stnd, slope_stnd, rei_stnd, substrate, saltmin_stnd, DOmin_stnd, tempmax_stnd, freshwater_sqrt_stnd, tidal_sqrt_stnd, Year)
+data.df <- data %>% select(presence, X, Y, depth_stnd, slope_stnd, rei_stnd, substrate, saltcv_bccm_stnd, NH4_bccm_stnd, airtempmin_stnd, rsdsmin_stnd, prcv_stnd,  Year)
 
 forecast <- plogis(predict(m_eelgrass_forecast, newdata = data.df %>% filter(Year > 2012))$est)
 forecast_spatial <- plogis(predict(m_eelgrass_forecast_spatial, newdata = data.df %>% filter(Year > 2012))$est)
@@ -257,12 +346,12 @@ forecast_predict_eelgrass <- data.frame(TjurR2_no_spatial = c(tjur(y = data.df$p
                                          type = factor(c("forecast", "training"), levels = c("training", "forecast"), ordered =  TRUE))
 ## AUC dropped from 0.923 to 0.921 and Tjur increased (?) from 0.197 to 0.225 when forecasted #tjur is quite a bit less when no spatial field
 # model did  better forcasting without spatial field for AUC (marginally), so while spatial random field may make a better prediction, it doesn't help with projection
-save(data, fmodel, relimp, thresh, r_ret, eval_cv, eval_fmod, forecast_predict_eelgrass, file = "code/output_data/final_eelgrass_model.RData")
+save(data, fmodel_e_bccm, relimp_e_bccm, thresh, r_ret, eval_cv, eval_fmod, forecast_predict_eelgrass, file = "code/output_data/final_eelgrass_model.RData")
 
 
 # make predictions and get standard error
-hold <- predict(fmodel , env_20m_all)
-sims <- predict(fmodel , newdata = env_20m_all, nsim = 100) #ram is not working for this right now for >100 sims at 20m prediction cells
+hold <- predict(fmodel_e_bccm , env_20m_all)
+sims <- predict(fmodel_e_bccm , newdata = env_20m_all, nsim = 100) #ram is not working for this right now for >100 sims at 20m prediction cells
 hold$SE <- apply(sims, 1, sd)
 hold$SD <- apply(pclog(sims), 1, sd)
 eelgrass_predictions <- env_20m_all
@@ -568,46 +657,46 @@ auc
 # Kappa is a measure of agreement between observed and predicted values that accounts for chance agreements and is dependent on prevalence of the observations. Kappa range from -1 to 1 with values less than 0 representing models that are no better than random and values of 1 indicating perfect agreement (Allouche et al. 2006). 
 
 #fit full model
-fmodel <- sdmTMB(formula = presence ~ depth_stnd + substrate + rei_sqrt_stnd + tempmin_stnd +
+fmodel_s_bccm <- sdmTMB(formula = presence ~ depth_stnd + substrate + rei_sqrt_stnd + tempmin_stnd +
                    saltcv_stnd + PARmin_stnd + surftempmax_stnd + NO3_stnd,
                      mesh = barrier_mesh, 
                      family = binomial(link = "logit"), 
                      spatial = FALSE, 
                      data = data)
 # look ar marginal effects plots, note temperature variables are correlated, so these are not correct 
-ggeffects::ggeffect(model = fmodel,  terms = "depth_stnd[-3:6]") %>% plot() # found highest at shallow
-ggeffects::ggeffect(model = fmodel,  terms = "rei_sqrt_stnd[-1:9]") %>% plot()  # increases with exposure
-#ggeffects::ggeffect(model = fmodel,  terms = "tidal_sqrt_stnd[-3:8]") %>% plot() # increases with tidal infleunce
-ggeffects::ggeffect(model = fmodel,  terms = "tempmin_stnd[-5:3]") %>% plot() # increases with min temp
-ggeffects::ggeffect(model = fmodel,  terms = "substrate") %>% plot() # found on rock
-#ggeffects::ggeffect(model = fmodel,  terms = "slope_stnd[-2:9]") %>% plot() # decreases with higher slopes
-#ggeffects::ggeffect(model = fmodel,  terms = "freshwater_sqrt_stnd[-1:18]") %>% plot() # increases with freshwater
-#ggeffects::ggeffect(model = fmodel,  terms = "cul_eff_stnd[-2:5]") %>% plot() # increases with cul eff
-ggeffects::ggeffect(model = fmodel,  terms = "saltcv_stnd[-1:57]") %>% plot() # highest in areas with stable salinity
-ggeffects::ggeffect(model = fmodel,  terms = "PARmin_stnd[-3:2]") %>% plot() # increases with min par
-#ggeffects::ggeffect(model = fmodel,  terms = "DOmin_stnd[-7:2]") %>% plot() #increases with do
-#ggeffects::ggeffect(model = fmodel,  terms = "surftempcv_stnd[-3:8]") %>% plot() # increases with increased variation
-ggeffects::ggeffect(model = fmodel,  terms = "surftempmax_stnd[-4:5]") %>% plot() # declines with increased max temps
-#ggeffects::ggeffect(model = fmodel,  terms = "surftempmean_stnd[-4:4]") %>% plot() # increases with mean temps
-ggeffects::ggeffect(model = fmodel,  terms = "NO3_stnd[-3:42]") %>% plot() # as NO3 increases presence decreases
+ggeffects::ggeffect(model = fmodel_s_bccm,  terms = "depth_stnd[-3:6]") %>% plot() # found highest at shallow
+ggeffects::ggeffect(model = fmodel_s_bccm,  terms = "rei_sqrt_stnd[-1:9]") %>% plot()  # increases with exposure
+#ggeffects::ggeffect(model = fmodel_s_bccm,  terms = "tidal_sqrt_stnd[-3:8]") %>% plot() # increases with tidal infleunce
+ggeffects::ggeffect(model = fmodel_s_bccm,  terms = "tempmin_stnd[-5:3]") %>% plot() # increases with min temp
+ggeffects::ggeffect(model = fmodel_s_bccm,  terms = "substrate") %>% plot() # found on rock
+#ggeffects::ggeffect(model = fmodel_s_bccm,  terms = "slope_stnd[-2:9]") %>% plot() # decreases with higher slopes
+#ggeffects::ggeffect(model = fmodel_s_bccm,  terms = "freshwater_sqrt_stnd[-1:18]") %>% plot() # increases with freshwater
+#ggeffects::ggeffect(model = fmodel_s_bccm,  terms = "cul_eff_stnd[-2:5]") %>% plot() # increases with cul eff
+ggeffects::ggeffect(model = fmodel_s_bccm,  terms = "saltcv_stnd[-1:57]") %>% plot() # highest in areas with stable salinity
+ggeffects::ggeffect(model = fmodel_s_bccm,  terms = "PARmin_stnd[-3:2]") %>% plot() # increases with min par
+#ggeffects::ggeffect(model = fmodel_s_bccm,  terms = "DOmin_stnd[-7:2]") %>% plot() #increases with do
+#ggeffects::ggeffect(model = fmodel_s_bccm,  terms = "surftempcv_stnd[-3:8]") %>% plot() # increases with increased variation
+ggeffects::ggeffect(model = fmodel_s_bccm,  terms = "surftempmax_stnd[-4:5]") %>% plot() # declines with increased max temps
+#ggeffects::ggeffect(model = fmodel_s_bccm,  terms = "surftempmean_stnd[-4:4]") %>% plot() # increases with mean temps
+ggeffects::ggeffect(model = fmodel_s_bccm,  terms = "NO3_stnd[-3:42]") %>% plot() # as NO3 increases presence decreases
 
-visreg::visreg(fmodel, "depth_stnd")
-visreg::visreg(fmodel, "rei_sqrt_stnd")
-#visreg::visreg(fmodel, "tidal_sqrt_stnd")
-visreg::visreg(fmodel, "saltcv_stnd")
-visreg::visreg(fmodel, "PARmin_stnd")
-visreg::visreg(fmodel, "tempmin_stnd")
-#visreg::visreg(fmodel, "surftempcv_stnd")
-visreg::visreg(fmodel, "surftempmax_stnd")
-visreg::visreg(fmodel, "NO3_stnd")
+visreg::visreg(fmodel_s_bccm, "depth_stnd")
+visreg::visreg(fmodel_s_bccm, "rei_sqrt_stnd")
+#visreg::visreg(fmodel_s_bccm, "tidal_sqrt_stnd")
+visreg::visreg(fmodel_s_bccm, "saltcv_stnd")
+visreg::visreg(fmodel_s_bccm, "PARmin_stnd")
+visreg::visreg(fmodel_s_bccm, "tempmin_stnd")
+#visreg::visreg(fmodel_s_bccm, "surftempcv_stnd")
+visreg::visreg(fmodel_s_bccm, "surftempmax_stnd")
+visreg::visreg(fmodel_s_bccm, "NO3_stnd")
 # all of these look like linear relationships. There are some outliars of high NO3 and high salt cv (does this matter??)
 
 # Model check
-tidy(fmodel, conf.int = TRUE)
-sanity(fmodel)
+tidy(fmodel_s_bccm, conf.int = TRUE)
+sanity(fmodel_s_bccm)
 
 # Add fitted values (preds) to data
-data$fitted_vals <- predict(fmodel, type="response")$est
+data$fitted_vals <- predict(fmodel_s_bccm, type="response")$est
 
 # Calculate optimal thresholds
 thresh <- calcThresh( x=data ) 
@@ -629,7 +718,7 @@ prednames <- c("depth_stnd", "rei_sqrt_stnd", "substrate", "tempmin_stnd",
                "saltcv_stnd", "PARmin_stnd", "surftempmax_stnd", "NO3_stnd")
 
 
-relimp <- varImp( model=fmodel,
+relimp <- varImp( model=fmodel_s_bccm,
                   dat=data,
                   preds=prednames,
                   permute=10 ) # Number of permutations
@@ -639,13 +728,13 @@ relimp <- varImp( model=fmodel,
 ####check residuals####
 # MCMC based randomized quantile residuals (takes a while to compute)
 # set.seed(123)
-# samps <- sdmTMBextra::predict_mle_mcmc(fmodel, mcmc_iter = 800, mcmc_warmup = 400)
-# mcmc_res <- residuals(fmodel, type = "mle-mcmc", mcmc_samples = samps)
+# samps <- sdmTMBextra::predict_mle_mcmc(fmodel_s_bccm, mcmc_iter = 800, mcmc_warmup = 400)
+# mcmc_res <- residuals(fmodel_s_bccm, type = "mle-mcmc", mcmc_samples = samps)
 # qqnorm(mcmc_res)
 # abline(0, 1)
 
 #analytical randomized quantile approach
-data$resids <- residuals(fmodel, type = "mle-mvn") # randomized quantile residuals
+data$resids <- residuals(fmodel_s_bccm, type = "mle-mvn") # randomized quantile residuals
 # check
 ggplot(data, aes(X, Y, col = resids)) + scale_colour_gradient2() +
   geom_point() + theme_bw()
@@ -654,13 +743,13 @@ qqnorm(data$resids);abline(a = 0, b = 1)
 
 # simulation-based randomized quantile residuals
 set.seed(123)
-ret<- simulate(fmodel, nsim = 500, type = "mle-mvn") 
-r_ret <-  dharma_residuals(ret, fmodel, return_DHARMa = TRUE)
+ret<- simulate(fmodel_s_bccm, nsim = 500, type = "mle-mvn") 
+r_ret <-  dharma_residuals(ret, fmodel_s_bccm, return_DHARMa = TRUE)
 plot(r_ret)
 DHARMa::testResiduals(r_ret)
 
-predict(fmodel) %>%
-  ggplot(aes(x = presence, y = fmodel$family$linkinv(est)))+
+predict(fmodel_s_bccm) %>%
+  ggplot(aes(x = presence, y = fmodel_s_bccm$family$linkinv(est)))+
   geom_abline(slope = 1, intercept = 0)+
   geom_jitter(width = 0.05, height = 0)
 
@@ -705,11 +794,11 @@ forecast_predict_surfgrass <- data.frame(TjurR2_no_spatial = c(tjur(y = data.df$
 ## AUC doesnt drop, stays at 0.95 and Tjur drops from 0.17 to 0.14
 # having spatial random field makes current day predictions better, having it for forecasting makes it worse
 
-save(data, fmodel, relimp, thresh, r_ret, eval_cv, eval_fmod, forecast_predict_surfgrass, file = "code/output_data/final_surfgrass_model.RData")
+save(data, fmodel_s_bccm, relimp, thresh, r_ret, eval_cv, eval_fmod, forecast_predict_surfgrass, file = "code/output_data/final_surfgrass_model.RData")
 
 #make predictions and get SE
-hold <- predict(fmodel, env_20m_all)
-sims <- predict(fmodel, newdata = env_20m_all, nsim = 100) #sim needs to be 500? ram is not working for this right now at 20m prediction cells
+hold <- predict(fmodel_s_bccm, env_20m_all)
+sims <- predict(fmodel_s_bccm, newdata = env_20m_all, nsim = 100) #sim needs to be 500? ram is not working for this right now at 20m prediction cells
 hold$SE <- apply(sims, 1, sd)
 hold$SD <- apply(pclog(sims), 1, sd)
 surfgrass_predictions <- env_20m_all

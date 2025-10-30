@@ -20,6 +20,8 @@ library(GGally)
 library(reproducible)
 library(factoextra)
 library(viridis)
+library(gridExtra)
+library(grid)
 
 #load seagrass data
 load("code/output_data/seagrass_model_inputs.RData")
@@ -75,8 +77,9 @@ substrate_ss <- rast("raw_data/substrate_20m/updated/sog_20m.tif")
 names(substrate_hg) <- names(substrate_ncc) <- names(substrate_qcs) <- names(substrate_wcvi) <- names(substrate_ss) <- "substrate"
 crs(substrate_hg) <- crs(substrate_ncc) <- crs(substrate_qcs) <- crs(substrate_wcvi) <- crs(substrate_ss) <- "EPSG:3005"
 
-hindcast2013_2023 <- terra::rast("code/output_data/processed_ocean_variables/Predictor_Hindcast_Climatologies_2013-2023.tif")
-#hindcast1993_2023 <- terra::rast("code/output_data/processed_ocean_variables/Predictor_Hindcast_Climatologies_1993-2023.tif")
+folder_2013_2023 <- "code/output_data/processed_ocean_variables/years_2013-2023"
+files_2013_2023 <- list.files(folder_2013_2023, pattern = "\\.tif$", full.names = TRUE)
+hindcast2013_2023 <- terra::rast(files_2013_2023)
 
 culmulative_effects <- terra::rast("code/output_data/culmulative_effects_all_20m.tif")
 names(culmulative_effects) <- "cul_eff"
@@ -103,33 +106,66 @@ env_20m_hg$cul_eff <- hold$cul_eff
 env_20m_hg <- filter(env_20m_hg, !is.na(rei), !is.na(substrate), !is.na(tidal))
 env_20m_hg_sf <- st_as_sf(env_20m_hg, coords = c("X_m", "Y_m"), crs = "EPSG:3005")
 hold <- terra::extract(x = hindcast2013_2023, y = env_20m_hg_sf, fun = "mean", touches = TRUE, bind = TRUE) %>% terra::as.data.frame() 
-env_20m_hg$NH4_5m_mean <- hold$NH4_5m_mean
-env_20m_hg$NO3_5m_mean <- hold$NO3_5m_mean
-env_20m_hg$salt_5m_mean <- hold$salt_5m_mean
-env_20m_hg$salt_5m_min <- hold$salt_5m_min
-env_20m_hg$salt_5m_cv <- hold$salt_5m_cv
-env_20m_hg$PAR_5m_mean <- hold$PAR_5m_mean
-env_20m_hg$PAR_5m_min <- hold$PAR_5m_min
-env_20m_hg$PAR_5m_max <- hold$PAR_5m_max
-env_20m_hg$temp_s_mean <- hold$temp_s_mean
-env_20m_hg$temp_s_max <- hold$temp_s_max
-env_20m_hg$temp_s_min <- hold$temp_s_min
-env_20m_hg$temp_s_cv <- hold$temp_s_cv
-env_20m_hg$temp_s_diff <- hold$temp_s_diff
-env_20m_hg$temp_5m_mean <- hold$temp_5m_mean
-env_20m_hg$temp_5m_max <- hold$temp_5m_max
-env_20m_hg$temp_5m_min <- hold$temp_5m_min
-env_20m_hg$temp_5m_cv <- hold$temp_5m_cv
-env_20m_hg$temp_5m_diff <- hold$temp_5m_diff
-env_20m_hg$do_5m_mean <- hold$do_5m_mean
-env_20m_hg$do_5m_min <- hold$do_5m_min
-env_20m_hg <- env_20m_hg %>% filter(do_5m_min >= 100, temp_s_min >= 0, !is.na(NH4_5m_mean)) # areas where BCCM doesn't make good predictions
+env_20m_hg$NH4_5m_mean_bccm <- hold$NH4_5m_mean_bccm
+env_20m_hg$NH4_5m_mean_nep36 <- hold$NH4_5m_mean_nep36
+env_20m_hg$NO3_5m_mean_bccm <- hold$NO3_5m_mean_bccm
+env_20m_hg$NO3_5m_mean_nep36 <- hold$NO3_5m_mean_nep36
+env_20m_hg$salt_5m_mean_bccm <- hold$salt_5m_mean_bccm
+env_20m_hg$salt_5m_mean_nep36 <- hold$salt_5m_mean_nep36
+env_20m_hg$salt_5m_min_bccm <- hold$salt_5m_min_bccm
+env_20m_hg$salt_5m_min_nep36 <- hold$salt_5m_min_nep36
+env_20m_hg$salt_5m_cv_bccm <- hold$salt_5m_cv_bccm
+env_20m_hg$salt_5m_cv_nep36 <- hold$salt_5m_cv_nep36
+env_20m_hg$PAR_5m_mean_bccm <- hold$PAR_5m_mean_bccm
+env_20m_hg$PAR_5m_mean_nep36 <- hold$PAR_5m_mean_nep36
+env_20m_hg$PAR_5m_min_bccm <- hold$PAR_5m_min_bccm
+env_20m_hg$PAR_5m_min_nep36 <- hold$PAR_5m_min_nep36
+env_20m_hg$PAR_5m_min_bccm <- hold$PAR_5m_min_bccm
+env_20m_hg$PAR_5m_min_nep36 <- hold$PAR_5m_min_nep36
+env_20m_hg$temp_s_mean_bccm <- hold$temp_s_mean_bccm
+env_20m_hg$temp_s_mean_nep36 <- hold$temp_s_mean_nep36
+env_20m_hg$temp_s_max_bccm <- hold$temp_s_max_bccm
+env_20m_hg$temp_s_max_nep36 <- hold$temp_s_max_nep36
+env_20m_hg$temp_s_min_bccm <- hold$temp_s_min_bccm
+env_20m_hg$temp_s_min_nep36 <- hold$temp_s_min_nep36
+env_20m_hg$temp_s_cv_bccm <- hold$temp_s_cv_bccm
+env_20m_hg$temp_s_cv_nep36 <- hold$temp_s_cv_nep36
+env_20m_hg$temp_s_diff_bccm <- hold$temp_s_diff_bccm
+env_20m_hg$temp_s_diff_nep36 <- hold$temp_s_diff_nep36
+env_20m_hg$temp_5m_mean_bccm <- hold$temp_5m_mean_bccm
+env_20m_hg$temp_5m_mean_nep36 <- hold$temp_5m_mean_nep36
+env_20m_hg$temp_5m_max_bccm <- hold$temp_5m_max_bccm
+env_20m_hg$temp_5m_max_nep36 <- hold$temp_5m_max_nep36
+env_20m_hg$temp_5m_min_bccm <- hold$temp_5m_min_bccm
+env_20m_hg$temp_5m_min_nep36 <- hold$temp_5m_min_nep36
+env_20m_hg$temp_5m_cv_bccm <- hold$temp_5m_cv_bccm
+env_20m_hg$temp_5m_cv_nep36 <- hold$temp_5m_cv_nep36
+env_20m_hg$temp_5m_diff_bccm <- hold$temp_5m_diff_bccm
+env_20m_hg$temp_5m_diff_nep36 <- hold$temp_5m_diff_nep36
+env_20m_hg$do_5m_mean_bccm <- hold$do_5m_mean_bccm
+env_20m_hg$do_5m_mean_nep36 <- hold$do_5m_mean_nep36
+env_20m_hg$do_5m_min_bccm <- hold$do_5m_min_bccm
+env_20m_hg$do_5m_min_nep36 <- hold$do_5m_min_nep36
+env_20m_hg$precip_cv <- hold$precip_cv
+env_20m_hg$precip_max <- hold$precip_max
+env_20m_hg$precip_mean <- hold$precip_mean
+env_20m_hg$precip_min <- hold$precip_min
+env_20m_hg$rsds_cv <- hold$rsds_cv
+env_20m_hg$rsds_max <- hold$rsds_max
+env_20m_hg$rsds_mean <- hold$rsds_mean
+env_20m_hg$rsds_min <- hold$rsds_min
+env_20m_hg$temp_air_cv <- hold$temp_air_cv
+env_20m_hg$temp_air_max <- hold$temp_air_max
+env_20m_hg$temp_air_mean <- hold$temp_air_mean
+env_20m_hg$temp_air_min <- hold$temp_air_min
+
+env_20m_hg <- env_20m_hg %>% filter(do_5m_min_bccm >= 100, temp_s_min_bccm >= 0, temp_s_min_nep36 >= 0, !is.na(NH4_5m_mean_bccm)) # areas where BCCM doesn't make good predictions
 
 env_20m_hg$region <- "Haida Gwaii"
 env_20m_hg$substrate <- c("Rock", "Mixed", "Sand", "Mud")[env_20m_hg$substrate]
 summary(env_20m_hg)
 
-#save(env_20m_hg, file = "./data/prediction_HG.RData")
+save(env_20m_hg, file = "code/output_data/regional_prediction_datasets/prediction_HG.RData")
 
 ggplot(env_20m_hg, aes(x = X_m, y = Y_m, color = substrate))+
   geom_point(size = 0.01, pch = 15)+
@@ -154,34 +190,67 @@ env_20m_ncc$cul_eff <- hold$cul_eff
 env_20m_ncc <- filter(env_20m_ncc, !is.na(rei), !is.na(substrate), !is.na(tidal))
 env_20m_ncc_sf <- st_as_sf(env_20m_ncc, coords = c("X_m", "Y_m"), crs = "EPSG:3005")
 hold <- terra::extract(x = hindcast2013_2023, y = env_20m_ncc_sf, fun = "mean", touches = TRUE, bind = TRUE) %>% terra::as.data.frame() 
-env_20m_ncc$NH4_5m_mean <- hold$NH4_5m_mean
-env_20m_ncc$NO3_5m_mean <- hold$NO3_5m_mean
-env_20m_ncc$salt_5m_mean <- hold$salt_5m_mean
-env_20m_ncc$salt_5m_min <- hold$salt_5m_min
-env_20m_ncc$PAR_5m_mean <- hold$PAR_5m_mean
-env_20m_ncc$PAR_5m_min <- hold$PAR_5m_min
-env_20m_ncc$PAR_5m_max <- hold$PAR_5m_max
-env_20m_ncc$temp_s_mean <- hold$temp_s_mean
-env_20m_ncc$temp_s_max <- hold$temp_s_max
-env_20m_ncc$temp_s_min <- hold$temp_s_min
-env_20m_ncc$temp_5m_mean <- hold$temp_5m_mean
-env_20m_ncc$temp_5m_max <- hold$temp_5m_max
-env_20m_ncc$temp_5m_min <- hold$temp_5m_min
-env_20m_ncc$do_5m_mean <- hold$do_5m_mean
-env_20m_ncc$do_5m_min <- hold$do_5m_min
-env_20m_ncc$salt_5m_cv <- hold$salt_5m_cv
-env_20m_ncc$temp_s_cv <- hold$temp_s_cv
-env_20m_ncc$temp_s_diff <- hold$temp_s_diff
-env_20m_ncc$temp_5m_cv <- hold$temp_5m_cv
-env_20m_ncc$temp_5m_diff <- hold$temp_5m_diff
-env_20m_ncc <- env_20m_ncc %>% filter(do_5m_min >= 100, temp_s_min >= 0, !is.na(NH4_5m_mean)) # areas where BCCM doesn't make good predictions
+env_20m_ncc$NH4_5m_mean_bccm <- hold$NH4_5m_mean_bccm
+env_20m_ncc$NH4_5m_mean_nep36 <- hold$NH4_5m_mean_nep36
+env_20m_ncc$NO3_5m_mean_bccm <- hold$NO3_5m_mean_bccm
+env_20m_ncc$NO3_5m_mean_nep36 <- hold$NO3_5m_mean_nep36
+env_20m_ncc$salt_5m_mean_bccm <- hold$salt_5m_mean_bccm
+env_20m_ncc$salt_5m_mean_nep36 <- hold$salt_5m_mean_nep36
+env_20m_ncc$salt_5m_min_bccm <- hold$salt_5m_min_bccm
+env_20m_ncc$salt_5m_min_nep36 <- hold$salt_5m_min_nep36
+env_20m_ncc$salt_5m_cv_bccm <- hold$salt_5m_cv_bccm
+env_20m_ncc$salt_5m_cv_nep36 <- hold$salt_5m_cv_nep36
+env_20m_ncc$PAR_5m_mean_bccm <- hold$PAR_5m_mean_bccm
+env_20m_ncc$PAR_5m_mean_nep36 <- hold$PAR_5m_mean_nep36
+env_20m_ncc$PAR_5m_min_bccm <- hold$PAR_5m_min_bccm
+env_20m_ncc$PAR_5m_min_nep36 <- hold$PAR_5m_min_nep36
+env_20m_ncc$PAR_5m_min_bccm <- hold$PAR_5m_min_bccm
+env_20m_ncc$PAR_5m_min_nep36 <- hold$PAR_5m_min_nep36
+env_20m_ncc$temp_s_mean_bccm <- hold$temp_s_mean_bccm
+env_20m_ncc$temp_s_mean_nep36 <- hold$temp_s_mean_nep36
+env_20m_ncc$temp_s_max_bccm <- hold$temp_s_max_bccm
+env_20m_ncc$temp_s_max_nep36 <- hold$temp_s_max_nep36
+env_20m_ncc$temp_s_min_bccm <- hold$temp_s_min_bccm
+env_20m_ncc$temp_s_min_nep36 <- hold$temp_s_min_nep36
+env_20m_ncc$temp_s_cv_bccm <- hold$temp_s_cv_bccm
+env_20m_ncc$temp_s_cv_nep36 <- hold$temp_s_cv_nep36
+env_20m_ncc$temp_s_diff_bccm <- hold$temp_s_diff_bccm
+env_20m_ncc$temp_s_diff_nep36 <- hold$temp_s_diff_nep36
+env_20m_ncc$temp_5m_mean_bccm <- hold$temp_5m_mean_bccm
+env_20m_ncc$temp_5m_mean_nep36 <- hold$temp_5m_mean_nep36
+env_20m_ncc$temp_5m_max_bccm <- hold$temp_5m_max_bccm
+env_20m_ncc$temp_5m_max_nep36 <- hold$temp_5m_max_nep36
+env_20m_ncc$temp_5m_min_bccm <- hold$temp_5m_min_bccm
+env_20m_ncc$temp_5m_min_nep36 <- hold$temp_5m_min_nep36
+env_20m_ncc$temp_5m_cv_bccm <- hold$temp_5m_cv_bccm
+env_20m_ncc$temp_5m_cv_nep36 <- hold$temp_5m_cv_nep36
+env_20m_ncc$temp_5m_diff_bccm <- hold$temp_5m_diff_bccm
+env_20m_ncc$temp_5m_diff_nep36 <- hold$temp_5m_diff_nep36
+env_20m_ncc$do_5m_mean_bccm <- hold$do_5m_mean_bccm
+env_20m_ncc$do_5m_mean_nep36 <- hold$do_5m_mean_nep36
+env_20m_ncc$do_5m_min_bccm <- hold$do_5m_min_bccm
+env_20m_ncc$do_5m_min_nep36 <- hold$do_5m_min_nep36
+env_20m_ncc$precip_cv <- hold$precip_cv
+env_20m_ncc$precip_max <- hold$precip_max
+env_20m_ncc$precip_mean <- hold$precip_mean
+env_20m_ncc$precip_min <- hold$precip_min
+env_20m_ncc$rsds_cv <- hold$rsds_cv
+env_20m_ncc$rsds_max <- hold$rsds_max
+env_20m_ncc$rsds_mean <- hold$rsds_mean
+env_20m_ncc$rsds_min <- hold$rsds_min
+env_20m_ncc$temp_air_cv <- hold$temp_air_cv
+env_20m_ncc$temp_air_max <- hold$temp_air_max
+env_20m_ncc$temp_air_mean <- hold$temp_air_mean
+env_20m_ncc$temp_air_min <- hold$temp_air_min
+
+env_20m_ncc <- env_20m_ncc %>% filter(do_5m_min_bccm >= 100, temp_s_min_bccm >= 0, temp_s_min_nep36 >= 0, !is.na(NH4_5m_mean_bccm)) # areas where BCCM doesn't make good predictions
 
 env_20m_ncc$region <- "North Central Coast"
 env_20m_ncc$substrate <- c("Rock", "Mixed", "Sand", "Mud")[env_20m_ncc$substrate]
 
 summary(env_20m_ncc)
 
-#save(env_20m_ncc, file = "./data/prediction_NCC.RData")
+save(env_20m_ncc, file = "code/output_data/regional_prediction_datasets/prediction_NCC.RData")
 ggplot(env_20m_ncc, aes(x = X_m, y = Y_m, color = substrate))+
   geom_point(size = 0.01, pch = 15)+
   theme_bw()+
@@ -205,33 +274,67 @@ env_20m_qcs$cul_eff <- hold$cul_eff
 env_20m_qcs <- filter(env_20m_qcs, !is.na(rei), !is.na(substrate), !is.na(tidal))
 env_20m_qcs_sf <- st_as_sf(env_20m_qcs, coords = c("X_m", "Y_m"), crs = "EPSG:3005")
 hold <- terra::extract(x = hindcast2013_2023, y = env_20m_qcs_sf, fun = "mean", touches = TRUE, bind = TRUE) %>% terra::as.data.frame() 
-env_20m_qcs$NH4_5m_mean <- hold$NH4_5m_mean
-env_20m_qcs$NO3_5m_mean <- hold$NO3_5m_mean
-env_20m_qcs$salt_5m_mean <- hold$salt_5m_mean
-env_20m_qcs$salt_5m_min <- hold$salt_5m_min
-env_20m_qcs$PAR_5m_mean <- hold$PAR_5m_mean
-env_20m_qcs$PAR_5m_min <- hold$PAR_5m_min
-env_20m_qcs$PAR_5m_max <- hold$PAR_5m_max
-env_20m_qcs$temp_s_mean <- hold$temp_s_mean
-env_20m_qcs$temp_s_max <- hold$temp_s_max
-env_20m_qcs$temp_s_min <- hold$temp_s_min
-env_20m_qcs$temp_5m_mean <- hold$temp_5m_mean
-env_20m_qcs$temp_5m_max <- hold$temp_5m_max
-env_20m_qcs$temp_5m_min <- hold$temp_5m_min
-env_20m_qcs$do_5m_mean <- hold$do_5m_mean
-env_20m_qcs$do_5m_min <- hold$do_5m_min
-env_20m_qcs$salt_5m_cv <- hold$salt_5m_cv
-env_20m_qcs$temp_s_cv <- hold$temp_s_cv
-env_20m_qcs$temp_s_diff <- hold$temp_s_diff
-env_20m_qcs$temp_5m_cv <- hold$temp_5m_cv
-env_20m_qcs$temp_5m_diff <- hold$temp_5m_diff
-env_20m_qcs <- env_20m_qcs %>% filter(do_5m_min >= 100, temp_s_min >= 0, !is.na(NH4_5m_mean)) # areas where BCCM doesn't make good predictions
+env_20m_qcs$NH4_5m_mean_bccm <- hold$NH4_5m_mean_bccm
+env_20m_qcs$NH4_5m_mean_nep36 <- hold$NH4_5m_mean_nep36
+env_20m_qcs$NO3_5m_mean_bccm <- hold$NO3_5m_mean_bccm
+env_20m_qcs$NO3_5m_mean_nep36 <- hold$NO3_5m_mean_nep36
+env_20m_qcs$salt_5m_mean_bccm <- hold$salt_5m_mean_bccm
+env_20m_qcs$salt_5m_mean_nep36 <- hold$salt_5m_mean_nep36
+env_20m_qcs$salt_5m_min_bccm <- hold$salt_5m_min_bccm
+env_20m_qcs$salt_5m_min_nep36 <- hold$salt_5m_min_nep36
+env_20m_qcs$salt_5m_cv_bccm <- hold$salt_5m_cv_bccm
+env_20m_qcs$salt_5m_cv_nep36 <- hold$salt_5m_cv_nep36
+env_20m_qcs$PAR_5m_mean_bccm <- hold$PAR_5m_mean_bccm
+env_20m_qcs$PAR_5m_mean_nep36 <- hold$PAR_5m_mean_nep36
+env_20m_qcs$PAR_5m_min_bccm <- hold$PAR_5m_min_bccm
+env_20m_qcs$PAR_5m_min_nep36 <- hold$PAR_5m_min_nep36
+env_20m_qcs$PAR_5m_min_bccm <- hold$PAR_5m_min_bccm
+env_20m_qcs$PAR_5m_min_nep36 <- hold$PAR_5m_min_nep36
+env_20m_qcs$temp_s_mean_bccm <- hold$temp_s_mean_bccm
+env_20m_qcs$temp_s_mean_nep36 <- hold$temp_s_mean_nep36
+env_20m_qcs$temp_s_max_bccm <- hold$temp_s_max_bccm
+env_20m_qcs$temp_s_max_nep36 <- hold$temp_s_max_nep36
+env_20m_qcs$temp_s_min_bccm <- hold$temp_s_min_bccm
+env_20m_qcs$temp_s_min_nep36 <- hold$temp_s_min_nep36
+env_20m_qcs$temp_s_cv_bccm <- hold$temp_s_cv_bccm
+env_20m_qcs$temp_s_cv_nep36 <- hold$temp_s_cv_nep36
+env_20m_qcs$temp_s_diff_bccm <- hold$temp_s_diff_bccm
+env_20m_qcs$temp_s_diff_nep36 <- hold$temp_s_diff_nep36
+env_20m_qcs$temp_5m_mean_bccm <- hold$temp_5m_mean_bccm
+env_20m_qcs$temp_5m_mean_nep36 <- hold$temp_5m_mean_nep36
+env_20m_qcs$temp_5m_max_bccm <- hold$temp_5m_max_bccm
+env_20m_qcs$temp_5m_max_nep36 <- hold$temp_5m_max_nep36
+env_20m_qcs$temp_5m_min_bccm <- hold$temp_5m_min_bccm
+env_20m_qcs$temp_5m_min_nep36 <- hold$temp_5m_min_nep36
+env_20m_qcs$temp_5m_cv_bccm <- hold$temp_5m_cv_bccm
+env_20m_qcs$temp_5m_cv_nep36 <- hold$temp_5m_cv_nep36
+env_20m_qcs$temp_5m_diff_bccm <- hold$temp_5m_diff_bccm
+env_20m_qcs$temp_5m_diff_nep36 <- hold$temp_5m_diff_nep36
+env_20m_qcs$do_5m_mean_bccm <- hold$do_5m_mean_bccm
+env_20m_qcs$do_5m_mean_nep36 <- hold$do_5m_mean_nep36
+env_20m_qcs$do_5m_min_bccm <- hold$do_5m_min_bccm
+env_20m_qcs$do_5m_min_nep36 <- hold$do_5m_min_nep36
+env_20m_qcs$precip_cv <- hold$precip_cv
+env_20m_qcs$precip_max <- hold$precip_max
+env_20m_qcs$precip_mean <- hold$precip_mean
+env_20m_qcs$precip_min <- hold$precip_min
+env_20m_qcs$rsds_cv <- hold$rsds_cv
+env_20m_qcs$rsds_max <- hold$rsds_max
+env_20m_qcs$rsds_mean <- hold$rsds_mean
+env_20m_qcs$rsds_min <- hold$rsds_min
+env_20m_qcs$temp_air_cv <- hold$temp_air_cv
+env_20m_qcs$temp_air_max <- hold$temp_air_max
+env_20m_qcs$temp_air_mean <- hold$temp_air_mean
+env_20m_qcs$temp_air_min <- hold$temp_air_min
+
+env_20m_qcs <- env_20m_qcs %>% filter(do_5m_min_bccm >= 100, temp_s_min_bccm >= 0, temp_s_min_nep36 >= 0, !is.na(NH4_5m_mean_bccm)) # areas where BCCM doesn't make good predictions
+
 env_20m_qcs$region <- "Queen Charlotte Strait"
 env_20m_qcs$substrate <- c("Rock", "Mixed", "Sand", "Mud")[env_20m_qcs$substrate]
 
 summary(env_20m_qcs)
 
-#save(env_20m_qcs, file = "./data/prediction_QCS.RData")
+save(env_20m_qcs, file = "code/output_data/regional_prediction_datasets/prediction_QCS.RData")
 ggplot(env_20m_qcs, aes(x = X_m, y = Y_m, color = substrate))+
   geom_point(size = 0.01, pch = 15)+
   theme_bw()+
@@ -257,33 +360,67 @@ env_20m_wcvi$cul_eff <- hold$cul_eff
 env_20m_wcvi <- filter(env_20m_wcvi, !is.na(rei), !is.na(substrate), !is.na(tidal))
 env_20m_wcvi_sf <- st_as_sf(env_20m_wcvi, coords = c("X_m", "Y_m"), crs = "EPSG:3005")
 hold <- terra::extract(x = hindcast2013_2023, y = env_20m_wcvi_sf, fun = "mean", touches = TRUE, bind = TRUE) %>% terra::as.data.frame() 
-env_20m_wcvi$NH4_5m_mean <- hold$NH4_5m_mean
-env_20m_wcvi$NO3_5m_mean <- hold$NO3_5m_mean
-env_20m_wcvi$salt_5m_mean <- hold$salt_5m_mean
-env_20m_wcvi$salt_5m_min <- hold$salt_5m_min
-env_20m_wcvi$PAR_5m_mean <- hold$PAR_5m_mean
-env_20m_wcvi$PAR_5m_min <- hold$PAR_5m_min
-env_20m_wcvi$PAR_5m_max <- hold$PAR_5m_max
-env_20m_wcvi$temp_s_mean <- hold$temp_s_mean
-env_20m_wcvi$temp_s_max <- hold$temp_s_max
-env_20m_wcvi$temp_s_min <- hold$temp_s_min
-env_20m_wcvi$temp_5m_mean <- hold$temp_5m_mean
-env_20m_wcvi$temp_5m_max <- hold$temp_5m_max
-env_20m_wcvi$temp_5m_min <- hold$temp_5m_min
-env_20m_wcvi$do_5m_mean <- hold$do_5m_mean
-env_20m_wcvi$do_5m_min <- hold$do_5m_min
-env_20m_wcvi$salt_5m_cv <- hold$salt_5m_cv
-env_20m_wcvi$temp_s_cv <- hold$temp_s_cv
-env_20m_wcvi$temp_s_diff <- hold$temp_s_diff
-env_20m_wcvi$temp_5m_cv <- hold$temp_5m_cv
-env_20m_wcvi$temp_5m_diff <- hold$temp_5m_diff
-env_20m_wcvi <- env_20m_wcvi %>% filter(do_5m_min >= 100, temp_s_min >= 0, !is.na(NH4_5m_mean)) # areas where BCCM doesn't make good predictions
+env_20m_wcvi$NH4_5m_mean_bccm <- hold$NH4_5m_mean_bccm
+env_20m_wcvi$NH4_5m_mean_nep36 <- hold$NH4_5m_mean_nep36
+env_20m_wcvi$NO3_5m_mean_bccm <- hold$NO3_5m_mean_bccm
+env_20m_wcvi$NO3_5m_mean_nep36 <- hold$NO3_5m_mean_nep36
+env_20m_wcvi$salt_5m_mean_bccm <- hold$salt_5m_mean_bccm
+env_20m_wcvi$salt_5m_mean_nep36 <- hold$salt_5m_mean_nep36
+env_20m_wcvi$salt_5m_min_bccm <- hold$salt_5m_min_bccm
+env_20m_wcvi$salt_5m_min_nep36 <- hold$salt_5m_min_nep36
+env_20m_wcvi$salt_5m_cv_bccm <- hold$salt_5m_cv_bccm
+env_20m_wcvi$salt_5m_cv_nep36 <- hold$salt_5m_cv_nep36
+env_20m_wcvi$PAR_5m_mean_bccm <- hold$PAR_5m_mean_bccm
+env_20m_wcvi$PAR_5m_mean_nep36 <- hold$PAR_5m_mean_nep36
+env_20m_wcvi$PAR_5m_min_bccm <- hold$PAR_5m_min_bccm
+env_20m_wcvi$PAR_5m_min_nep36 <- hold$PAR_5m_min_nep36
+env_20m_wcvi$PAR_5m_min_bccm <- hold$PAR_5m_min_bccm
+env_20m_wcvi$PAR_5m_min_nep36 <- hold$PAR_5m_min_nep36
+env_20m_wcvi$temp_s_mean_bccm <- hold$temp_s_mean_bccm
+env_20m_wcvi$temp_s_mean_nep36 <- hold$temp_s_mean_nep36
+env_20m_wcvi$temp_s_max_bccm <- hold$temp_s_max_bccm
+env_20m_wcvi$temp_s_max_nep36 <- hold$temp_s_max_nep36
+env_20m_wcvi$temp_s_min_bccm <- hold$temp_s_min_bccm
+env_20m_wcvi$temp_s_min_nep36 <- hold$temp_s_min_nep36
+env_20m_wcvi$temp_s_cv_bccm <- hold$temp_s_cv_bccm
+env_20m_wcvi$temp_s_cv_nep36 <- hold$temp_s_cv_nep36
+env_20m_wcvi$temp_s_diff_bccm <- hold$temp_s_diff_bccm
+env_20m_wcvi$temp_s_diff_nep36 <- hold$temp_s_diff_nep36
+env_20m_wcvi$temp_5m_mean_bccm <- hold$temp_5m_mean_bccm
+env_20m_wcvi$temp_5m_mean_nep36 <- hold$temp_5m_mean_nep36
+env_20m_wcvi$temp_5m_max_bccm <- hold$temp_5m_max_bccm
+env_20m_wcvi$temp_5m_max_nep36 <- hold$temp_5m_max_nep36
+env_20m_wcvi$temp_5m_min_bccm <- hold$temp_5m_min_bccm
+env_20m_wcvi$temp_5m_min_nep36 <- hold$temp_5m_min_nep36
+env_20m_wcvi$temp_5m_cv_bccm <- hold$temp_5m_cv_bccm
+env_20m_wcvi$temp_5m_cv_nep36 <- hold$temp_5m_cv_nep36
+env_20m_wcvi$temp_5m_diff_bccm <- hold$temp_5m_diff_bccm
+env_20m_wcvi$temp_5m_diff_nep36 <- hold$temp_5m_diff_nep36
+env_20m_wcvi$do_5m_mean_bccm <- hold$do_5m_mean_bccm
+env_20m_wcvi$do_5m_mean_nep36 <- hold$do_5m_mean_nep36
+env_20m_wcvi$do_5m_min_bccm <- hold$do_5m_min_bccm
+env_20m_wcvi$do_5m_min_nep36 <- hold$do_5m_min_nep36
+env_20m_wcvi$precip_cv <- hold$precip_cv
+env_20m_wcvi$precip_max <- hold$precip_max
+env_20m_wcvi$precip_mean <- hold$precip_mean
+env_20m_wcvi$precip_min <- hold$precip_min
+env_20m_wcvi$rsds_cv <- hold$rsds_cv
+env_20m_wcvi$rsds_max <- hold$rsds_max
+env_20m_wcvi$rsds_mean <- hold$rsds_mean
+env_20m_wcvi$rsds_min <- hold$rsds_min
+env_20m_wcvi$temp_air_cv <- hold$temp_air_cv
+env_20m_wcvi$temp_air_max <- hold$temp_air_max
+env_20m_wcvi$temp_air_mean <- hold$temp_air_mean
+env_20m_wcvi$temp_air_min <- hold$temp_air_min
+
+env_20m_wcvi <- env_20m_wcvi %>% filter(do_5m_min_bccm >= 100, temp_s_min_bccm >= 0, temp_s_min_nep36 >= 0, !is.na(NH4_5m_mean_bccm)) # areas where BCCM doesn't make good predictions
+
 env_20m_wcvi$region <- "West Coast Vancouver Island"
 env_20m_wcvi$substrate <- c("Rock", "Mixed", "Sand", "Mud")[env_20m_wcvi$substrate]
 
 summary(env_20m_wcvi)
 
-#save(env_20m_wcvi, file = "./data/prediction_WCVI.RData")
+save(env_20m_wcvi, file = "code/output_data/regional_prediction_datasets/prediction_WCVI.RData")
 ggplot(env_20m_wcvi, aes(x = X_m, y = Y_m, color = substrate))+
   geom_point(size = 0.01, pch = 15)+
   theme_bw()+
@@ -308,39 +445,79 @@ env_20m_ss$cul_eff <- hold$cul_eff
 env_20m_ss <- filter(env_20m_ss, !is.na(rei), !is.na(substrate), !is.na(tidal))
 env_20m_ss_sf <- st_as_sf(env_20m_ss, coords = c("X_m", "Y_m"), crs = "EPSG:3005")
 hold <- terra::extract(x = hindcast2013_2023, y = env_20m_ss_sf, fun = "mean", touches = TRUE, bind = TRUE) %>% terra::as.data.frame() 
-env_20m_ss$NH4_5m_mean <- hold$NH4_5m_mean
-env_20m_ss$NO3_5m_mean <- hold$NO3_5m_mean
-env_20m_ss$salt_5m_mean <- hold$salt_5m_mean
-env_20m_ss$salt_5m_min <- hold$salt_5m_min
-env_20m_ss$PAR_5m_mean <- hold$PAR_5m_mean
-env_20m_ss$PAR_5m_min <- hold$PAR_5m_min
-env_20m_ss$PAR_5m_max <- hold$PAR_5m_max
-env_20m_ss$temp_s_mean <- hold$temp_s_mean
-env_20m_ss$temp_s_max <- hold$temp_s_max
-env_20m_ss$temp_s_min <- hold$temp_s_min
-env_20m_ss$temp_5m_mean <- hold$temp_5m_mean
-env_20m_ss$temp_5m_max <- hold$temp_5m_max
-env_20m_ss$temp_5m_min <- hold$temp_5m_min
-env_20m_ss$do_5m_mean <- hold$do_5m_mean
-env_20m_ss$do_5m_min <- hold$do_5m_min
-env_20m_ss$salt_5m_cv <- hold$salt_5m_cv
-env_20m_ss$temp_s_cv <- hold$temp_s_cv
-env_20m_ss$temp_s_diff <- hold$temp_s_diff
-env_20m_ss$temp_5m_cv <- hold$temp_5m_cv
-env_20m_ss$temp_5m_diff <- hold$temp_5m_diff
-env_20m_ss <- env_20m_ss %>% filter(do_5m_min >= 100, temp_s_min >= 0, !is.na(NH4_5m_mean)) # areas where BCCM doesn't make good predictions
+env_20m_ss$NH4_5m_mean_bccm <- hold$NH4_5m_mean_bccm
+env_20m_ss$NH4_5m_mean_nep36 <- hold$NH4_5m_mean_nep36
+env_20m_ss$NO3_5m_mean_bccm <- hold$NO3_5m_mean_bccm
+env_20m_ss$NO3_5m_mean_nep36 <- hold$NO3_5m_mean_nep36
+env_20m_ss$salt_5m_mean_bccm <- hold$salt_5m_mean_bccm
+env_20m_ss$salt_5m_mean_nep36 <- hold$salt_5m_mean_nep36
+env_20m_ss$salt_5m_min_bccm <- hold$salt_5m_min_bccm
+env_20m_ss$salt_5m_min_nep36 <- hold$salt_5m_min_nep36
+env_20m_ss$salt_5m_cv_bccm <- hold$salt_5m_cv_bccm
+env_20m_ss$salt_5m_cv_nep36 <- hold$salt_5m_cv_nep36
+env_20m_ss$PAR_5m_mean_bccm <- hold$PAR_5m_mean_bccm
+env_20m_ss$PAR_5m_mean_nep36 <- hold$PAR_5m_mean_nep36
+env_20m_ss$PAR_5m_min_bccm <- hold$PAR_5m_min_bccm
+env_20m_ss$PAR_5m_min_nep36 <- hold$PAR_5m_min_nep36
+env_20m_ss$PAR_5m_min_bccm <- hold$PAR_5m_min_bccm
+env_20m_ss$PAR_5m_min_nep36 <- hold$PAR_5m_min_nep36
+env_20m_ss$temp_s_mean_bccm <- hold$temp_s_mean_bccm
+env_20m_ss$temp_s_mean_nep36 <- hold$temp_s_mean_nep36
+env_20m_ss$temp_s_max_bccm <- hold$temp_s_max_bccm
+env_20m_ss$temp_s_max_nep36 <- hold$temp_s_max_nep36
+env_20m_ss$temp_s_min_bccm <- hold$temp_s_min_bccm
+env_20m_ss$temp_s_min_nep36 <- hold$temp_s_min_nep36
+env_20m_ss$temp_s_cv_bccm <- hold$temp_s_cv_bccm
+env_20m_ss$temp_s_cv_nep36 <- hold$temp_s_cv_nep36
+env_20m_ss$temp_s_diff_bccm <- hold$temp_s_diff_bccm
+env_20m_ss$temp_s_diff_nep36 <- hold$temp_s_diff_nep36
+env_20m_ss$temp_5m_mean_bccm <- hold$temp_5m_mean_bccm
+env_20m_ss$temp_5m_mean_nep36 <- hold$temp_5m_mean_nep36
+env_20m_ss$temp_5m_max_bccm <- hold$temp_5m_max_bccm
+env_20m_ss$temp_5m_max_nep36 <- hold$temp_5m_max_nep36
+env_20m_ss$temp_5m_min_bccm <- hold$temp_5m_min_bccm
+env_20m_ss$temp_5m_min_nep36 <- hold$temp_5m_min_nep36
+env_20m_ss$temp_5m_cv_bccm <- hold$temp_5m_cv_bccm
+env_20m_ss$temp_5m_cv_nep36 <- hold$temp_5m_cv_nep36
+env_20m_ss$temp_5m_diff_bccm <- hold$temp_5m_diff_bccm
+env_20m_ss$temp_5m_diff_nep36 <- hold$temp_5m_diff_nep36
+env_20m_ss$do_5m_mean_bccm <- hold$do_5m_mean_bccm
+env_20m_ss$do_5m_mean_nep36 <- hold$do_5m_mean_nep36
+env_20m_ss$do_5m_min_bccm <- hold$do_5m_min_bccm
+env_20m_ss$do_5m_min_nep36 <- hold$do_5m_min_nep36
+env_20m_ss$precip_cv <- hold$precip_cv
+env_20m_ss$precip_max <- hold$precip_max
+env_20m_ss$precip_mean <- hold$precip_mean
+env_20m_ss$precip_min <- hold$precip_min
+env_20m_ss$rsds_cv <- hold$rsds_cv
+env_20m_ss$rsds_max <- hold$rsds_max
+env_20m_ss$rsds_mean <- hold$rsds_mean
+env_20m_ss$rsds_min <- hold$rsds_min
+env_20m_ss$temp_air_cv <- hold$temp_air_cv
+env_20m_ss$temp_air_max <- hold$temp_air_max
+env_20m_ss$temp_air_mean <- hold$temp_air_mean
+env_20m_ss$temp_air_min <- hold$temp_air_min
+
+env_20m_ss <- env_20m_ss %>% filter(do_5m_min_bccm >= 100, temp_s_min_bccm >= 0, temp_s_min_nep36 >= 0, !is.na(NH4_5m_mean_bccm)) # areas where BCCM doesn't make good predictions
+
 env_20m_ss$region <- "Salish Sea"
 env_20m_ss$substrate <- c("Rock", "Mixed", "Sand", "Mud")[env_20m_ss$substrate]
 summary(env_20m_ss)
 
 rm(list=ls(all=TRUE)[sapply(mget(ls(all=TRUE)), class) == "SpatRaster"])
 
-#save(env_20m_ss, file = "./data/prediction_SS.RData")
+save(env_20m_ss, file = "code/output_data/regional_prediction_datasets/prediction_SS.RData")
 
 ggplot(env_20m_ss, aes(x = X_m, y = Y_m, color = substrate))+
   geom_point(size = 0.01, pch = 15)+
   theme_bw()+
   coord_equal()
+
+load("code/output_data/regional_prediction_datasets/prediction_SS.RData")
+load("code/output_data/regional_prediction_datasets/prediction_NCC.RData")
+load("code/output_data/regional_prediction_datasets/prediction_WCVI.RData")
+load("code/output_data/regional_prediction_datasets/prediction_QCS.RData")
+load("code/output_data/regional_prediction_datasets/prediction_HG.RData")
 
 
 #combine all and filter
@@ -355,8 +532,9 @@ summary(env_20m_all)
 #need to think about this in reference to how much we want to extrapolate, will depend on future conditions
 env_20m_all <- env_20m_all %>%
   filter(#freshwater < quantile(seagrass_data$freshwater, probs = 0.99),  # we have no surveys in freshwater areas, so better to exclude
-         salt_5m_mean > quantile(seagrass_data$saltmean, probs = 0.001), # same as above
-         !is.na(cul_eff), #temperature > quantile(seagrass_data$temperature, probs = 0.001), # want to allow extrapolation into higher temperatures
+         salt_5m_mean_bccm > quantile(seagrass_data$saltmean_bccm, probs = 0.001), # same as above
+         !is.na(cul_eff),
+         !is.na(NH4_5m_mean_nep36), #temperature > quantile(seagrass_data$temperature, probs = 0.001), # want to allow extrapolation into higher temperatures
          #temperature < quantile(seagrass_data$temperature, probs = 0.999),
          tidal < quantile(seagrass_data$tidal, probs = 0.9999), # remove high current areas where we can't sample, neither species observed in high values in quadrats 
          rei < quantile(seagrass_data$rei, probs = 0.99999))   # remove high exposure areas where we can't sample? PH found in moderately high but not
@@ -378,28 +556,60 @@ env_20m_all <- env_20m_all %>%
          freshwater_sqrt_stnd = scale_fun_ref(sqrt(freshwater), reference = sqrt(seagrass_data$freshwater)),
          slope_stnd = scale_fun_ref(slope, reference = seagrass_data$slope),
          slope_sqrt_stnd = scale_fun_ref(sqrt(slope), reference = sqrt(seagrass_data$slope)),
-         NH4_stnd = scale_fun_ref(NH4_5m_mean, reference = seagrass_data$NH4),
-         NO3_stnd = scale_fun_ref(NO3_5m_mean, reference = seagrass_data$NO3),
-         saltmean_stnd = scale_fun_ref(salt_5m_mean, reference = seagrass_data$saltmean),
-         saltmean_sq_stnd = scale_fun_ref((salt_5m_mean)^2, reference = (seagrass_data$saltmean)^2),
-         saltmin_stnd = scale_fun_ref(salt_5m_min, reference = seagrass_data$saltmin),
-         saltmin_sq_stnd = scale_fun_ref((salt_5m_min)^2, reference = (seagrass_data$saltmin)^2),
-         saltcv_stnd = scale_fun_ref(salt_5m_cv, reference = seagrass_data$saltcv),
-         PARmean_stnd = scale_fun_ref(PAR_5m_mean, reference = seagrass_data$PARmean),
-         PARmin_stnd = scale_fun_ref(PAR_5m_min, reference = seagrass_data$PARmin),
-         PARmax_stnd = scale_fun_ref(PAR_5m_max, reference = seagrass_data$PARmax),
-         surftempmean_stnd = scale_fun_ref(temp_s_mean, reference = seagrass_data$surftempmean),
-         surftempmin_stnd = scale_fun_ref(temp_s_min, reference = seagrass_data$surftempmin),
-         surftempmax_stnd = scale_fun_ref(temp_s_max, reference = seagrass_data$surftempmax),
-         surftempcv_stnd = scale_fun_ref(temp_s_cv, reference = seagrass_data$surftempcv),
-         surftempdiff_stnd = scale_fun_ref(temp_s_diff, reference = seagrass_data$surftempdiff),
-         tempmean_stnd = scale_fun_ref(temp_5m_mean, reference = seagrass_data$tempmean),
-         tempmin_stnd = scale_fun_ref(temp_5m_min, reference = seagrass_data$tempmin),
-         tempmax_stnd = scale_fun_ref(temp_5m_max, reference = seagrass_data$tempmax),
-         tempcv_stnd = scale_fun_ref(temp_5m_cv, reference = seagrass_data$tempcv),
-         tempdiff_stnd = scale_fun_ref(temp_5m_diff, reference = seagrass_data$tempdiff),
-         DOmean_stnd = scale_fun_ref(do_5m_mean, reference = seagrass_data$DOmean),
-         DOmin_stnd = scale_fun_ref(do_5m_min, reference = seagrass_data$DOmin),
+         NH4_bccm_stnd = scale_fun_ref(NH4_5m_mean_bccm, reference = seagrass_data$NH4_bccm),
+         NH4_nep_stnd = scale_fun_ref(NH4_5m_mean_nep36, reference = seagrass_data$NH4_nep),
+         NO3_bccm_stnd = scale_fun_ref(NO3_5m_mean_bccm, reference = seagrass_data$NO3_bccm),
+         NO3_nep_stnd = scale_fun_ref(NO3_5m_mean_nep36, reference = seagrass_data$NO3_nep),
+         saltmean_bccm_stnd = scale_fun_ref(salt_5m_mean_bccm, reference = seagrass_data$saltmean_bccm),
+         saltmean_nep_stnd = scale_fun_ref(salt_5m_mean_nep36, reference = seagrass_data$saltmean_nep),
+         saltmean_bccm_sq_stnd = scale_fun_ref((salt_5m_mean_bccm)^2, reference = (seagrass_data$saltmean_bccm)^2),
+         saltmean_nep_sq_stnd = scale_fun_ref((salt_5m_mean_nep36)^2, reference = (seagrass_data$saltmean_nep)^2),
+         saltmin_bccm_stnd = scale_fun_ref(salt_5m_min_bccm, reference = seagrass_data$saltmin_bccm),
+         saltmin_nep_stnd = scale_fun_ref(salt_5m_min_nep36, reference = seagrass_data$saltmin_nep),
+         saltmin_bccm_sq_stnd = scale_fun_ref((salt_5m_min_bccm)^2, reference = (seagrass_data$saltmin_bccm)^2),
+         saltmin_nep_sq_stnd = scale_fun_ref((salt_5m_min_nep36)^2, reference = (seagrass_data$saltmin_nep)^2),
+         saltcv_bccm_stnd = scale_fun_ref(salt_5m_cv_bccm, reference = seagrass_data$saltcv_bccm),
+         saltcv_nep_stnd = scale_fun_ref(salt_5m_cv_nep36, reference = seagrass_data$saltcv_nep),
+         PARmean_bccm_stnd = scale_fun_ref(PAR_5m_mean_bccm, reference = seagrass_data$PARmean_bccm),
+         PARmean_nep_stnd = scale_fun_ref(PAR_5m_mean_nep36, reference = seagrass_data$PARmean_nep),
+         PARmin_bccm_stnd = scale_fun_ref(PAR_5m_min_bccm, reference = seagrass_data$PARmin_bccm),
+         PARmin_nep_stnd = scale_fun_ref(PAR_5m_min_nep36, reference = seagrass_data$PARmin_nep),
+         surftempmean_bccm_stnd = scale_fun_ref(temp_s_mean_bccm, reference = seagrass_data$surftempmean_bccm),
+         surftempmean_nep_stnd = scale_fun_ref(temp_s_mean_nep36, reference = seagrass_data$surftempmean_nep),
+         surftempmin_bccm_stnd = scale_fun_ref(temp_s_min_bccm, reference = seagrass_data$surftempmin_bccm),
+         surftempmin_nep_stnd = scale_fun_ref(temp_s_min_nep36, reference = seagrass_data$surftempmin_nep),
+         surftempmax_bccm_stnd = scale_fun_ref(temp_s_max_bccm, reference = seagrass_data$surftempmax_bccm),
+         surftempmax_nep_stnd = scale_fun_ref(temp_s_max_nep36, reference = seagrass_data$surftempmax_nep),
+         surftempcv_bccm_stnd = scale_fun_ref(temp_s_cv_bccm, reference = seagrass_data$surftempcv_bccm),
+         surftempcv_nep_stnd = scale_fun_ref(temp_s_cv_nep36, reference = seagrass_data$surftempcv_nep),
+         surftempdiff_bccm_stnd = scale_fun_ref(temp_s_diff_bccm, reference = seagrass_data$surftempdiff_bccm),
+         surftempdiff_nep_stnd = scale_fun_ref(temp_s_diff_nep36, reference = seagrass_data$surftempdiff_nep),
+         tempmean_bccm_stnd = scale_fun_ref(temp_5m_mean_bccm, reference = seagrass_data$tempmean_bccm),
+         tempmean_nep_stnd = scale_fun_ref(temp_5m_mean_nep36, reference = seagrass_data$tempmean_nep),
+         tempmin_bccm_stnd = scale_fun_ref(temp_5m_min_bccm, reference = seagrass_data$tempmin_bccm),
+         tempmin_nep_stnd = scale_fun_ref(temp_5m_min_nep36, reference = seagrass_data$tempmin_nep),
+         tempmax_bccm_stnd = scale_fun_ref(temp_5m_max_bccm, reference = seagrass_data$tempmax_bccm),
+         tempmax_nep_stnd = scale_fun_ref(temp_5m_max_nep36, reference = seagrass_data$tempmax_nep),
+         tempcv_bccm_stnd = scale_fun_ref(temp_5m_cv_bccm, reference = seagrass_data$tempcv_bccm),
+         tempcv_nep_stnd = scale_fun_ref(temp_5m_cv_nep36, reference = seagrass_data$tempcv_nep),
+         tempdiff_bccm_stnd = scale_fun_ref(temp_5m_diff_bccm, reference = seagrass_data$tempdiff_bccm),
+         tempdiff_nep_stnd = scale_fun_ref(temp_5m_diff_nep36, reference = seagrass_data$tempdiff_nep),
+         DOmean_bccm_stnd = scale_fun_ref(do_5m_mean_bccm, reference = seagrass_data$DOmean_bccm),
+         DOmean_nep_stnd = scale_fun_ref(do_5m_mean_nep36, reference = seagrass_data$DOmean_nep),
+         DOmin_bccm_stnd = scale_fun_ref(do_5m_min_bccm, reference = seagrass_data$DOmin_bccm),
+         DOmin_nep_stnd = scale_fun_ref(do_5m_min_nep36, reference = seagrass_data$DOmin_nep),
+         airtempcv_stnd = scale_fun_ref(temp_air_cv, reference = seagrass_data$airtempcv), 
+         airtempmax_stnd = scale_fun_ref(temp_air_max, reference = seagrass_data$airtempmax), 
+         airtempmean_stnd = scale_fun_ref(temp_air_mean, reference = seagrass_data$airtempmean), 
+         airtempmin_stnd = scale_fun_ref(temp_air_min, reference = seagrass_data$airtempmin),
+         prcv_stnd = scale_fun_ref(precip_cv, reference = seagrass_data$prcv), 
+         prmax_stnd = scale_fun_ref(precip_max, reference = seagrass_data$prmax), 
+         prmin_stnd = scale_fun_ref(precip_min, reference = seagrass_data$prmin), 
+         prmean_stnd = scale_fun_ref(precip_mean, reference = seagrass_data$prmean), 
+         rsdscv_stnd = scale_fun_ref(rsds_cv, reference = seagrass_data$rsdscv), 
+         rsdsmax_stnd = scale_fun_ref(rsds_max, reference = seagrass_data$rsdsmax), 
+         rsdsmean_stnd = scale_fun_ref(rsds_mean, reference = seagrass_data$rsdsmean), 
+         rsdsmin_stnd = scale_fun_ref(rsds_min, reference = seagrass_data$rsdsmin),
          cul_eff_stnd = scale_fun_ref(cul_eff, reference = seagrass_data$cul_eff)) %>%
   mutate(ID = 1:nrow(env_20m_all),
          HKey = factor("new"),
@@ -418,10 +628,14 @@ env_20m_all <- env_20m_all %>%
 #### Compare the sampled predictor space to that of the total hindcast climatology
 #2013-2023 hindcast climatology without depth and substrate and turn into a dataframe
 
-hindcast_predictor_data <- env_20m_all %>% select(rei_stnd, tidal_stnd, slope_stnd, NH4_stnd, NO3_stnd, saltmin_stnd, saltcv_stnd, PARmin_stnd, surftempmean_stnd, surftempmin_stnd, surftempmax_stnd, surftempcv_stnd, tempmean_stnd, tempmin_stnd, tempmax_stnd, tempcv_stnd, DOmin_stnd, DOmean_stnd, freshwater_sqrt_stnd)
+hindcast_predictor_data <- env_20m_all %>% select(rei_stnd, tidal_stnd, slope_stnd, NH4_bccm_stnd, NO3_bccm_stnd, saltmin_bccm_stnd, saltcv_bccm_stnd, PARmin_bccm_stnd, surftempmean_bccm_stnd, surftempmin_bccm_stnd, 
+                                                  surftempmax_bccm_stnd, surftempcv_bccm_stnd, tempmean_bccm_stnd, tempmin_bccm_stnd, tempmax_bccm_stnd, tempcv_bccm_stnd, DOmin_bccm_stnd, DOmean_bccm_stnd, freshwater_sqrt_stnd,
+                                                  airtempmean_stnd, prmean_stnd, rsdsmean_stnd)
 
 # transect predictor data
-transect_predictor_data <- seagrass_data %>% select(rei_stnd, tidal_stnd, slope_stnd, NH4_stnd, NO3_stnd, saltmin_stnd, saltcv_stnd, PARmin_stnd, surftempmean_stnd, surftempmin_stnd, surftempmax_stnd, surftempcv_stnd, tempmean_stnd, tempmin_stnd, tempmax_stnd, tempcv_stnd, DOmin_stnd, DOmean_stnd, freshwater_sqrt_stnd)
+transect_predictor_data <- seagrass_data %>% select(rei_stnd, tidal_stnd, slope_stnd, NH4_bccm_stnd, NO3_bccm_stnd, saltmin_bccm_stnd, saltcv_bccm_stnd, PARmin_bccm_stnd, surftempmean_bccm_stnd, surftempmin_bccm_stnd, 
+                                                    surftempmax_bccm_stnd, surftempcv_bccm_stnd, tempmean_bccm_stnd, tempmin_bccm_stnd, tempmax_bccm_stnd, tempcv_bccm_stnd, DOmin_bccm_stnd, DOmean_bccm_stnd, freshwater_sqrt_stnd,
+                                                    airtempmean_stnd, prmean_stnd, rsdsmean_stnd)
 #transect_predictor_data <- seagrass_data %>% select(rei_stnd, tidal_stnd, slope_stnd, NH4_stnd, NO3_stnd, saltmean_stnd, saltmin_stnd, PARmean_stnd, surftempmean_stnd, surftempmin_stnd, surftempmax_stnd, surftempcv_stnd,surftempdiff_stnd, tempmean_stnd, tempmin_stnd, tempmax_stnd, tempcv_stnd, tempdiff_stnd, DOmean_stnd)
 
 #Create a PCA for the total predictor space of the hindcast
@@ -449,37 +663,44 @@ Transect_Scores$Type <- "Survey Predictor Space"
 All_Scores <- rbind(Hindcast_Scores, Transect_Scores)
 
 #Create a function that creates a frequency plot for the values of the study area and transect surveys for a specified principle component
-Density_Plot <- function(All_Scores, comp, title, x, y){
+Density_Plot <- function(All_Scores, comp, title, x, y, show.legend = TRUE){
   Dense <- ggplot(All_Scores) + 
-    geom_density(aes(x = All_Scores[,comp], fill = Type), alpha = 0.5) + 
-    scale_fill_manual(values = c("#f28e2b", "#76b7b2"), name = "Feature Space" )  + 
+    geom_density(aes(x = All_Scores[, comp], fill = Type), alpha = 0.5, show.legend = show.legend) + 
+    scale_fill_manual(values = c("#f28e2b", "#76b7b2")) +
     scale_y_continuous(expand = c(0, 0)) +
     xlab(title) +
-    ylab("Frequency") + 
-    theme_classic()   +
-    guides(x.sec = "axis", y.sec = "axis")+
-    theme(axis.line.y.left = element_line(size = 0.75, color = "black"),
-          axis.line.y.right = element_line(size = 0.75, color = "black"),
-          axis.line.x.top = element_line(size = 0.75, color = "black"),
-          axis.line.x.bottom = element_line(size = 0.75, color = "black"),
-          axis.ticks.x.top = element_blank(),
-          axis.ticks.y.right = element_blank(),
-          axis.text.x.top = element_blank(),
-          axis.text.y.right = element_blank())  +
-    theme(legend.position = c(x,y)) +
-    theme(axis.text = element_text(size=12),
-          axis.title = element_text(size = 14),
-          legend.text = element_text(size = 8),
-          legend.background = element_blank())
+    ylab("Frequency") +
+    theme_classic() +
+    guides(x.sec = "axis", y.sec = "axis") +
+    theme(
+      axis.line.y.left = element_line(size = 0.75, color = "black"),
+      axis.line.y.right = element_line(size = 0.75, color = "black"),
+      axis.line.x.top = element_line(size = 0.75, color = "black"),
+      axis.line.x.bottom = element_line(size = 0.75, color = "black"),
+      axis.ticks.x.top = element_blank(),
+      axis.ticks.y.right = element_blank(),
+      axis.text.x.top = element_blank(),
+      axis.text.y.right = element_blank(),
+      legend.title = element_blank(),
+      legend.position = if (show.legend) c(x, y) else "none",  # inside first plot
+      legend.text = element_text(size = 10),    # moderate size
+      legend.key.size = unit(0.8, "cm"),        # balanced key size
+      axis.text = element_text(size = 12),
+      axis.title = element_text(size = 14),
+      legend.background = element_blank()       # no box
+    )
   return(Dense)
 }
 
-#PCA_dense_plot <-  gridExtra::grid.arrange(Dense1, Dense2, nrow = 2)
-#Plot grid a density plot for the first four principal components
-PCA_dense_plot <- gridExtra::grid.arrange(Density_Plot(All_Scores, 1, "Principal Component 1 Value (39%)", 0.25, 0.81), 
-                                     Density_Plot(All_Scores, 2, "Principal Component 2 Value (19%)", 0.75, 0.81), 
-                                     Density_Plot(All_Scores, 3, "Principal Component 3 Value (15%)", 0.75, 0.81), 
-                                     Density_Plot(All_Scores, 4, "Principal Component 4 Value (9%)", 0.25, 0.81), nrow = 2)
+# Create plots (legend only in the first one)
+p1 <- Density_Plot(All_Scores, 1, "Principal Component 1 Value (39%)", 0.3, 0.8, show.legend = TRUE)  # moved legend left
+p2 <- Density_Plot(All_Scores, 2, "Principal Component 2 Value (19%)", 0.2, 0.81, show.legend = FALSE)
+p3 <- Density_Plot(All_Scores, 3, "Principal Component 3 Value (15%)", 0.75, 0.81, show.legend = FALSE)
+p4 <- Density_Plot(All_Scores, 4, "Principal Component 4 Value (9%)", 0.25, 0.81, show.legend = FALSE)
+
+# Arrange in 2x2 grid
+PCA_dense_plot <- gridExtra::grid.arrange(p1, p2, p3, p4, nrow = 2)
+
 PCA_dense_plot
 ggsave(filename = "./figures/pre-analysis/Predictor_Hindcast_Transect_PCA_Density_Plot.png", plot = PCA_dense_plot, scale = 1, height = 10, width = 12)
 
@@ -554,7 +775,9 @@ writeRaster(mess_raster_qcs, file.path("./raster/mess_predictions_qcs.tif"), ove
 
 transect_predictor_data_1993_2009 <- seagrass_data %>% 
   filter(Year< 2010) %>%
-  select(rei_stnd, tidal_stnd, slope_stnd, NH4_stnd, NO3_stnd, saltmin_stnd, saltcv_stnd, PARmin_stnd, surftempmean_stnd, surftempmin_stnd, surftempmax_stnd, surftempcv_stnd, tempmean_stnd, tempmin_stnd, tempmax_stnd, tempcv_stnd, DOmin_stnd, DOmean_stnd, freshwater_sqrt_stnd)
+  select(rei_stnd, tidal_stnd, slope_stnd, NH4_bccm_stnd, NO3_bccm_stnd, saltmin_bccm_stnd, saltcv_bccm_stnd, PARmin_bccm_stnd, surftempmean_bccm_stnd, surftempmin_bccm_stnd, 
+         surftempmax_bccm_stnd, surftempcv_bccm_stnd, tempmean_bccm_stnd, tempmin_bccm_stnd, tempmax_bccm_stnd, tempcv_bccm_stnd, DOmin_bccm_stnd, DOmean_bccm_stnd, freshwater_sqrt_stnd,
+         airtempmean_stnd, prmean_stnd, rsdsmean_stnd )
 
 temporal_validation_MESS<- predicts::mess(x = hindcast_predictor_data, v= transect_predictor_data_1993_2009, full = FALSE)
 temporal_validation_MESS <- temporal_validation_MESS %>%
@@ -581,7 +804,7 @@ mess_plot<-ggplot(env_20m_all_sub)+
   xlab("") 
 mess_plot
 ggsave("./figures/pre-analysis/hindcast_mess.png", height = 6, width = 6)
-summary(env_20m_all)
+
 
 temporal_val_mess_plot<-ggplot(env_20m_all_sub)+
   geom_sf(data = coastline, linewidth = 0.1)+

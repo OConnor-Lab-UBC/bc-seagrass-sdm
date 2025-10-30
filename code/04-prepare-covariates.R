@@ -74,9 +74,18 @@ tidal_index_all <- tidal_all/(maxFn(tidal_all))
 crs(tidal_index_all) <- "EPSG:3005"
 
 #read in oceanographic data
-hindcast1993_2002 <- terra::rast("code/output_data/processed_ocean_variables/Predictor_Hindcast_Climatologies_1993-2002.tif")
-hindcast2003_2012 <- terra::rast("code/output_data/processed_ocean_variables/Predictor_Hindcast_Climatologies_2003-2012.tif")
-hindcast2013_2023 <- terra::rast("code/output_data/processed_ocean_variables/Predictor_Hindcast_Climatologies_2013-2023.tif")
+# Set folder path
+folder_1993_2002 <- "code/output_data/processed_ocean_variables/years_1993-2002"
+folder_2003_2012 <- "code/output_data/processed_ocean_variables/years_2003-2012"
+folder_2013_2023 <- "code/output_data/processed_ocean_variables/years_2013-2023"
+
+files_1993_2002 <- list.files(folder_1993_2002, pattern = "\\.tif$", full.names = TRUE)
+files_2003_2012 <- list.files(folder_2003_2012, pattern = "\\.tif$", full.names = TRUE)
+files_2013_2023 <- list.files(folder_2013_2023, pattern = "\\.tif$", full.names = TRUE)
+
+hindcast1993_2002 <- terra::rast(files_1993_2002)
+hindcast2003_2012 <- terra::rast(files_2003_2012)
+hindcast2013_2023 <- terra::rast(files_2013_2023)
 
 # read in cumulative effects
 culmulative_effects <- terra::rast("code/output_data/culmulative_effects_all_20m.tif")
@@ -137,19 +146,32 @@ oceanvars_2013_2023 <- terra::extract(x = hindcast2013_2023, y = spatialised_sf_
   terra::as.data.frame() 
 
 oceanvars_allyears <- rbind(oceanvars_1993_2002, oceanvars_2003_2012, oceanvars_2013_2023) %>%
-  rename(NH4 = NH4_5m_mean, NO3 = NO3_5m_mean, saltmean = salt_5m_mean, saltmin = salt_5m_min, saltcv = salt_5m_cv, PARmean = PAR_5m_mean, PARmin = PAR_5m_min,
-         PARmax = PAR_5m_max, surftempmean = temp_s_mean, surftempmax = temp_s_max, surftempmin = temp_s_min, surftempcv = temp_s_cv, surftempdiff = temp_s_diff, tempmean = temp_5m_mean, 
-         tempmax = temp_5m_max, tempmin = temp_5m_min, tempcv= temp_5m_cv, tempdiff = temp_5m_diff, DOmean = do_5m_mean, DOmin = do_5m_min) %>%
-  select(ID, NH4, NO3, saltmean, saltmin, saltcv, PARmean, PARmin, PARmax, surftempmean, surftempmax, surftempmin, surftempcv, surftempdiff, tempmean, tempmax, tempmin, 
-         tempcv, tempdiff, DOmean, DOmin)
+  rename(DOmean_bccm = do_5m_mean_bccm, DOmean_nep = do_5m_mean_nep36, DOmin_bccm = do_5m_min_bccm, DOmin_nep = do_5m_min_nep36,
+         NH4_bccm = NH4_5m_mean_bccm, NH4_nep = NH4_5m_mean_nep36, NO3_bccm = NO3_5m_mean_bccm, NO3_nep = NO3_5m_mean_nep36,
+         PARmean_bccm = PAR_5m_mean_bccm, PARmean_nep = PAR_5m_mean_nep36, PARmin_bccm = PAR_5m_min_bccm, PARmin_nep = PAR_5m_min_nep36, PARmax_bccm = PAR_5m_max_bccm, PARmax_nep = PAR_5m_max_nep36,
+         prcv = precip_cv, prmax = precip_max, prmin = precip_min, prmean = precip_mean,
+         rsdscv = rsds_cv, rsdsmax = rsds_max, rsdsmean = rsds_mean, rsdsmin = rsds_min,
+         saltmean_bccm = salt_5m_mean_bccm, saltmean_nep = salt_5m_mean_nep36, saltmin_bccm = salt_5m_min_bccm, saltmin_nep = salt_5m_min_nep36 , saltcv_bccm = salt_5m_cv_bccm,  saltcv_nep = salt_5m_cv_nep36,
+         surftempmean_bccm = temp_s_mean_bccm, surftempmean_nep = temp_s_mean_nep36, surftempmax_bccm = temp_s_max_bccm, surftempmax_nep = temp_s_max_nep36, surftempmin_bccm = temp_s_min_bccm, surftempmin_nep = temp_s_min_nep36, surftempcv_bccm = temp_s_cv_bccm, surftempcv_nep = temp_s_cv_nep36, surftempdiff_bccm = temp_s_diff_bccm, surftempdiff_nep = temp_s_diff_nep36,
+         tempmean_bccm = temp_5m_mean_bccm, tempmean_nep = temp_5m_mean_nep36, tempmax_bccm = temp_5m_max_bccm, tempmax_nep = temp_5m_max_nep36, tempmin_bccm = temp_5m_min_bccm, tempmin_nep = temp_5m_min_nep36, tempcv_bccm = temp_5m_cv_bccm, tempcv_nep = temp_5m_cv_nep36, tempdiff_bccm = temp_5m_diff_bccm, tempdiff_nep = temp_5m_diff_nep36,
+         airtempcv = temp_air_cv, airtempmax = temp_air_max, airtempmean = temp_air_mean, airtempmin = temp_air_min) %>%
+  select(ID, NH4_bccm, NH4_nep, NO3_bccm, NO3_nep, saltmean_bccm, saltmean_nep, saltmin_bccm, saltmin_nep, saltcv_bccm, saltcv_nep,
+         PARmean_bccm, PARmean_nep, PARmin_bccm, PARmin_nep, PARmax_bccm, PARmax_nep, surftempmean_bccm, surftempmean_nep, 
+         surftempmax_bccm, surftempmax_nep, surftempmin_bccm, surftempmin_nep, surftempcv_bccm, surftempcv_nep, surftempdiff_bccm, surftempdiff_nep,
+         tempmean_bccm, tempmean_nep, tempmax_bccm, tempmax_nep, tempmin_bccm, tempmin_nep, tempcv_bccm, tempcv_nep, tempdiff_bccm, tempdiff_nep,
+         airtempcv, airtempmax, airtempmean, airtempmin,
+         DOmean_bccm, DOmean_nep, DOmin_bccm, DOmin_nep, prcv, prmax, prmin, prmean, rsdscv, rsdsmax, rsdsmean, rsdsmin)
 
-spatialised_sf <- dplyr::full_join(spatialised_sf, oceanvars_allyears, by=c("ID")) %>% filter(!is.na(NH4))
+spatialised_sf <- dplyr::full_join(spatialised_sf, oceanvars_allyears, by=c("ID")) %>% filter(!is.na(NH4_bccm), !is.na(NH4_nep))
 spatialised_sf$mean_PerCovZO<- round(spatialised_sf$mean_PerCovZO, digits = 0)
-#end with 93338 obs
+#end with 92,226 obs
+
+summary(spatialised_sf)
 
 scale_fun <- function(x){
   (x  - mean(x)) / sd(x)
 }
+
 
 spatialised_sf <- spatialised_sf %>% 
   mutate(depth_stnd = scale_fun(depth),
@@ -161,28 +183,62 @@ spatialised_sf <- spatialised_sf %>%
          freshwater_sqrt_stnd = scale_fun(sqrt(freshwater)),
          slope_stnd = scale_fun(slope),
          slope_sqrt_stnd = scale_fun(sqrt(slope)),
-         NH4_stnd = scale_fun(NH4),
-         NO3_stnd = scale_fun(NO3),
-         saltmean_stnd = scale_fun(saltmean),
-         saltmean_sq_stnd = scale_fun((saltmean)^2),
-         saltmin_stnd = scale_fun(saltmin),
-         saltmin_sq_stnd = scale_fun((saltmin)^2),
-         saltcv_stnd = scale_fun(saltcv),
-         PARmean_stnd = scale_fun(PARmean),
-         PARmin_stnd = scale_fun(PARmin),
-         PARmax_stnd = scale_fun(PARmax),
-         surftempmean_stnd = scale_fun(surftempmean),
-         surftempmin_stnd = scale_fun(surftempmin),
-         surftempmax_stnd = scale_fun(surftempmax),
-         surftempcv_stnd = scale_fun(surftempcv),
-         surftempdiff_stnd = scale_fun(surftempdiff),
-         tempmean_stnd = scale_fun(tempmean),
-         tempmin_stnd = scale_fun(tempmin),
-         tempmax_stnd = scale_fun(tempmax),
-         tempcv_stnd = scale_fun(tempcv),
-         tempdiff_stnd = scale_fun(tempdiff),
-         DOmean_stnd = scale_fun(DOmean),
-         DOmin_stnd = scale_fun(DOmin),
+         NH4_bccm_stnd = scale_fun(NH4_bccm),
+         NH4_nep_stnd = scale_fun(NH4_nep),
+         NO3_bccm_stnd = scale_fun(NO3_bccm),
+         NO3_nep_stnd = scale_fun(NO3_nep),
+         saltmean_bccm_stnd = scale_fun(saltmean_bccm),
+         saltmean_nep_stnd = scale_fun(saltmean_nep),
+         saltmean_bccm_sq_stnd = scale_fun((saltmean_bccm)^2),
+         saltmean_nep_sq_stnd = scale_fun((saltmean_nep)^2),
+         saltmin_bccm_stnd = scale_fun(saltmin_bccm),
+         saltmin_nep_stnd = scale_fun(saltmin_nep),
+         saltmin_bccm_sq_stnd = scale_fun((saltmin_bccm)^2),
+         saltmin_nep_sq_stnd = scale_fun((saltmin_nep)^2),
+         saltcv_bccm_stnd = scale_fun(saltcv_bccm),
+         saltcv_nep_stnd = scale_fun(saltcv_nep),
+         PARmean_bccm_stnd = scale_fun(PARmean_bccm),
+         PARmean_nep_stnd = scale_fun(PARmean_nep),
+         PARmin_bccm_stnd = scale_fun(PARmin_bccm),
+         PARmin_nep_stnd = scale_fun(PARmin_nep),
+         PARmax_bccm_stnd = scale_fun(PARmax_bccm),
+         PARmax_nep_stnd = scale_fun(PARmax_nep),
+         surftempmean_bccm_stnd = scale_fun(surftempmean_bccm),
+         surftempmean_nep_stnd = scale_fun(surftempmean_nep),
+         surftempmin_bccm_stnd = scale_fun(surftempmin_bccm),
+         surftempmin_nep_stnd = scale_fun(surftempmin_nep),
+         surftempmax_bccm_stnd = scale_fun(surftempmax_bccm),
+         surftempmax_nep_stnd = scale_fun(surftempmax_nep),
+         surftempcv_bccm_stnd = scale_fun(surftempcv_bccm),
+         surftempcv_nep_stnd = scale_fun(surftempcv_nep),
+         surftempdiff_bccm_stnd = scale_fun(surftempdiff_bccm),
+         surftempdiff_nep_stnd = scale_fun(surftempdiff_nep),
+         tempmean_bccm_stnd = scale_fun(tempmean_bccm),
+         tempmean_nep_stnd = scale_fun(tempmean_nep),
+         tempmin_bccm_stnd = scale_fun(tempmin_bccm),
+         tempmin_nep_stnd = scale_fun(tempmin_nep),
+         tempmax_bccm_stnd = scale_fun(tempmax_bccm),
+         tempmax_nep_stnd = scale_fun(tempmax_nep),
+         tempcv_bccm_stnd = scale_fun(tempcv_bccm),
+         tempcv_nep_stnd = scale_fun(tempcv_nep),
+         tempdiff_bccm_stnd = scale_fun(tempdiff_bccm),
+         tempdiff_nep_stnd = scale_fun(tempdiff_nep),
+         DOmean_bccm_stnd = scale_fun(DOmean_bccm),
+         DOmean_nep_stnd = scale_fun(DOmean_nep),
+         DOmin_bccm_stnd = scale_fun(DOmin_bccm),
+         DOmin_nep_stnd = scale_fun(DOmin_nep),
+         airtempcv_stnd = scale_fun(airtempcv), 
+         airtempmax_stnd = scale_fun(airtempmax), 
+         airtempmean_stnd = scale_fun(airtempmean), 
+         airtempmin_stnd = scale_fun(airtempmin),
+         prcv_stnd = scale_fun(prcv), 
+         prmax_stnd = scale_fun(prmax), 
+         prmin_stnd = scale_fun(prmin), 
+         prmean_stnd = scale_fun(prmean),
+         rsdscv_stnd = scale_fun(rsdscv), 
+         rsdsmax_stnd = scale_fun(rsdsmax), 
+         rsdsmean_stnd = scale_fun(rsdsmean), 
+         rsdsmin_stnd = scale_fun(rsdsmin),
          cul_eff_stnd = scale_fun(cul_eff)) 
 
 #ggpairs(spatialised_sf %>% dplyr::select(depth_stnd:DOmin_stnd) %>% st_set_geometry(NULL))

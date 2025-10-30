@@ -150,14 +150,14 @@ glm_ffs <- function(data, NumFolds){
     index_list <- list()
     for (i in 1:(numFolds-1)){
       index_list[[i]] <- which(foldmem == i)}
-    #Setting up parameters for how my model is going to be fitted
+    #Setting up parameters for how my model is going to be fit
     fitControl <- caret::trainControl(method = "cv",
                                       number = (numFolds-1),
                                       index = index_list)
     set.seed(2024)
     #performing model selection by glmStepAIC 
     caret_model <- CAST::ffs(response = sp_data$presence, 
-                             predictors = sp_data[,6:35], 
+                             predictors = sp_data[,6:67], 
                              method = "glm", 
                              family = "binomial",
                              trControl = fitControl)
@@ -241,7 +241,7 @@ evalStats <- function( folds, m, CV ){
     # Get train obs
     train <- CV[[i]][["train"]]
     sp_data_cv <- filter(seagrass_data_long, species == sp)
-    trainobs <- sp_data_cv[ train, 42]
+    trainobs <- sp_data_cv[ train, 74]
     # Get train preds
     trainpred <- plogis(predict(m$models[[i]])$est[train])
     # Calculate area under the receiver-operator curve (AUC))
@@ -250,7 +250,7 @@ evalStats <- function( folds, m, CV ){
     train.tjur <- tjur(trainobs, trainpred )
     # Get test indices
     test <- CV[[i]][["test"]]
-    testobs <- sp_data_cv[ test, 42]
+    testobs <- sp_data_cv[ test, 74]
     #testobs <- tobs$presence
     # Get test preds
     testpred <- plogis(predict(m$models[[i]])$est[test])
