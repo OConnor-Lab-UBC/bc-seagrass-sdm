@@ -649,4 +649,4 @@ cul_eff <- vect(st_read(dsn = "raw_data/anthropogenic/Cumulative_Impacts_Pacfic_
 cul_eff_rast20 <- rasterize(cul_eff, bathy20m, field = "Cumul_Impact_ALL", fun = max) %>% 
   terra::focal(w=21, fun = "mean", na.policy = "only", na.rm = TRUE) %>%  # only change cells that are NA to fill in holes and up to coastline
   terra::mask(bathy20m) %>% terra::crop(bathy20m) 
-writeRaster(cul_eff_rast20, file.path("code/output_data/culmulative_effects_all_20m.tif"), overwrite=TRUE)
+writeRaster(cul_eff_rast20, file.path("code/output_data/processed_ocean_variables/culmulative_effects_all_20m.tif"), overwrite=TRUE)

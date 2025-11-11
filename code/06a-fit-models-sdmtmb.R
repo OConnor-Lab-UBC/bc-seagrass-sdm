@@ -63,7 +63,7 @@ substrates_present # there are eelgrass presence observations on all substrates
 ### Forward feature selection test (testing one method to limit variables )
 #tested removing depth, makes horrible models
 eelgrass_ffs <- glm_ffs(data)  ### variables that came out include depth, substrate, slope_stnd, rei_stnd, and twice tidal sqrt, and once each salt mean and freshwater and temp max
-save(eelgrass_ffs, file = "code/output_data/eelgrass_ffs_variables.RData")
+save(eelgrass_ffs, file = "code/output_data/model_results/eelgrass_ffs_variables.RData")
 # most important variables in all 10 folds are substrate, depth, slope. Airtemp min and rei was important in 5 folds, tidal sqrt in 2 folds and surf temp min bccm in 1 fold
 
 ####SDMtmb model####
@@ -253,10 +253,10 @@ eval_cv_bccm_spatial <- evalStats( folds=1:numFolds,m=m_e_15, CV=cv_list_eelgras
 eval_cv_nep_nospatial <- evalStats( folds=1:numFolds,m=m_e_18,CV=cv_list_eelgrass$cv)
 eval_cv_nep_spatial <- evalStats( folds=1:numFolds,m=m_e_20,CV=cv_list_eelgrass$cv)
 eval_cv_list <- list(eval_cv_bccm_nospatial, eval_cv_bccm_spatial, eval_cv_nep_nospatial, eval_cv_nep_spatial)
-save(eval_cv_list, file = "code/output_data/eval_cv.RData")
+save(eval_cv_list, file = "code/output_data/model_results/eval_cv.RData")
 
 # fit full model bccm 
-
+#remove year for testing
 fmodel_e_bccm_nospatial <- sdmTMB(formula = presence ~ s(depth_stnd, k = 3) + substrate + slope_stnd + rei_stnd + 
                                   airtempmin_stnd + rsdsmin_stnd + #chelsa variables
                                   saltcv_bccm_stnd + NH4_bccm_stnd + tempmin_bccm_stnd + PARmin_bccm_stnd + #bccm variables
@@ -293,7 +293,8 @@ fmodel_e_nep_spatial <- sdmTMB(formula = presence ~ s(depth_stnd, k = 3) + subst
                                  spatial = TRUE, 
                                  data = data)
 
-#PROBABLY NEED TO TEST SURVEY AND THEN MAKE PREDICTIONS JUST BASED ON ONE SURVEY TYPE??
+save(data, fmodel_e_bccm_nospatial, fmodel_e_bccm_spatial, fmodel_e_nep_nospatial, fmodel_e_nep_spatial, file = "code/output_data/model_results/final_eelgrass_model.RData")
+
 
 #have a look at marginal effects
 ggeffects::ggpredict(model = fmodel_e_bccm_nospatial,  terms = "depth_stnd[all]") %>% plot()
@@ -366,7 +367,7 @@ for (m_name in names(models)) {
   eval_results[[m_name]] <- evalfmod(x = data_tmp, thresh = thresh)
 }
 
-save(eval_results, file = "code/output_data/eelgrass_eval_final_models.RData")
+save(eval_results, file = "code/output_data/model_results/eelgrass_eval_final_models.RData")
 
 # these models have good TSS (>0.7), well calibrated (miller). for calibration (Hosmer & Lemeshow goodness-of-fit) model seems to have issues at higher predicted probabilities
 
@@ -395,13 +396,13 @@ relimp_e_bccm_nospatial <- varImp( model=fmodel_e_bccm_nospatial,
                   preds=prednames_bccm,
                   permute=10 ) # Number of permutations
 # depth 69.9, substrate 22.1, slope 3.4, rei 0.4, air temp min 0.3, rsdsmin 0.6, salt cv 0.8, NH4 0.2, PARmin 0.0, Survey 1.1, tempmin 0.3, year 0.8
-save(relimp_e_bccm_nospatial, file = "code/output_data/relimp_e_bccm_nospatial.RData")
+save(relimp_e_bccm_nospatial, file = "code/output_data/model_results/relimp_e_bccm_nospatial.RData")
 plan(sequential) # the spatial models don't run well on multisession
 relimp_e_bccm_spatial <- varImp( model=fmodel_e_bccm_spatial,
                                    dat=data,
                                    preds=prednames_bccm,
                                    permute=10 ) # Number of permutations
-save(relimp_e_bccm_spatial, file = "code/output_data/relimp_e_bccm_spatial.RData")
+save(relimp_e_bccm_spatial, file = "code/output_data/model_results/relimp_e_bccm_spatial.RData")
 # depth 71.0, substrate 21.5, slope 3.9, rei 0.3, air temp min 0.0, rsdsmin 0.1, salt cv 0.3, NH4 0.3, PARmin 0.2, Survey 1.2, tempmin 0.5, year 0.8
 
 
@@ -410,14 +411,14 @@ relimp_e_nep_nospatial <- varImp( model=fmodel_e_nep_nospatial,
                          preds=prednames_nep,
                          permute=10 ) # Number of permutations
 # depth 68.8, substrate 21.7, slope 3.2, rei 0.6, air temp min 0.8, rsdsmin 1.1, salt cv 0.7, NH4 0.3, PARmin 0.9, Survey 1.0, tempmin 0.4, year 0.6
-save(relimp_e_nep_nospatial, file = "code/output_data/relimp_e_nep_nospatial.RData")
+save(relimp_e_nep_nospatial, file = "code/output_data/model_results/relimp_e_nep_nospatial.RData")
 
 relimp_e_nep_spatial <- varImp( model=fmodel_e_nep_spatial,
                                   dat=data,
                                   preds=prednames_nep,
                                   permute=10 ) # Number of permutations
 # depth 69.3, substrate 20.8, slope 3.8, rei 0.5, air temp min 0.0, rsdsmin 0.1, salt cv 0.5, NH4 1.0, PARmin 1.8, Survey 1.1, tempmin 0.6, year 0.5
-save(relimp_e_nep_spatial, file = "code/output_data/relimp_e_nep_spatial.RData")
+save(relimp_e_nep_spatial, file = "code/output_data/model_results/relimp_e_nep_spatial.RData")
 
 ####check residuals####
 # MCMC based randomized quantile residuals (takes a while to compute)
@@ -446,7 +447,7 @@ predict(fmodel_e_bccm) %>%
   ggplot(aes(x = presence, y = fmodel_e_bccm$family$linkinv(est)))+
   geom_abline(slope = 1, intercept = 0)+
   geom_jitter(width = 0.05, height = 0)
-
+# need to save residuals from all models still!!
 
 #### test forecasting
 # left a few years gap 2010-2012 #trained model with 1993-2009
@@ -454,32 +455,32 @@ data_pre2013 <- data %>% filter(Year < 2010)
 mesh_pre2013 <- make_mesh(data = data_pre2013, xy_cols = c("X", "Y"), cutoff = 53) # tested several mesh sizes between 20- 10 km and 15 had highest AUC
 plot(mesh_pre2013)
 barrier_mesh_pre2013 <- add_barrier_mesh(mesh_pre2013, barrier_sf = coastline, proj_scaling = 1000, plot = TRUE)
-
-m_eelgrass_forecast <- sdmTMB(formula = presence ~ s(depth_stnd, k = 3) + substrate + slope_stnd + rei_stnd + 
-                                airtempmin_stnd + rsdsmin_stnd + prcv_stnd + #chelsa variables
-                                saltcv_bccm_stnd + NH4_bccm_stnd, #bccm variables
-                                #(1|Survey), doesn't work with random factor yet
+#BCCM
+m_eelgrass_forecast_bccm <- sdmTMB(formula = presence ~ s(depth_stnd, k = 3) + substrate + slope_stnd + rei_stnd + 
+                                airtempmin_stnd + rsdsmin_stnd + #chelsa variables
+                                saltcv_bccm_stnd + NH4_bccm_stnd + tempmin_bccm_stnd + PARmin_bccm_stnd,# + #bccm variables
+                               # (1|Survey) + (1|Year_factor),  # doesn't work with random factor yet
                                mesh = barrier_mesh_pre2013, 
                                family = binomial(link = "logit"), 
                                spatial = FALSE, 
                                data = data_pre2013) 
-m_eelgrass_forecast_spatial <- sdmTMB(formula = presence ~ s(depth_stnd, k = 3) + substrate + slope_stnd + rei_stnd + 
-                                        airtempmin_stnd + rsdsmin_stnd + prcv_stnd + #chelsa variables
-                                        saltcv_bccm_stnd + NH4_bccm_stnd , #bccm variables
-                                      #(1|Survey), doesn't work with random factor yet 
+m_eelgrass_forecast_spatial_bccm <- sdmTMB(formula = presence ~ s(depth_stnd, k = 3) + substrate + slope_stnd + rei_stnd + 
+                                        airtempmin_stnd + rsdsmin_stnd + #chelsa variables
+                                        saltcv_bccm_stnd + NH4_bccm_stnd + tempmin_bccm_stnd + PARmin_bccm_stnd,# + #bccm variables
+                                      # (1|Survey) + (1|Year_factor),  # doesn't work with random factor yet
                               mesh = barrier_mesh_pre2013, 
                               family = binomial(link = "logit"), 
                               spatial = TRUE, 
                               data = data_pre2013) 
-data.df <- data %>% select(presence, X, Y, depth_stnd, slope_stnd, rei_stnd, substrate, saltcv_bccm_stnd, NH4_bccm_stnd, airtempmin_stnd, rsdsmin_stnd, prcv_stnd,  Year)
+data.df <- data %>% select(presence, X, Y, depth_stnd, slope_stnd, rei_stnd, substrate, saltcv_bccm_stnd, NH4_bccm_stnd, airtempmin_stnd, rsdsmin_stnd, tempmin_bccm_stnd, PARmin_bccm_stnd, Year)
 
-forecast <- plogis(predict(m_eelgrass_forecast, newdata = data.df %>% filter(Year > 2012))$est)
-forecast_spatial <- plogis(predict(m_eelgrass_forecast_spatial, newdata = data.df %>% filter(Year > 2012))$est)
+forecast <- plogis(predict(m_eelgrass_forecast_bccm, newdata = data.df %>% filter(Year > 2012))$est)
+forecast_spatial <- plogis(predict(m_eelgrass_forecast_spatial_bccm, newdata = data.df %>% filter(Year > 2012))$est)
 
-pre_2013 <- plogis(predict(m_eelgrass_forecast, newdata = data.df %>% filter(Year < 2010))$est)
-pre_2013_spatial <- plogis(predict(m_eelgrass_forecast_spatial, newdata = data.df %>% filter(Year < 2010))$est)
+pre_2013 <- plogis(predict(m_eelgrass_forecast_bccm, newdata = data.df %>% filter(Year < 2010))$est)
+pre_2013_spatial <- plogis(predict(m_eelgrass_forecast_spatial_bccm, newdata = data.df %>% filter(Year < 2010))$est)
 
-forecast_predict_eelgrass <- data.frame(TjurR2_no_spatial = c(tjur(y = data.df$presence[data.df$Year > 2012], pred = forecast),
+forecast_predict_eelgrass_bccm <- data.frame(TjurR2_no_spatial = c(tjur(y = data.df$presence[data.df$Year > 2012], pred = forecast),
                                                     tjur(y = data.df$presence[data.df$Year < 2010], pred = pre_2013)),
                                         TjurR2_spatial = c(tjur(y = data.df$presence[data.df$Year > 2012], pred = forecast_spatial),
                                                               tjur(y = data.df$presence[data.df$Year < 2010], pred = pre_2013_spatial)),
@@ -488,14 +489,130 @@ forecast_predict_eelgrass <- data.frame(TjurR2_no_spatial = c(tjur(y = data.df$p
                                         AUC_spatial = c(ModelMetrics::auc(data.df$presence[data.df$Year > 2012], forecast_spatial),
                                                 ModelMetrics::auc(data.df$presence[data.df$Year < 2010], pre_2013_spatial)),
                                          type = factor(c("forecast", "training"), levels = c("training", "forecast"), ordered =  TRUE))
-## AUC dropped from 0.923 to 0.921 and Tjur increased (?) from 0.197 to 0.225 when forecasted #tjur is quite a bit less when no spatial field
-# model did  better forcasting without spatial field for AUC (marginally), so while spatial random field may make a better prediction, it doesn't help with projection
-save(data, fmodel_e_bccm, relimp_e_bccm, thresh, r_ret, eval_cv, eval_fmod, forecast_predict_eelgrass, file = "code/output_data/final_eelgrass_model.RData")
+
+
+#NEP36
+m_eelgrass_forecast_nep <- sdmTMB(formula = presence ~ s(depth_stnd, k = 3) + substrate + slope_stnd + rei_stnd + 
+                                     airtempmin_stnd + rsdsmin_stnd + #chelsa variables
+                                     saltcv_nep_stnd + NH4_nep_stnd + tempmin_nep_stnd + PARmin_nep_stnd,# + #nep variables
+                                   # (1|Survey) + (1|Year_factor),  # doesn't work with random factor yet
+                                   mesh = barrier_mesh_pre2013, 
+                                   family = binomial(link = "logit"), 
+                                   spatial = FALSE, 
+                                   data = data_pre2013) 
+m_eelgrass_forecast_spatial_nep <- sdmTMB(formula = presence ~ s(depth_stnd, k = 3) + substrate + slope_stnd + rei_stnd + 
+                                             airtempmin_stnd + rsdsmin_stnd + #chelsa variables
+                                             saltcv_nep_stnd + NH4_nep_stnd + tempmin_nep_stnd + PARmin_nep_stnd,# + #nep variables
+                                           # (1|Survey) + (1|Year_factor),  # doesn't work with random factor yet
+                                           mesh = barrier_mesh_pre2013, 
+                                           family = binomial(link = "logit"), 
+                                           spatial = TRUE, 
+                                           data = data_pre2013) 
+data.df <- data %>% select(presence, X, Y, depth_stnd, slope_stnd, rei_stnd, substrate, saltcv_nep_stnd, NH4_nep_stnd, airtempmin_stnd, rsdsmin_stnd, tempmin_nep_stnd, PARmin_nep_stnd, Year)
+
+forecast <- plogis(predict(m_eelgrass_forecast_nep, newdata = data.df %>% filter(Year > 2012))$est)
+forecast_spatial <- plogis(predict(m_eelgrass_forecast_spatial_nep, newdata = data.df %>% filter(Year > 2012))$est)
+
+pre_2013 <- plogis(predict(m_eelgrass_forecast_nep, newdata = data.df %>% filter(Year < 2010))$est)
+pre_2013_spatial <- plogis(predict(m_eelgrass_forecast_spatial_nep, newdata = data.df %>% filter(Year < 2010))$est)
+
+forecast_predict_eelgrass_nep <- data.frame(TjurR2_no_spatial = c(tjur(y = data.df$presence[data.df$Year > 2012], pred = forecast),
+                                                                   tjur(y = data.df$presence[data.df$Year < 2010], pred = pre_2013)),
+                                             TjurR2_spatial = c(tjur(y = data.df$presence[data.df$Year > 2012], pred = forecast_spatial),
+                                                                tjur(y = data.df$presence[data.df$Year < 2010], pred = pre_2013_spatial)),
+                                             AUC_no_spatial = c(ModelMetrics::auc(data.df$presence[data.df$Year > 2012], forecast),
+                                                                ModelMetrics::auc(data.df$presence[data.df$Year < 2010], pre_2013)),
+                                             AUC_spatial = c(ModelMetrics::auc(data.df$presence[data.df$Year > 2012], forecast_spatial),
+                                                             ModelMetrics::auc(data.df$presence[data.df$Year < 2010], pre_2013_spatial)),
+                                             type = factor(c("forecast", "training"), levels = c("training", "forecast"), ordered =  TRUE))
+
+save(m_eelgrass_forecast_bccm, m_eelgrass_forecast_spatial_bccm, forecast_predict_eelgrass_bccm, m_eelgrass_forecast_nep, m_eelgrass_forecast_spatial_nep, forecast_predict_eelgrass_nep, file = "code/output_data/model_results/forecast_eelgrass_models.RData")
+
 
 
 # make predictions and get standard error
-hold <- predict(fmodel_e_bccm , env_20m_all)
-sims <- predict(fmodel_e_bccm , newdata = env_20m_all, nsim = 100) #ram is not working for this right now for >100 sims at 20m prediction cells
+# fmodel_e_bccm_nospatial
+# testing forst for model with no year, just survey random effect
+#env_20m_all_survey <- replicate_df(env_20m_all, "Survey", unique(data$Survey))
+
+survey_type <- c("ABL", "BHM", "Cuk", "GDK", "GSU", "MSE", "Mul", "RSU")
+
+#just grab a quarter to test
+env_20m_all_fhalf <- env_20m_all %>% filter(ID < 1000000)
+#env_20m_all_shalf <- env_20m_all %>% filter(ID > 8249999)
+
+#THIS TAKES A REALLY LONG TIME, MAYBE > A FEW WEEKS. wILL NEED TO SPLIT AREA UP. 
+
+
+rm(coastline, cv_list_eelgrass, cv_list_seagrass, mesh, seagrass_data, seagrass_data_long, barrier_mesh, epreds, mean_preds, pred)
+
+
+PredictSDM <- function(env, model, survey_type, species) {
+  message("Predicting with environmental layers...")
+  
+  outdir <- file.path("code/output_data/seagrass_predictions/survey", species)
+  if (!dir.exists(outdir)) dir.create(outdir, recursive = TRUE)
+  
+  #predictions for each survey
+  predbysurvey <- function(s, ...) {
+    env$Survey <- as.factor(s)
+    pname <- paste0("Prediction_", s)
+    
+    #average across years
+    env_all <- data.frame()
+    for (y in 2013:2023) {
+      env$Year_factor <- as.factor(y)
+      env_all <- rbind(env_all, env)
+    }
+    
+    hold_all <- predict(model, newdata = env_all)
+    sims <- predict(model, newdata = env_all, nsim = 100)
+    hold_all$SE <- apply(sims, 1, sd)
+    
+    hold <- hold_all %>%
+      group_by(X_m, Y_m, ID, Survey) %>%
+      summarise(across(everything(), mean, na.rm = TRUE)) %>%
+      arrange(ID) %>%
+      as.data.frame()
+    
+    epreds <- env %>%
+      select(X_m, Y_m, X, Y, ID, Survey) %>%
+      left_join(hold %>% select(ID, est:SE, Survey), by = c("ID", "Survey"))
+    
+    save(epreds, file = file.path(outdir, paste0(pname, "_survey_preds.RData")))
+    return(epreds)
+  }
+  
+  predlist <- lapply(survey_type, FUN = predbysurvey)
+  message("Combining and averaging predictions across survey types...")
+  
+  all_preds <- do.call(rbind, predlist)
+  
+  mean_preds <- all_preds %>%
+    group_by(X_m, Y_m, ID) %>%
+    summarise(across(est:SE, mean, na.rm = TRUE)) %>%
+    arrange(ID) %>%
+    as.data.frame()
+  
+  save(mean_preds, file = file.path(outdir, paste0("MeanSurveyPreds_", species, ".RData")))
+  
+  return(mean_preds)
+}
+
+# Run function
+pred <- PredictSDM(
+  env = env_20m_all_fhalf,
+  model = fmodel_e_bccm_nospatial,
+  survey_type = survey_type,
+  species = "eelgrass"
+)
+
+
+
+
+save(env_20m_all_survey, file = "code/output_data/prediction_model_inputs_survey.RData")
+hold <- predict(fmodel_e_bccm_nospatial , newdata = env_20m_all_survey)
+sims <- predict(fmodel_e_bccm_nospatial , newdata = env_20m_all_survey, nsim = 100) #ram is not working for this right now for >100 sims at 20m prediction cells
 hold$SE <- apply(sims, 1, sd)
 hold$SD <- apply(pclog(sims), 1, sd)
 eelgrass_predictions <- env_20m_all
@@ -507,6 +624,9 @@ eelgrass_predictions <- bind_cols(eelgrass_predictions, hold %>% select(est:SD))
 
 # change to 0-1 away from log-odds (logit) space
 eelgrass_predictions <- eelgrass_predictions %>%
+  mutate(est_p = plogis(est))
+
+mean_preds <- mean_preds %>%
   mutate(est_p = plogis(est))
 
 save(eelgrass_predictions, file = "code/output_data/eelgrass_predictions.RData")

@@ -48,8 +48,8 @@ library(geosphere)
 library(Hmisc)
 
 #load_data####
-load("code/output_data/seagrass_data.RData")
-load("code/output_data/abl_seagrass_data.RData")
+load("code/output_data/processed_observations/seagrass_data.RData")
+load("code/output_data/processed_observations/abl_seagrass_data.RData")
 
 coastline_full <- st_read("raw_data/CHS_HWL2015_Coastline.gdb", layer = "Line_CHS_Pacific_HWL_2015_5028437")
 boundary <- coastline_full %>%
@@ -474,9 +474,9 @@ spatialised.spdf <- spatialised %>%
 
 # export as shapefile
 # likely to have issues with attribute field names shortening
-st_write(spatialised.spdf, "code/output_data/SpatializedQuadrats_notaggregated.shp", append=FALSE)
+st_write(spatialised.spdf, "code/output_data/processed_observations/SpatializedQuadrats_notaggregated.shp", append=FALSE)
 
-save(spatialised, file="code/output_data/seagrass_data_spatialized.RData")
+save(spatialised, file="code/output_data/processed_observations/seagrass_data_spatialized.RData")
 
 
 
@@ -523,7 +523,7 @@ spat.spdf <- spat %>%
 
 # export as shapefile
 # likely to have issues with attribute field names shortening
-st_write(spat.spdf, "code/output_data/SpatializedQuadrats_aggregated.shp", append=FALSE)
+st_write(spat.spdf, "code/output_data/processed_observations/SpatializedQuadrats_aggregated.shp", append=FALSE)
 
-save(spat, file="code/output_data/seagrass_data_spatialized_aggregated.RData")
+save(spat, file="code/output_data/processed_observations/seagrass_data_spatialized_aggregated.RData")
 

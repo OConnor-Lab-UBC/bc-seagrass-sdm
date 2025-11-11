@@ -546,7 +546,7 @@ ABLsp_sf <- ABLdat %>%
   st_transform(crs = "EPSG:3005")
 
 
-st_write(ABLsp_sf, "code/output_data/abl_transect.shp", append=FALSE)
+st_write(ABLsp_sf, "code/output_data/processed_observations/abl_transect.shp", append=FALSE)
 
 
 #---------------------------------------------------------------------#
@@ -806,7 +806,7 @@ dat$Identification[dat$ZO == 1 & dat$CorDepthM < -2] <- "Remove"
 
 
 ## Save files
-save(dat, file="code/output_data/seagrass_data.RData")
+save(dat, file="code/output_data/processed_observations/seagrass_data.RData")
 
 
 
@@ -827,7 +827,7 @@ dat_sf <- dat %>%
 
 # export as shapefile
 # likely to have issues with attribute field names shortening
-st_write(dat_sf, "code/output_data/dat_transect.shp", append=FALSE)
+st_write(dat_sf, "code/output_data/processed_observations/dat_transect.shp", append=FALSE)
 
 
 

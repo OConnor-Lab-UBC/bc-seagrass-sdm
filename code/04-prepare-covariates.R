@@ -88,7 +88,7 @@ hindcast2003_2012 <- terra::rast(files_2003_2012)
 hindcast2013_2023 <- terra::rast(files_2013_2023)
 
 # read in cumulative effects
-culmulative_effects <- terra::rast("code/output_data/culmulative_effects_all_20m.tif")
+culmulative_effects <- terra::rast("code/output_data/processed_ocean_variables/culmulative_effects_all_20m.tif")
 
 
 #extract from predictor layers

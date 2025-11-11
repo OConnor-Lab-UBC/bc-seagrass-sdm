@@ -109,7 +109,7 @@ obs_area <- n_obs_cells * cell_area
 
 percent_tp1 <- area_tp1 / obs_area * 100  #58%
 
-save(eelgrass_sf, threshold, eelgrass_sf_norock, spearman_cor, file = "code/output_data/eelgrass_independent_validation.RData")
+save(eelgrass_sf, threshold, eelgrass_sf_norock, spearman_cor, file = "code/output_data/independent_validation/eelgrass_independent_validation.RData")
 
 
 
@@ -182,5 +182,5 @@ obs_area <- n_obs_cells * cell_area
 
 percent_tp1 <- area_tp1 / obs_area * 100  #84%
 
-save(surfgrass_sf, threshold, surfgrass_sf_nosoft,  file = "code/output_data/surfgrass_independent_validation.RData")
+save(surfgrass_sf, threshold, surfgrass_sf_nosoft,  file = "code/output_data/independent_validation/surfgrass_independent_validation.RData")
 
