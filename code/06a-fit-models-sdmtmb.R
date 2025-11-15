@@ -16,9 +16,8 @@ source("code/modelling-functions.R")
 ####load packages####
 UsePackages(c("sdmTMB", "sdmTMBextra", "tidyverse", "sf", "future", "terra", "future.apply"))
 
-####load model input and prediction data####
+####load model input ####
 load("code/output_data/seagrass_model_inputs.RData")
-load("code/output_data/prediction_model_inputs.RData")
 seagrass_data_long <- seagrass_data_long %>% select(-saltmean_bccm_sq_stnd, -saltmean_nep_sq_stnd, -slope_sqrt_stnd, -saltmin_bccm_sq_stnd, -saltmin_nep_sq_stnd)
 seagrass_data_long <- seagrass_data_long %>%
   mutate(Survey = as.factor(substr(HKey, 1, 3)),
@@ -35,38 +34,41 @@ data <- data %>% mutate(Survey = as.factor(Survey)) # was still not recognizing 
 print(paste(sp, " present in ", round((sum(data$presence)/nrow(data))*100,2), "% of observations", sep = ""))
 # eelgrass in 3.71% of 20 m aggregated observations
 
-#test variable correlation
-data_env_bccm<- data[, !grepl("nep", names(data), ignore.case = TRUE)] %>%  dplyr::select(7:47)
-#enames <- names(data_env)
-corrplot::corrplot(cor(data_env_bccm, use = "pairwise.complete.obs"), method = "color",  col = colorRampPalette(c("red", "orange", "white", "blue", "purple"))(200), is.corr = TRUE, tl.cex = 0.6, tl.col = "black", number.cex = 0.5, order = "hclust", type = "upper")
-# Correlations close to-1 or +1 might indicate the existence of multicollinearity. one might suspect multicollinearity when the correlation between two (predictor) variables is below -0.9 or above +0.9.
-data_env_nep<- data[, !grepl("bccm", names(data), ignore.case = TRUE)] %>%  dplyr::select(7:47)
-#enames <- names(data_env)
-corrplot::corrplot(cor(data_env_nep, use = "pairwise.complete.obs"), method = "color",  col = colorRampPalette(c("red", "orange", "white", "blue", "purple"))(200), is.corr = TRUE, tl.cex = 0.6, tl.col = "black", number.cex = 0.5, order = "hclust", type = "upper")
+
+####test variable correlation####
+# data_env_bccm<- data[, !grepl("nep", names(data), ignore.case = TRUE)] %>%  dplyr::select(7:47)
+# #enames <- names(data_env)
+# corrplot::corrplot(cor(data_env_bccm, use = "pairwise.complete.obs"), method = "color",  col = colorRampPalette(c("red", "orange", "white", "blue", "purple"))(200), is.corr = TRUE, tl.cex = 0.6, tl.col = "black", number.cex = 0.5, order = "hclust", type = "upper")
+# # Correlations close to-1 or +1 might indicate the existence of multicollinearity. one might suspect multicollinearity when the correlation between two (predictor) variables is below -0.9 or above +0.9.
+# data_env_nep<- data[, !grepl("bccm", names(data), ignore.case = TRUE)] %>%  dplyr::select(7:47)
+# #enames <- names(data_env)
+# corrplot::corrplot(cor(data_env_nep, use = "pairwise.complete.obs"), method = "color",  col = colorRampPalette(c("red", "orange", "white", "blue", "purple"))(200), is.corr = TRUE, tl.cex = 0.6, tl.col = "black", number.cex = 0.5, order = "hclust", type = "upper")
+# 
+# 
+# ## test VIF
+# my_model <- lm(presence~ substrate + depth_stnd +rei_sqrt_stnd + tidal_sqrt_stnd + freshwater_sqrt_stnd + 
+#                  slope_stnd + NO3_stnd + saltmin_stnd + PARmin_stnd + 
+#                  surftempmax_stnd + surftempcv_stnd + 
+#                  tempdiff_stnd + cul_eff_stnd, data = data)
+# #my_model <- lm(presence~ depth_stnd + substrate + slope_stnd + rei_stnd + DOmin_stnd + saltmean_stnd + tempcv_stnd + tempmean_stnd + freshwater_sqrt_stnd + tidal_sqrt_stnd, data = data)
+# olsrr::ols_vif_tol(my_model)
+# # Tolerance of <0.1 might indicate multicollinearity. VIF exceeding 5 requires further investigation, whereas VIFs above 10 indicate multicollinearity. Ideally, the Variance Inflation Factors are below 3.
+# VIFs <- CalcVIFs( dat=data_env[enames], VIFThresh=10 )
+# # ones recomended to move  "tempmax_stnd"  "surftempmax_stnd" "surftempmin_stnd" "saltmean_stnd" "PARmean_stnd" "tempmean_stnd" "tempcv_stnd" "tidal_sqrt_stnd" "DOmin_stnd" "saltmin_stnd"  
+# 
+# # ensure ZO on all substrates
+# substrates_present <- data %>% group_by(substrate) %>% summarise(n_present = sum(presence))
+# substrates_present # there are eelgrass presence observations on all substrates
+# 
+# ### Forward feature selection test (testing one method to limit variables )
+# #tested removing depth, makes horrible models
+# eelgrass_ffs <- glm_ffs(data)  ### variables that came out include depth, substrate, slope_stnd, rei_stnd, and twice tidal sqrt, and once each salt mean and freshwater and temp max
+# save(eelgrass_ffs, file = "code/output_data/model_results/eelgrass_ffs_variables.RData")
+# # most important variables in all 10 folds are substrate, depth, slope. Airtemp min and rei was important in 5 folds, tidal sqrt in 2 folds and surf temp min bccm in 1 fold
 
 
-## test VIF
-my_model <- lm(presence~ substrate + depth_stnd +rei_sqrt_stnd + tidal_sqrt_stnd + freshwater_sqrt_stnd + 
-                 slope_stnd + NO3_stnd + saltmin_stnd + PARmin_stnd + 
-                 surftempmax_stnd + surftempcv_stnd + 
-                 tempdiff_stnd + cul_eff_stnd, data = data)
-#my_model <- lm(presence~ depth_stnd + substrate + slope_stnd + rei_stnd + DOmin_stnd + saltmean_stnd + tempcv_stnd + tempmean_stnd + freshwater_sqrt_stnd + tidal_sqrt_stnd, data = data)
-olsrr::ols_vif_tol(my_model)
-# Tolerance of <0.1 might indicate multicollinearity. VIF exceeding 5 requires further investigation, whereas VIFs above 10 indicate multicollinearity. Ideally, the Variance Inflation Factors are below 3.
-VIFs <- CalcVIFs( dat=data_env[enames], VIFThresh=10 )
-# ones recomended to move  "tempmax_stnd"  "surftempmax_stnd" "surftempmin_stnd" "saltmean_stnd" "PARmean_stnd" "tempmean_stnd" "tempcv_stnd" "tidal_sqrt_stnd" "DOmin_stnd" "saltmin_stnd"  
 
-# ensure ZO on all substrates
-substrates_present <- data %>% group_by(substrate) %>% summarise(n_present = sum(presence))
-substrates_present # there are eelgrass presence observations on all substrates
-
-### Forward feature selection test (testing one method to limit variables )
-#tested removing depth, makes horrible models
-eelgrass_ffs <- glm_ffs(data)  ### variables that came out include depth, substrate, slope_stnd, rei_stnd, and twice tidal sqrt, and once each salt mean and freshwater and temp max
-save(eelgrass_ffs, file = "code/output_data/model_results/eelgrass_ffs_variables.RData")
-# most important variables in all 10 folds are substrate, depth, slope. Airtemp min and rei was important in 5 folds, tidal sqrt in 2 folds and surf temp min bccm in 1 fold
-
-####SDMtmb model####
+####SDMtmb cv model####
 #make mesh
 mesh<- make_mesh(data = data, xy_cols = c("X", "Y"), cutoff = 53) 
 #anything 30 and under makes the model underdispersed if no other variables (too complicated).
@@ -255,6 +257,7 @@ eval_cv_nep_spatial <- evalStats( folds=1:numFolds,m=m_e_20,CV=cv_list_eelgrass$
 eval_cv_list <- list(eval_cv_bccm_nospatial, eval_cv_bccm_spatial, eval_cv_nep_nospatial, eval_cv_nep_spatial)
 save(eval_cv_list, file = "code/output_data/model_results/eval_cv.RData")
 
+####SDMtmb full model####
 # fit full model bccm 
 #remove year for testing
 fmodel_e_bccm_nospatial <- sdmTMB(formula = presence ~ s(depth_stnd, k = 3) + substrate + slope_stnd + rei_stnd + 
@@ -327,6 +330,7 @@ visreg::visreg(fmodel_e_bccm, "rei_stnd")
 visreg::visreg(fmodel_e_bccm, "saltmin_stnd")
 visreg::visreg(fmodel_e_bccm, "tempmean_stnd")
 visreg::visreg(fmodel_e_bccm, "airtempmin_stnd")
+visreg::visreg(fmodel_e_bccm_nospatial, "Survey")
 
 # Model check
 tidy(fmodel_e_bccm_nospatial, conf.int = TRUE)
@@ -451,6 +455,9 @@ predict(fmodel_e_bccm) %>%
 
 #### test forecasting
 # left a few years gap 2010-2012 #trained model with 1993-2009
+
+#NEED TO REWRITE THIS TO ACCOUNT FOR RANDOM FACTORS!!
+
 data_pre2013 <- data %>% filter(Year < 2010)
 mesh_pre2013 <- make_mesh(data = data_pre2013, xy_cols = c("X", "Y"), cutoff = 53) # tested several mesh sizes between 20- 10 km and 15 had highest AUC
 plot(mesh_pre2013)
@@ -529,242 +536,76 @@ forecast_predict_eelgrass_nep <- data.frame(TjurR2_no_spatial = c(tjur(y = data.
 save(m_eelgrass_forecast_bccm, m_eelgrass_forecast_spatial_bccm, forecast_predict_eelgrass_bccm, m_eelgrass_forecast_nep, m_eelgrass_forecast_spatial_nep, forecast_predict_eelgrass_nep, file = "code/output_data/model_results/forecast_eelgrass_models.RData")
 
 
-
-# make predictions and get standard error
-# fmodel_e_bccm_nospatial
-# testing forst for model with no year, just survey random effect
-#env_20m_all_survey <- replicate_df(env_20m_all, "Survey", unique(data$Survey))
-
-survey_type <- c("ABL", "BHM", "Cuk", "GDK", "GSU", "MSE", "Mul", "RSU")
-
-#just grab a quarter to test
-env_20m_all_fhalf <- env_20m_all %>% filter(ID < 1000000)
-#env_20m_all_shalf <- env_20m_all %>% filter(ID > 8249999)
-
-#THIS TAKES A REALLY LONG TIME, MAYBE > A FEW WEEKS. wILL NEED TO SPLIT AREA UP. 
-
-
-rm(coastline, cv_list_eelgrass, cv_list_seagrass, mesh, seagrass_data, seagrass_data_long, barrier_mesh, epreds, mean_preds, pred)
-
-
-PredictSDM <- function(env, model, survey_type, species) {
-  message("Predicting with environmental layers...")
-  
-  outdir <- file.path("code/output_data/seagrass_predictions/survey", species)
-  if (!dir.exists(outdir)) dir.create(outdir, recursive = TRUE)
-  
-  #predictions for each survey
-  predbysurvey <- function(s, ...) {
-    env$Survey <- as.factor(s)
-    pname <- paste0("Prediction_", s)
-    
-    #average across years
-    env_all <- data.frame()
-    for (y in 2013:2023) {
-      env$Year_factor <- as.factor(y)
-      env_all <- rbind(env_all, env)
-    }
-    
-    hold_all <- predict(model, newdata = env_all)
-    sims <- predict(model, newdata = env_all, nsim = 100)
-    hold_all$SE <- apply(sims, 1, sd)
-    
-    hold <- hold_all %>%
-      group_by(X_m, Y_m, ID, Survey) %>%
-      summarise(across(everything(), mean, na.rm = TRUE)) %>%
-      arrange(ID) %>%
-      as.data.frame()
-    
-    epreds <- env %>%
-      select(X_m, Y_m, X, Y, ID, Survey) %>%
-      left_join(hold %>% select(ID, est:SE, Survey), by = c("ID", "Survey"))
-    
-    save(epreds, file = file.path(outdir, paste0(pname, "_survey_preds.RData")))
-    return(epreds)
-  }
-  
-  predlist <- lapply(survey_type, FUN = predbysurvey)
-  message("Combining and averaging predictions across survey types...")
-  
-  all_preds <- do.call(rbind, predlist)
-  
-  mean_preds <- all_preds %>%
-    group_by(X_m, Y_m, ID) %>%
-    summarise(across(est:SE, mean, na.rm = TRUE)) %>%
-    arrange(ID) %>%
-    as.data.frame()
-  
-  save(mean_preds, file = file.path(outdir, paste0("MeanSurveyPreds_", species, ".RData")))
-  
-  return(mean_preds)
-}
-
-# Run function
-pred <- PredictSDM(
-  env = env_20m_all_fhalf,
-  model = fmodel_e_bccm_nospatial,
-  survey_type = survey_type,
-  species = "eelgrass"
+####Eelgrass delta model with percent cover ####
+dat2 <- subset(data, mean_PerCovZO > 0)
+#not all surveys had records of percent cover
+dat2$Survey <- factor(dat2$Survey,
+                      levels = c("ABL", "BHM", "Cuk", "GSU", "Mul", "RSU"))
+mesh2 <- make_mesh(dat2,
+                   xy_cols = c("X", "Y"),
+                   mesh = mesh$mesh
 )
+plot(mesh2)
+barrier_mesh2 <- add_barrier_mesh(mesh2, barrier_sf = coastline, proj_scaling = 1000, plot = TRUE)
+#better to have fleximble spline on depth
+# don't have random effect of year as not all datasets had all years and dataset is not significantly smaller
+#better with spatial
+m_e_per_1 <- sdmTMB_cv(formula = mean_PerCovZO ~ s(depth_stnd) + substrate + #slope_stnd + 
+                         surftempmin_bccm_stnd + #saltcv_bccm_stnd + #NO3_bccm_stnd + # + #PARmin_bccm_stnd +  #tempcv_bccm_stnd +  #bccm variables
+                         (1|Survey),  #random effect
+                       mesh = barrier_mesh2, 
+                       family = Gamma(link = "log"), 
+                       spatial = TRUE, 
+                       data = dat2)
+m_e_per_1$sum_loglik # -9050
+
+m_e_per_2 <- sdmTMB_cv(formula = mean_PerCovZO ~ s(depth_stnd) + substrate + #slope_stnd + 
+                         surftempmin_nep_stnd +  #bccm variables
+                         (1|Survey),  #random effect
+                       mesh = barrier_mesh2, 
+                       family = Gamma(link = "log"), 
+                       spatial = TRUE, 
+                       data = dat2)
+m_e_per_2$sum_loglik # -9055
+
+#if using spatial can get rid of slope, tempcv, PAR min, salt cv, NO3
+m_e_per_bccm_final <- sdmTMB(formula = mean_PerCovZO ~ s(depth_stnd) + substrate + 
+                               surftempmin_bccm_stnd  +  #bccm variables
+                         (1|Survey),  #random effect
+                       mesh = barrier_mesh2, 
+                       family = Gamma(link = "log"), 
+                       spatial = TRUE, 
+                       data = dat2)
 
 
+m_e_per_nep_final <- sdmTMB(formula = mean_PerCovZO ~ s(depth_stnd) + substrate + 
+                         surftempmin_nep_stnd +  #bccm variables
+                         (1|Survey),  #random effect
+                       mesh = barrier_mesh2, 
+                       family = Gamma(link = "log"), 
+                       spatial = TRUE, 
+                       data = dat2)
 
 
-save(env_20m_all_survey, file = "code/output_data/prediction_model_inputs_survey.RData")
-hold <- predict(fmodel_e_bccm_nospatial , newdata = env_20m_all_survey)
-sims <- predict(fmodel_e_bccm_nospatial , newdata = env_20m_all_survey, nsim = 100) #ram is not working for this right now for >100 sims at 20m prediction cells
-hold$SE <- apply(sims, 1, sd)
-hold$SD <- apply(pclog(sims), 1, sd)
-eelgrass_predictions <- env_20m_all
-eelgrass_predictions <- bind_cols(eelgrass_predictions, hold %>% select(est:SD))
+sanity(m_e_per_bccm_final)
 
-# hold <- eelgrass_predictions %>%
-#   group_by(X_m, Y_m) %>%
-#   summarise(CV = sd(exp(est), na.rm = TRUE)/mean(exp(est)), counts_ln = mean(est), SE = mean(SE))
+#print(fmodel_e_delta_bccm_nospatial)
 
-# change to 0-1 away from log-odds (logit) space
-eelgrass_predictions <- eelgrass_predictions %>%
-  mutate(est_p = plogis(est))
+tidy(m_e_per_bccm_final)
+tidy(m_e_per_bccm_final, "ran_pars", conf.int = TRUE)
+tidy(m_e_per_nep_final)
+tidy(m_e_per_nep_final, "ran_pars", conf.int = TRUE)
 
-mean_preds <- mean_preds %>%
-  mutate(est_p = plogis(est))
+visreg::visreg(m_e_per_bccm_final, "depth_stnd")
+visreg::visreg(m_e_per_bccm_final, "substrate")
+visreg::visreg(m_e_per_bccm_final, "surftempmin_bccm_stnd")
+visreg::visreg(m_e_per_bccm_final, "Survey")
 
-save(eelgrass_predictions, file = "code/output_data/eelgrass_predictions.RData")
+visreg::visreg(m_e_per_nep_final, "depth_stnd")
+visreg::visreg(m_e_per_nep_final, "substrate")
+visreg::visreg(m_e_per_nep_final, "surftempmin_nep_stnd")
+visreg::visreg(m_e_per_nep_final, "Survey")
 
-####Plots####         
-eelgrass_plot <- ggplot(eelgrass_predictions)+
-  geom_sf(data = coastline, linewidth = 0.1)+
-  geom_tile(aes(x = X_m, y = Y_m, colour=est_p, width=20,height=20))+
-  scale_colour_gradient(low = "#f7fcb9", high = "#006837")+
-  theme(panel.grid.major = element_blank(),
-        panel.grid.minor = element_blank(),
-        # Remove panel background
-        panel.background = element_blank(),
-        axis.text.x = element_blank(),
-        axis.text.y = element_blank(),
-        axis.ticks = element_blank())+
-  coord_sf(expand = FALSE)+
-  ylab("")+
-  xlab("") 
-eelgrass_plot
-ggsave("./figures/eelgrass.png", height = 6, width = 6)
-
-eelgrass_se_plot <- ggplot(eelgrass_predictions)+
-  geom_sf(data = coastline, linewidth = 0.1)+
-  geom_tile(aes(x = X_m, y = Y_m, colour=SE, width=20,height=20))+
-  scale_colour_viridis_b()+
-  theme(panel.grid.major = element_blank(),
-        panel.grid.minor = element_blank(),
-        # Remove panel background
-        panel.background = element_blank(),
-        axis.text.x = element_blank(),
-        axis.text.y = element_blank(),
-        axis.ticks = element_blank())+
-  coord_sf(expand = FALSE)+
-  ylab("")+
-  xlab("") 
-eelgrass_se_plot
-ggsave("./figures/eelgrass_se.png", height = 6, width = 6)
-
-
-#### save rasters ####
-#this changes to 100 m resolution though
-# eelgrass_raster <- eelgrass_predictions %>%
-#   mutate(x_round = round(X_m, -2), y_round = round(Y_m, -2)) %>%
-#   select(x_round, y_round, est_p)
-# 
-# eelgrass_raster <- rast(x = eelgrass_raster %>% as.matrix, type = "xyz", crs = "EPSG:3005")
-# writeRaster(eelgrass_raster, file.path("./raster/eelgrass_predictions.tif"), overwrite=TRUE)
-
-eelgrass_raster_hg <- eelgrass_predictions %>%
-  filter(region == "Haida Gwaii") %>%
-  select(X_m, Y_m, est_p)
-eelgrass_raster_hg <- rast(x = eelgrass_raster_hg %>% as.matrix, type = "xyz", crs = "EPSG:3005")
-writeRaster(eelgrass_raster_hg, file.path("./raster/eelgrass_predictions_hg.tif"), overwrite=TRUE)
-
-eelgrass_raster_ss <- eelgrass_predictions %>%
-  filter(region == "Salish Sea") %>%
-  select(X_m, Y_m, est_p)
-eelgrass_raster_ss <- rast(x = eelgrass_raster_ss %>% as.matrix, type = "xyz", crs = "EPSG:3005")
-writeRaster(eelgrass_raster_ss, file.path("./raster/eelgrass_predictions_ss.tif"), overwrite=TRUE)
-
-eelgrass_raster_wcvi <- eelgrass_predictions %>%
-  filter(region == "West Coast Vancouver Island") %>%
-  select(X_m, Y_m, est_p)
-eelgrass_raster_wcvi <- rast(x = eelgrass_raster_wcvi %>% as.matrix, type = "xyz", crs = "EPSG:3005")
-writeRaster(eelgrass_raster_wcvi, file.path("./raster/eelgrass_predictions_wcvi.tif"), overwrite=TRUE)
-
-eelgrass_raster_ncc <- eelgrass_predictions %>%
-  filter(region == "North Central Coast") %>%
-  select(X_m, Y_m, est_p)
-eelgrass_raster_ncc <- rast(x = eelgrass_raster_ncc %>% as.matrix, type = "xyz", crs = "EPSG:3005")
-writeRaster(eelgrass_raster_ncc, file.path("./raster/eelgrass_predictions_ncc.tif"), overwrite=TRUE)
-
-eelgrass_raster_qcs <- eelgrass_predictions %>%
-  filter(region == "Queen Charlotte Strait") %>%
-  select(X_m, Y_m, est_p)
-eelgrass_raster_qcs <- rast(x = eelgrass_raster_qcs %>% as.matrix, type = "xyz", crs = "EPSG:3005")
-writeRaster(eelgrass_raster_qcs, file.path("./raster/eelgrass_predictions_qcs.tif"), overwrite=TRUE)
-
-eelgrass_raster_hg_se <- eelgrass_predictions %>%
-  filter(region == "Haida Gwaii") %>%
-  select(X_m, Y_m, SE)
-eelgrass_raster_hg_se <- rast(x = eelgrass_raster_hg_se %>% as.matrix, type = "xyz", crs = "EPSG:3005")
-writeRaster(eelgrass_raster_hg_se, file.path("./raster/eelgrass_predictions_hg_se.tif"), overwrite=TRUE)
-
-eelgrass_raster_ss_se <- eelgrass_predictions %>%
-  filter(region == "Salish Sea") %>%
-  select(X_m, Y_m, SE)
-eelgrass_raster_ss_se <- rast(x = eelgrass_raster_ss_se %>% as.matrix, type = "xyz", crs = "EPSG:3005")
-writeRaster(eelgrass_raster_ss_se, file.path("./raster/eelgrass_predictions_ss_se.tif"), overwrite=TRUE)
-
-eelgrass_raster_wcvi_se <- eelgrass_predictions %>%
-  filter(region == "West Coast Vancouver Island") %>%
-  select(X_m, Y_m, SE)
-eelgrass_raster_wcvi_se <- rast(x = eelgrass_raster_wcvi_se %>% as.matrix, type = "xyz", crs = "EPSG:3005")
-writeRaster(eelgrass_raster_wcvi_se, file.path("./raster/eelgrass_predictions_wcvi_se.tif"), overwrite=TRUE)
-
-eelgrass_raster_ncc_se <- eelgrass_predictions %>%
-  filter(region == "North Central Coast") %>%
-  select(X_m, Y_m, SE)
-eelgrass_raster_ncc_se <- rast(x = eelgrass_raster_ncc_se %>% as.matrix, type = "xyz", crs = "EPSG:3005")
-writeRaster(eelgrass_raster_ncc_se, file.path("./raster/eelgrass_predictions_ncc_se.tif"), overwrite=TRUE)
-
-eelgrass_raster_qcs_se <- eelgrass_predictions %>%
-  filter(region == "Queen Charlotte Strait") %>%
-  select(X_m, Y_m, SE)
-eelgrass_raster_qcs_se <- rast(x = eelgrass_raster_qcs_se %>% as.matrix, type = "xyz", crs = "EPSG:3005")
-writeRaster(eelgrass_raster_qcs_se, file.path("./raster/eelgrass_predictions_qcs_se.tif"), overwrite=TRUE)
-
-eelgrass_raster_hg_sd <- eelgrass_predictions %>%
-  filter(region == "Haida Gwaii") %>%
-  select(X_m, Y_m, SD)
-eelgrass_raster_hg_sd <- rast(x = eelgrass_raster_hg_sd %>% as.matrix, type = "xyz", crs = "EPSG:3005")
-writeRaster(eelgrass_raster_hg_sd, file.path("./raster/eelgrass_predictions_hg_sd.tif"), overwrite=TRUE)
-
-eelgrass_raster_ss_sd <- eelgrass_predictions %>%
-  filter(region == "Salish Sea") %>%
-  select(X_m, Y_m, SD)
-eelgrass_raster_ss_sd <- rast(x = eelgrass_raster_ss_sd %>% as.matrix, type = "xyz", crs = "EPSG:3005")
-writeRaster(eelgrass_raster_ss_sd, file.path("./raster/eelgrass_predictions_ss_sd.tif"), overwrite=TRUE)
-
-eelgrass_raster_wcvi_sd <- eelgrass_predictions %>%
-  filter(region == "West Coast Vancouver Island") %>%
-  select(X_m, Y_m, SD)
-eelgrass_raster_wcvi_sd <- rast(x = eelgrass_raster_wcvi_sd %>% as.matrix, type = "xyz", crs = "EPSG:3005")
-writeRaster(eelgrass_raster_wcvi_sd, file.path("./raster/eelgrass_predictions_wcvi_sd.tif"), overwrite=TRUE)
-
-eelgrass_raster_ncc_sd <- eelgrass_predictions %>%
-  filter(region == "North Central Coast") %>%
-  select(X_m, Y_m, SD)
-eelgrass_raster_ncc_sd <- rast(x = eelgrass_raster_ncc_sd %>% as.matrix, type = "xyz", crs = "EPSG:3005")
-writeRaster(eelgrass_raster_ncc_sd, file.path("./raster/eelgrass_predictions_ncc_sd.tif"), overwrite=TRUE)
-
-eelgrass_raster_qcs_sd <- eelgrass_predictions %>%
-  filter(region == "Queen Charlotte Strait") %>%
-  select(X_m, Y_m, SD)
-eelgrass_raster_qcs_sd <- rast(x = eelgrass_raster_qcs_sd %>% as.matrix, type = "xyz", crs = "EPSG:3005")
-writeRaster(eelgrass_raster_qcs_sd, file.path("./raster/eelgrass_predictions_qcs_sd.tif"), overwrite=TRUE)
 
 
 
