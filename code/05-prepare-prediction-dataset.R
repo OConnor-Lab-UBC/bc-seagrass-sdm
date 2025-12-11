@@ -81,7 +81,7 @@ folder_2013_2023 <- "code/output_data/processed_ocean_variables/years_2013-2023"
 files_2013_2023 <- list.files(folder_2013_2023, pattern = "\\.tif$", full.names = TRUE)
 hindcast2013_2023 <- terra::rast(files_2013_2023)
 
-culmulative_effects <- terra::rast("code/output_data/culmulative_effects_all_20m.tif")
+culmulative_effects <- terra::rast("code/output_data/processed_ocean_variables/culmulative_effects_all_20m.tif")
 names(culmulative_effects) <- "cul_eff"
 
 ####make prediction data####
@@ -156,8 +156,10 @@ env_20m_hg$rsds_mean <- hold$rsds_mean
 env_20m_hg$rsds_min <- hold$rsds_min
 env_20m_hg$temp_air_cv <- hold$temp_air_cv
 env_20m_hg$temp_air_max <- hold$temp_air_max
+env_20m_hg$temp_air_meanmax <- hold$temp_air_meanmax
 env_20m_hg$temp_air_mean <- hold$temp_air_mean
 env_20m_hg$temp_air_min <- hold$temp_air_min
+env_20m_hg$temp_air_meanmin <- hold$temp_air_meanmin
 
 env_20m_hg <- env_20m_hg %>% filter(do_5m_min_bccm >= 100, temp_s_min_bccm >= 0, temp_s_min_nep36 >= 0, !is.na(NH4_5m_mean_bccm)) # areas where BCCM doesn't make good predictions
 
@@ -240,8 +242,10 @@ env_20m_ncc$rsds_mean <- hold$rsds_mean
 env_20m_ncc$rsds_min <- hold$rsds_min
 env_20m_ncc$temp_air_cv <- hold$temp_air_cv
 env_20m_ncc$temp_air_max <- hold$temp_air_max
+env_20m_ncc$temp_air_meanmax <- hold$temp_air_meanmax
 env_20m_ncc$temp_air_mean <- hold$temp_air_mean
 env_20m_ncc$temp_air_min <- hold$temp_air_min
+env_20m_ncc$temp_air_meanmin <- hold$temp_air_meanmin
 
 env_20m_ncc <- env_20m_ncc %>% filter(do_5m_min_bccm >= 100, temp_s_min_bccm >= 0, temp_s_min_nep36 >= 0, !is.na(NH4_5m_mean_bccm)) # areas where BCCM doesn't make good predictions
 
@@ -324,8 +328,10 @@ env_20m_qcs$rsds_mean <- hold$rsds_mean
 env_20m_qcs$rsds_min <- hold$rsds_min
 env_20m_qcs$temp_air_cv <- hold$temp_air_cv
 env_20m_qcs$temp_air_max <- hold$temp_air_max
+env_20m_qcs$temp_air_meanmax <- hold$temp_air_meanmax
 env_20m_qcs$temp_air_mean <- hold$temp_air_mean
 env_20m_qcs$temp_air_min <- hold$temp_air_min
+env_20m_qcs$temp_air_meanmin <- hold$temp_air_meanmin
 
 env_20m_qcs <- env_20m_qcs %>% filter(do_5m_min_bccm >= 100, temp_s_min_bccm >= 0, temp_s_min_nep36 >= 0, !is.na(NH4_5m_mean_bccm)) # areas where BCCM doesn't make good predictions
 
@@ -410,8 +416,10 @@ env_20m_wcvi$rsds_mean <- hold$rsds_mean
 env_20m_wcvi$rsds_min <- hold$rsds_min
 env_20m_wcvi$temp_air_cv <- hold$temp_air_cv
 env_20m_wcvi$temp_air_max <- hold$temp_air_max
+env_20m_wcvi$temp_air_meanmax <- hold$temp_air_meanmax
 env_20m_wcvi$temp_air_mean <- hold$temp_air_mean
 env_20m_wcvi$temp_air_min <- hold$temp_air_min
+env_20m_wcvi$temp_air_meanmin <- hold$temp_air_meanmin
 
 env_20m_wcvi <- env_20m_wcvi %>% filter(do_5m_min_bccm >= 100, temp_s_min_bccm >= 0, temp_s_min_nep36 >= 0, !is.na(NH4_5m_mean_bccm)) # areas where BCCM doesn't make good predictions
 
@@ -495,8 +503,10 @@ env_20m_ss$rsds_mean <- hold$rsds_mean
 env_20m_ss$rsds_min <- hold$rsds_min
 env_20m_ss$temp_air_cv <- hold$temp_air_cv
 env_20m_ss$temp_air_max <- hold$temp_air_max
+env_20m_ss$temp_air_meanmax <- hold$temp_air_meanmax
 env_20m_ss$temp_air_mean <- hold$temp_air_mean
 env_20m_ss$temp_air_min <- hold$temp_air_min
+env_20m_ss$temp_air_meanmin <- hold$temp_air_meanmin
 
 env_20m_ss <- env_20m_ss %>% filter(do_5m_min_bccm >= 100, temp_s_min_bccm >= 0, temp_s_min_nep36 >= 0, !is.na(NH4_5m_mean_bccm)) # areas where BCCM doesn't make good predictions
 
@@ -600,8 +610,10 @@ env_20m_all <- env_20m_all %>%
          DOmin_nep_stnd = scale_fun_ref(do_5m_min_nep36, reference = seagrass_data$DOmin_nep),
          airtempcv_stnd = scale_fun_ref(temp_air_cv, reference = seagrass_data$airtempcv), 
          airtempmax_stnd = scale_fun_ref(temp_air_max, reference = seagrass_data$airtempmax), 
+         airtempmeanmax_stnd = scale_fun_ref(temp_air_meanmax, reference = seagrass_data$airtempmeanmax), 
          airtempmean_stnd = scale_fun_ref(temp_air_mean, reference = seagrass_data$airtempmean), 
          airtempmin_stnd = scale_fun_ref(temp_air_min, reference = seagrass_data$airtempmin),
+         airtempmeanmin_stnd = scale_fun_ref(temp_air_meanmin, reference = seagrass_data$airtempmeanmin),
          prcv_stnd = scale_fun_ref(precip_cv, reference = seagrass_data$prcv), 
          prmax_stnd = scale_fun_ref(precip_max, reference = seagrass_data$prmax), 
          prmin_stnd = scale_fun_ref(precip_min, reference = seagrass_data$prmin), 
@@ -630,12 +642,12 @@ env_20m_all <- env_20m_all %>%
 
 hindcast_predictor_data <- env_20m_all %>% select(rei_stnd, tidal_stnd, slope_stnd, NH4_bccm_stnd, NO3_bccm_stnd, saltmin_bccm_stnd, saltcv_bccm_stnd, PARmin_bccm_stnd, surftempmean_bccm_stnd, surftempmin_bccm_stnd, 
                                                   surftempmax_bccm_stnd, surftempcv_bccm_stnd, tempmean_bccm_stnd, tempmin_bccm_stnd, tempmax_bccm_stnd, tempcv_bccm_stnd, DOmin_bccm_stnd, DOmean_bccm_stnd, freshwater_sqrt_stnd,
-                                                  airtempmean_stnd, prmean_stnd, rsdsmean_stnd)
+                                                  airtempmean_stnd, airtempmin_stnd, airtempmax_stnd, prmean_stnd, rsdsmean_stnd)
 
 # transect predictor data
 transect_predictor_data <- seagrass_data %>% select(rei_stnd, tidal_stnd, slope_stnd, NH4_bccm_stnd, NO3_bccm_stnd, saltmin_bccm_stnd, saltcv_bccm_stnd, PARmin_bccm_stnd, surftempmean_bccm_stnd, surftempmin_bccm_stnd, 
                                                     surftempmax_bccm_stnd, surftempcv_bccm_stnd, tempmean_bccm_stnd, tempmin_bccm_stnd, tempmax_bccm_stnd, tempcv_bccm_stnd, DOmin_bccm_stnd, DOmean_bccm_stnd, freshwater_sqrt_stnd,
-                                                    airtempmean_stnd, prmean_stnd, rsdsmean_stnd)
+                                                    airtempmean_stnd, airtempmin_stnd, airtempmax_stnd, prmean_stnd, rsdsmean_stnd)
 #transect_predictor_data <- seagrass_data %>% select(rei_stnd, tidal_stnd, slope_stnd, NH4_stnd, NO3_stnd, saltmean_stnd, saltmin_stnd, PARmean_stnd, surftempmean_stnd, surftempmin_stnd, surftempmax_stnd, surftempcv_stnd,surftempdiff_stnd, tempmean_stnd, tempmin_stnd, tempmax_stnd, tempcv_stnd, tempdiff_stnd, DOmean_stnd)
 
 #Create a PCA for the total predictor space of the hindcast
@@ -777,7 +789,7 @@ transect_predictor_data_1993_2009 <- seagrass_data %>%
   filter(Year< 2010) %>%
   select(rei_stnd, tidal_stnd, slope_stnd, NH4_bccm_stnd, NO3_bccm_stnd, saltmin_bccm_stnd, saltcv_bccm_stnd, PARmin_bccm_stnd, surftempmean_bccm_stnd, surftempmin_bccm_stnd, 
          surftempmax_bccm_stnd, surftempcv_bccm_stnd, tempmean_bccm_stnd, tempmin_bccm_stnd, tempmax_bccm_stnd, tempcv_bccm_stnd, DOmin_bccm_stnd, DOmean_bccm_stnd, freshwater_sqrt_stnd,
-         airtempmean_stnd, prmean_stnd, rsdsmean_stnd )
+         airtempmean_stnd, airtempmin_stnd, airtempmax_stnd, prmean_stnd, rsdsmean_stnd )
 
 temporal_validation_MESS<- predicts::mess(x = hindcast_predictor_data, v= transect_predictor_data_1993_2009, full = FALSE)
 temporal_validation_MESS <- temporal_validation_MESS %>%

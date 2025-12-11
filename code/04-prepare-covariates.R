@@ -32,7 +32,7 @@ coastline <- coastline_full %>%
 #load("code/output_data/seagrass_data_spatialized.RData")
 # 400,597 quadrats
 
-load("code/output_data/seagrass_data_spatialized_aggregated.RData")
+load("code/output_data/processed_observations/seagrass_data_spatialized_aggregated.RData")
 spat <- spat %>%
   rename(Slope = mean_slope,
          CorDepthM = mean_CorDepthM)
@@ -154,12 +154,12 @@ oceanvars_allyears <- rbind(oceanvars_1993_2002, oceanvars_2003_2012, oceanvars_
          saltmean_bccm = salt_5m_mean_bccm, saltmean_nep = salt_5m_mean_nep36, saltmin_bccm = salt_5m_min_bccm, saltmin_nep = salt_5m_min_nep36 , saltcv_bccm = salt_5m_cv_bccm,  saltcv_nep = salt_5m_cv_nep36,
          surftempmean_bccm = temp_s_mean_bccm, surftempmean_nep = temp_s_mean_nep36, surftempmax_bccm = temp_s_max_bccm, surftempmax_nep = temp_s_max_nep36, surftempmin_bccm = temp_s_min_bccm, surftempmin_nep = temp_s_min_nep36, surftempcv_bccm = temp_s_cv_bccm, surftempcv_nep = temp_s_cv_nep36, surftempdiff_bccm = temp_s_diff_bccm, surftempdiff_nep = temp_s_diff_nep36,
          tempmean_bccm = temp_5m_mean_bccm, tempmean_nep = temp_5m_mean_nep36, tempmax_bccm = temp_5m_max_bccm, tempmax_nep = temp_5m_max_nep36, tempmin_bccm = temp_5m_min_bccm, tempmin_nep = temp_5m_min_nep36, tempcv_bccm = temp_5m_cv_bccm, tempcv_nep = temp_5m_cv_nep36, tempdiff_bccm = temp_5m_diff_bccm, tempdiff_nep = temp_5m_diff_nep36,
-         airtempcv = temp_air_cv, airtempmax = temp_air_max, airtempmean = temp_air_mean, airtempmin = temp_air_min) %>%
+         airtempcv = temp_air_cv, airtempmax = temp_air_max, airtempmean = temp_air_mean, airtempmin = temp_air_min, airtempmeanmin = temp_air_meanmin, airtempmeanmax = temp_air_meanmax) %>%
   select(ID, NH4_bccm, NH4_nep, NO3_bccm, NO3_nep, saltmean_bccm, saltmean_nep, saltmin_bccm, saltmin_nep, saltcv_bccm, saltcv_nep,
          PARmean_bccm, PARmean_nep, PARmin_bccm, PARmin_nep, PARmax_bccm, PARmax_nep, surftempmean_bccm, surftempmean_nep, 
          surftempmax_bccm, surftempmax_nep, surftempmin_bccm, surftempmin_nep, surftempcv_bccm, surftempcv_nep, surftempdiff_bccm, surftempdiff_nep,
          tempmean_bccm, tempmean_nep, tempmax_bccm, tempmax_nep, tempmin_bccm, tempmin_nep, tempcv_bccm, tempcv_nep, tempdiff_bccm, tempdiff_nep,
-         airtempcv, airtempmax, airtempmean, airtempmin,
+         airtempcv, airtempmax, airtempmean, airtempmin, airtempmeanmin, airtempmeanmax,
          DOmean_bccm, DOmean_nep, DOmin_bccm, DOmin_nep, prcv, prmax, prmin, prmean, rsdscv, rsdsmax, rsdsmean, rsdsmin)
 
 spatialised_sf <- dplyr::full_join(spatialised_sf, oceanvars_allyears, by=c("ID")) %>% filter(!is.na(NH4_bccm), !is.na(NH4_nep))
@@ -229,8 +229,10 @@ spatialised_sf <- spatialised_sf %>%
          DOmin_nep_stnd = scale_fun(DOmin_nep),
          airtempcv_stnd = scale_fun(airtempcv), 
          airtempmax_stnd = scale_fun(airtempmax), 
+         airtempmeanmax_stnd = scale_fun(airtempmeanmax),
          airtempmean_stnd = scale_fun(airtempmean), 
          airtempmin_stnd = scale_fun(airtempmin),
+         airtempmeanmin_stnd = scale_fun(airtempmeanmin),
          prcv_stnd = scale_fun(prcv), 
          prmax_stnd = scale_fun(prmax), 
          prmin_stnd = scale_fun(prmin), 

@@ -9,6 +9,10 @@
 # ---------
 # fit sdm models with sdmTMB 
 #
+
+# need to figure out how to model time. Year can be a random factor or it can be a temporal field. Doing some research it was
+#recommended to do both and compare the two to see if similar predictions for both. 
+
 ###############################################################################
 #### Load modelling functions ####
 source("code/modelling-functions.R")
@@ -455,31 +459,30 @@ predict(fmodel_e_bccm) %>%
 
 #### test forecasting
 # left a few years gap 2010-2012 #trained model with 1993-2009
-
-#NEED TO REWRITE THIS TO ACCOUNT FOR RANDOM FACTORS!!
+# model actually does better if you don't include oceanographic or atmospheric data.
+#cannot account for surveys or years in these models as random factor because only ABL, Cuke, GDK, GSU, and RSU surveys were conducted prior to 2013 and you cant make predictions of years not fit in model
 
 data_pre2013 <- data %>% filter(Year < 2010)
+unique(data_pre2013$Survey)
 mesh_pre2013 <- make_mesh(data = data_pre2013, xy_cols = c("X", "Y"), cutoff = 53) # tested several mesh sizes between 20- 10 km and 15 had highest AUC
 plot(mesh_pre2013)
 barrier_mesh_pre2013 <- add_barrier_mesh(mesh_pre2013, barrier_sf = coastline, proj_scaling = 1000, plot = TRUE)
 #BCCM
 m_eelgrass_forecast_bccm <- sdmTMB(formula = presence ~ s(depth_stnd, k = 3) + substrate + slope_stnd + rei_stnd + 
-                                airtempmin_stnd + rsdsmin_stnd + #chelsa variables
-                                saltcv_bccm_stnd + NH4_bccm_stnd + tempmin_bccm_stnd + PARmin_bccm_stnd,# + #bccm variables
-                               # (1|Survey) + (1|Year_factor),  # doesn't work with random factor yet
-                               mesh = barrier_mesh_pre2013, 
-                               family = binomial(link = "logit"), 
-                               spatial = FALSE, 
-                               data = data_pre2013) 
+                                     airtempmin_stnd + rsdsmin_stnd + #chelsa variables
+                                     saltcv_bccm_stnd + NH4_bccm_stnd + tempmin_bccm_stnd + PARmin_bccm_stnd, #bccm variables
+                                   mesh = barrier_mesh_pre2013, 
+                                   family = binomial(link = "logit"), 
+                                   spatial = FALSE, 
+                                   data = data_pre2013) 
 m_eelgrass_forecast_spatial_bccm <- sdmTMB(formula = presence ~ s(depth_stnd, k = 3) + substrate + slope_stnd + rei_stnd + 
-                                        airtempmin_stnd + rsdsmin_stnd + #chelsa variables
-                                        saltcv_bccm_stnd + NH4_bccm_stnd + tempmin_bccm_stnd + PARmin_bccm_stnd,# + #bccm variables
-                                      # (1|Survey) + (1|Year_factor),  # doesn't work with random factor yet
-                              mesh = barrier_mesh_pre2013, 
-                              family = binomial(link = "logit"), 
-                              spatial = TRUE, 
-                              data = data_pre2013) 
-data.df <- data %>% select(presence, X, Y, depth_stnd, slope_stnd, rei_stnd, substrate, saltcv_bccm_stnd, NH4_bccm_stnd, airtempmin_stnd, rsdsmin_stnd, tempmin_bccm_stnd, PARmin_bccm_stnd, Year)
+                                             airtempmin_stnd + rsdsmin_stnd + #chelsa variables
+                                             saltcv_bccm_stnd + NH4_bccm_stnd + tempmin_bccm_stnd + PARmin_bccm_stnd,
+                                           mesh = barrier_mesh_pre2013, 
+                                           family = binomial(link = "logit"), 
+                                           spatial = TRUE, 
+                                           data = data_pre2013) 
+data.df <- data %>% select(presence, X, Y, depth_stnd, slope_stnd, rei_stnd, substrate, saltcv_bccm_stnd, NH4_bccm_stnd, airtempmin_stnd, rsdsmin_stnd, tempmin_bccm_stnd, PARmin_bccm_stnd, Survey, Year, Year_factor)
 
 forecast <- plogis(predict(m_eelgrass_forecast_bccm, newdata = data.df %>% filter(Year > 2012))$est)
 forecast_spatial <- plogis(predict(m_eelgrass_forecast_spatial_bccm, newdata = data.df %>% filter(Year > 2012))$est)
@@ -500,21 +503,19 @@ forecast_predict_eelgrass_bccm <- data.frame(TjurR2_no_spatial = c(tjur(y = data
 
 #NEP36
 m_eelgrass_forecast_nep <- sdmTMB(formula = presence ~ s(depth_stnd, k = 3) + substrate + slope_stnd + rei_stnd + 
-                                     airtempmin_stnd + rsdsmin_stnd + #chelsa variables
-                                     saltcv_nep_stnd + NH4_nep_stnd + tempmin_nep_stnd + PARmin_nep_stnd,# + #nep variables
-                                   # (1|Survey) + (1|Year_factor),  # doesn't work with random factor yet
-                                   mesh = barrier_mesh_pre2013, 
-                                   family = binomial(link = "logit"), 
-                                   spatial = FALSE, 
-                                   data = data_pre2013) 
+                                    airtempmin_stnd + rsdsmin_stnd + #chelsa variables
+                                    saltcv_nep_stnd + NH4_nep_stnd + tempmin_nep_stnd + PARmin_nep_stnd,# + #nep variables
+                                  mesh = barrier_mesh_pre2013, 
+                                  family = binomial(link = "logit"), 
+                                  spatial = FALSE, 
+                                  data = data_pre2013) 
 m_eelgrass_forecast_spatial_nep <- sdmTMB(formula = presence ~ s(depth_stnd, k = 3) + substrate + slope_stnd + rei_stnd + 
-                                             airtempmin_stnd + rsdsmin_stnd + #chelsa variables
-                                             saltcv_nep_stnd + NH4_nep_stnd + tempmin_nep_stnd + PARmin_nep_stnd,# + #nep variables
-                                           # (1|Survey) + (1|Year_factor),  # doesn't work with random factor yet
-                                           mesh = barrier_mesh_pre2013, 
-                                           family = binomial(link = "logit"), 
-                                           spatial = TRUE, 
-                                           data = data_pre2013) 
+                                            airtempmin_stnd + rsdsmin_stnd + #chelsa variables
+                                            saltcv_nep_stnd + NH4_nep_stnd + tempmin_nep_stnd + PARmin_nep_stnd,# + #nep variables
+                                          mesh = barrier_mesh_pre2013, 
+                                          family = binomial(link = "logit"), 
+                                          spatial = TRUE, 
+                                          data = data_pre2013) 
 data.df <- data %>% select(presence, X, Y, depth_stnd, slope_stnd, rei_stnd, substrate, saltcv_nep_stnd, NH4_nep_stnd, airtempmin_stnd, rsdsmin_stnd, tempmin_nep_stnd, PARmin_nep_stnd, Year)
 
 forecast <- plogis(predict(m_eelgrass_forecast_nep, newdata = data.df %>% filter(Year > 2012))$est)
@@ -621,9 +622,15 @@ visreg::visreg(m_e_per_nep_final, "Survey")
 
 sp = "PH"
 numFolds <- length(unique(seagrass_data$fold_seagrass))
+seagrass_data_long <- seagrass_data_long %>%
+  mutate(Survey = as.factor(substr(HKey, 1, 3)),
+         HKey = as.factor(HKey),
+         Year_factor = as.factor(Year))
 data <- filter(seagrass_data_long, species == sp) %>% rename(fold = fold_seagrass)
+
+data <- data %>% mutate(Survey = as.factor(Survey))
 print(paste(sp, " present in ", round((sum(data$presence)/nrow(data))*100,2), "% of observations", sep = ""))
-# present in 1.39% of 20 m cells
+# present in 1.4% of 20 m cells
 
 ## test VIF
 my_model <- lm(presence~ depth_stnd + substrate + rei_sqrt_stnd + tempmin_stnd +
@@ -641,20 +648,9 @@ surfgrass_ffs <- glm_ffs(data)  ### variables that came out include depth, subst
 save(surfgrass_ffs, file = "code/output_data/surfgrass_ffs_variables.RData")
 ## variables that came out include most often depth, rei sqrt, rei, temp min, tidal sqrt, substrate. A few times slope, cul eff, freshwater came out
 
-library(MASS)
-# test stepwise model
-datasub <- data %>% dplyr::select(substrate:cul_eff_stnd, presence) %>% dplyr::select(-rei_stnd, -tidal_stnd, -saltmean_stnd, -PARmax_stnd)
-full_model <- glm(presence ~ ., data = datasub, family = binomial(link = "logit"))
 
-# Perform stepwise selection (both directions)
-stepwise_model <- step(full_model, direction = "both")
-
-# View the selected model
-summary(stepwise_model)
-
-
-#make mesh # tested several mesh sizes between 20- 10 km and 15 had highest AUC
-mesh<- make_mesh(data = data, xy_cols = c("X", "Y"), cutoff = 12) 
+#make mesh # 30 size mesh means there is no underdispersion
+mesh<- make_mesh(data = data, xy_cols = c("X", "Y"), cutoff = 30) 
 plot(mesh)
 barrier_mesh <- add_barrier_mesh(mesh, barrier_sf = coastline, proj_scaling = 1000, plot = TRUE)
 
@@ -664,94 +660,29 @@ plan(multisession)
 #Making depth a spline makes it worse (AUC = 0.847; Tjur = 0.122), 
 #rei sqrt spline MAKES auc BETTER AND TJUR WORSE  AUC = 0.87, tjur = 0.104), #CHOOSE REI SQRT OVER REI rei instead of rei sqrt 0.83, tjur 0.125 # rei spline auc = 0.84 tjur = 0.07
 # make tidal a spline AUC = 0.87, tjur = 0.104 doesnt improve model
-m_s_1 <- sdmTMB_cv(formula = presence ~ depth_stnd + substrate + s(rei_sqrt_stnd, k = 3) + tempmin_stnd + tidal_sqrt_stnd,
+m_s_6 <- sdmTMB_cv(formula = presence ~ s(depth_stnd, k = 3) + (1|Survey) +(1|Year_factor), mesh = barrier_mesh, family = binomial(link = "logit"), spatial = TRUE, data = data, fold_ids = "fold")
+
+
+m_s_1 <- sdmTMB_cv(formula = presence ~ s(depth_stnd, k = 3) + substrate + rei_sqrt_stnd + 
+                     airtempcv_stnd + #chelsa variables
+                     #saltcv_bccm_stnd + NH4_bccm_stnd + tempmin_bccm_stnd + PARmin_bccm_stnd + #bccm variables
+                     (1|Survey) + (1|Year_factor),  #random effect
                    mesh = barrier_mesh, 
                    family = binomial(link = "logit"), 
-                   spatial = FALSE, 
+                   spatial = TRUE, 
                    data = data, 
                    fold_ids = "fold")
 roc <- pROC::roc(m_s_1$data$presence, plogis(m_s_1$data$cv_predicted))
 auc <- pROC::auc(roc)
 auc
 
-# model selected by ffs with spatial field  AUC = 0.90, tjur 0.20
-m_s_2 <- sdmTMB_cv(formula = presence ~ depth_stnd + substrate + s(rei_sqrt_stnd, k = 3) + tempmin_stnd + tidal_sqrt_stnd,
-                   mesh = barrier_mesh, 
-                   family = binomial(link = "logit"), 
-                   spatial = TRUE, 
-                   data = data, 
-                   fold_ids = "fold")
-roc <- pROC::roc(m_s_2$data$presence, plogis(m_s_2$data$cv_predicted))
-auc <- pROC::auc(roc)
-auc
 
-# model with all ffs auc = 0.874, tjur = 0.121. This is better than m_s_1
-m_s_3 <- sdmTMB_cv(formula = presence ~ depth_stnd + substrate + s(rei_sqrt_stnd, k = 3) + tempmin_stnd + tidal_sqrt_stnd +
-                     slope_stnd + freshwater_sqrt_stnd + cul_eff_stnd,
-                   mesh = barrier_mesh, 
-                   family = binomial(link = "logit"), 
-                   spatial = FALSE, 
-                   data = data, 
-                   fold_ids = "fold")
 
-# model with all ffs and extra auc = 0.95, tjur 0.268
-m_s_4 <- sdmTMB_cv(formula = presence ~ depth_stnd + substrate + s(rei_sqrt_stnd, k = 3) + tempmin_stnd + tidal_sqrt_stnd +
-                     slope_stnd + freshwater_sqrt_stnd + cul_eff_stnd +
-                     saltcv_stnd + PARmin_stnd + DOmean_stnd + surftempcv_stnd + surftempmean_stnd + surftempmax_stnd ,
-                   mesh = barrier_mesh, 
-                   family = binomial(link = "logit"), 
-                   spatial = FALSE, 
-                   data = data, 
-                   fold_ids = "fold")
-# remove freshwater auc=95, tjur = 0.258
-# remove cul effect auc = 0.948, tjur 0.225
-#remove slope auc =0.95, tjur 0.261, and relim <0.09 so remove
-# remove surf temp mean auc =0.95, tjur = 0.23 # if remove temp cv auc = 0.95 tjur 0.23
-# salt cv slightly higher over sal min
-# do min and mean the same
-# removed spline from rei auc 0.949 tjur 0.242
-# adding NO3 auc 0.952 tjur 0.242
-#remove tidal 0.95 tjur 0.242
-# remove domin auc 0.95 tjur 0.246
-#remove freshwater auc 0.95 tjur 0.243 (so tjur goes slightly down)
-# remove cul eff auc 0.95 tjur 0.233 is final, use this model
-m_s_5 <- sdmTMB_cv(formula = presence ~ depth_stnd + substrate + rei_sqrt_stnd + tempmin_stnd +
-                                         saltcv_stnd + PARmin_stnd + surftempmax_stnd + NO3_stnd,
-                   mesh = barrier_mesh, 
-                   family = binomial(link = "logit"), 
-                   spatial = FALSE, 
-                   data = data, 
-                   fold_ids = "fold")
-
-# adding in spatial field now makes it go down! auc 0.926 tjur 0.199
-m_s_5a <- sdmTMB_cv(formula = presence  ~ depth_stnd + substrate + rei_sqrt_stnd + tempmin_stnd +
-                      cul_eff_stnd + 
-                      saltcv_stnd + PARmin_stnd + surftempmax_stnd + NO3_stnd,
-                   mesh = barrier_mesh, 
-                   family = binomial(link = "logit"), 
-                   spatial = TRUE, 
-                   data = data, 
-                   fold_ids = "fold")
 eval_cv <- evalStats( folds=1:numFolds,
-                      m=m_s_5,
+                      m=m_s_6,
                       CV=cv_list_seagrass$cv)
 
-# model from stepwise, auc = 0.928, tjur =0.23
-m_s_6 <- sdmTMB_cv(formula = presence ~ substrate + depth_stnd  + s(rei_sqrt_stnd, k = 3) + tidal_sqrt_stnd + freshwater_sqrt_stnd + 
-                     slope_stnd + NO3_stnd + saltmin_stnd + PARmin_stnd + 
-                     surftempmax_stnd + surftempcv_stnd + 
-                     tempdiff_stnd + cul_eff_stnd,
-                   mesh = barrier_mesh, 
-                   family = binomial(link = "logit"), 
-                   spatial = FALSE, 
-                   data = data, 
-                   fold_ids = "fold")
 
-
-
-roc <- pROC::roc(m_s_3$data$presence, plogis(m_s_3$data$cv_predicted))
-auc <- pROC::auc(roc)
-auc
 
 
 # If a model is unbiased bias should be close to zero
@@ -762,12 +693,17 @@ auc
 # Kappa is a measure of agreement between observed and predicted values that accounts for chance agreements and is dependent on prevalence of the observations. Kappa range from -1 to 1 with values less than 0 representing models that are no better than random and values of 1 indicating perfect agreement (Allouche et al. 2006). 
 
 #fit full model
-fmodel_s_bccm <- sdmTMB(formula = presence ~ depth_stnd + substrate + rei_sqrt_stnd + tempmin_stnd +
-                   saltcv_stnd + PARmin_stnd + surftempmax_stnd + NO3_stnd,
-                     mesh = barrier_mesh, 
-                     family = binomial(link = "logit"), 
-                     spatial = FALSE, 
-                     data = data)
+
+
+fmodel_s_bccm_spatial <- sdmTMB(formula = presence ~ s(depth_stnd, k = 3) + substrate + rei_sqrt_stnd + 
+                                  airtempcv_stnd + #chelsa variables
+                                  #saltcv_bccm_stnd + NH4_bccm_stnd + tempmin_bccm_stnd + PARmin_bccm_stnd + #bccm variables
+                                  (1|Survey) + (1|Year_factor),  #random effect
+                                mesh = barrier_mesh, 
+                                family = binomial(link = "logit"), 
+                                spatial = TRUE, 
+                                data = data)
+
 # look ar marginal effects plots, note temperature variables are correlated, so these are not correct 
 ggeffects::ggeffect(model = fmodel_s_bccm,  terms = "depth_stnd[-3:6]") %>% plot() # found highest at shallow
 ggeffects::ggeffect(model = fmodel_s_bccm,  terms = "rei_sqrt_stnd[-1:9]") %>% plot()  # increases with exposure
@@ -848,8 +784,8 @@ qqnorm(data$resids);abline(a = 0, b = 1)
 
 # simulation-based randomized quantile residuals
 set.seed(123)
-ret<- simulate(fmodel_s_bccm, nsim = 500, type = "mle-mvn") 
-r_ret <-  dharma_residuals(ret, fmodel_s_bccm, return_DHARMa = TRUE)
+ret<- simulate(fmodel_s_bccm_spatial, nsim = 500, type = "mle-mvn") 
+r_ret <-  dharma_residuals(ret, fmodel_s_bccm_spatial, return_DHARMa = TRUE)
 plot(r_ret)
 DHARMa::testResiduals(r_ret)
 

@@ -309,6 +309,57 @@ evalfmod <- function( x, thresh ){
   return(eval.df)
 } 
 
+PredictSDM <- function(env, model, survey_type, species, years) {
+  message("Predicting with environmental layers...")
+  
+  outdir <- file.path("code/output_data/seagrass_predictions/survey", species)
+  if (!dir.exists(outdir)) dir.create(outdir, recursive = TRUE)
+  
+  #predictions for each survey
+  predbysurvey <- function(s, ...) {
+    env$Survey <- as.factor(s)
+    pname <- paste0("Prediction_", s)
+    
+    #average across years
+    env_all <- data.frame()
+    for (y in years) {
+      env$Year_factor <- as.factor(y)
+      env_all <- rbind(env_all, env)
+    }
+    
+    hold_all <- predict(model, newdata = env_all)
+    sims <- predict(model, newdata = env_all, nsim = 100)
+    hold_all$SE <- apply(sims, 1, sd)
+    
+    hold <- hold_all %>%
+      group_by(X_m, Y_m, ID, Survey) %>%
+      summarise(across(everything(), mean, na.rm = TRUE)) %>%
+      arrange(ID) %>%
+      as.data.frame()
+    
+    epreds <- env %>%
+      select(X_m, Y_m, X, Y, ID, Survey) %>%
+      left_join(hold %>% select(ID, est:SE, Survey), by = c("ID", "Survey"))
+    
+    save(epreds, file = file.path(outdir, paste0(pname, "_survey_preds.RData")))
+    return(epreds)
+  }
+  
+  predlist <- lapply(survey_type, FUN = predbysurvey)
+  message("Combining and averaging predictions across survey types...")
+  
+  all_preds <- do.call(rbind, predlist)
+  
+  mean_preds <- all_preds %>%
+    group_by(X_m, Y_m, ID) %>%
+    summarise(across(est:SE, mean, na.rm = TRUE)) %>%
+    arrange(ID) %>%
+    as.data.frame()
+  
+  save(mean_preds, file = file.path(outdir, paste0("MeanSurveyPreds_", species, ".RData")))
+  
+  return(mean_preds)
+}
 
 
 

@@ -398,37 +398,37 @@ url_file <- "raw_data/CHELSA/envidatS3paths.txt"
 urls <- trimws(readLines(url_file))
 urls <- urls[nchar(urls) > 0] # remove blank lines
 
-out_csv <- "raw_data/CHELSA/CHELSA_BC_data_PR2.csv"
+out_csv <- "raw_data/CHELSA/CHELSA_BC_data_rsds.csv"
+
+coastal_bc_poly <- vect("raw_data/bcpolygon.shp")
 
 # If it already exists, remove it (to start clean)
 if (file.exists(out_csv)) file.remove(out_csv)
 
-#out_dir  <- "raw_data/CHELSA/BC"
-#dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
 
-# BC bounding box (xmin, xmax, ymin, ymax)
-coastal_bc_bbox  <- ext(-134, -122, 48, 56)
 
 process_url <- function(u) {
   fname <- basename(u)
   
   # detect variable type
   var <- case_when(
-    grepl("tas", fname)  ~ "tas",
+    #grepl("tas", fname)  ~ "tas",
+    grepl("tasmin", fname)  ~ "tasmin",
+    grepl("tasmax", fname)  ~ "tasmax",
     grepl("pr", fname)   ~ "pr",
     grepl("rsds", fname) ~ "rsds",
     TRUE                 ~ "unknown"
   )
   
   # parse month and year based on variable
-  if (var %in% c("pr", "tas")) {
+  if (var %in% c("pr", "tasmax", "tasmin", "tas", "rsds")) {
     # format: CHELSA_<var>_<MM>_<YYYY>_V*.tif
     mo <- as.integer(sub(".*_(\\d{2})_\\d{4}_V.*", "\\1", fname))
     yr <- as.integer(sub(".*_\\d{2}_(\\d{4})_V.*", "\\1", fname))
-  } else if (var == "rsds") {
-    # format: CHELSA_rsds_<YYYY>_<MM>_V*.tif
-    mo <- as.integer(sub(".*_(\\d{2})_V.*", "\\1", fname))
-    yr <- as.integer(sub(".*_(\\d{4})_\\d{2}_V.*", "\\1", fname))
+    # } else if (var == "rsds") {
+    #   # format: CHELSA_rsds_<YYYY>_<MM>_V*.tif
+    #   mo <- as.integer(sub(".*_(\\d{2})_V.*", "\\1", fname))
+    #   yr <- as.integer(sub(".*_(\\d{4})_\\d{2}_V.*", "\\1", fname))
   } else {
     mo <- NA
     yr <- NA
@@ -441,8 +441,11 @@ process_url <- function(u) {
     curl_download(u, tmp)
     r <- rast(tmp)
     
-    # crop to coastal BC
-    r_bc <- crop(r, coastal_bc_bbox)
+    # reproject polygon to match the raster's CRS
+    poly_aligned <- project(coastal_bc_poly, crs(r))
+    
+    # crop and mask using the reprojected polygon
+    r_bc <- crop(r, poly_aligned, mask = TRUE)
     
     # convert to dataframe
     vals <- as.data.frame(r_bc, xy = TRUE, cells = TRUE, na.rm = TRUE)
@@ -459,61 +462,39 @@ process_url <- function(u) {
     
     unlink(tmp)
   }, error = function(e) {
-    message("Failed: ", fname, " (", e$message, ")")
+    message("⚠️ Failed: ", fname, " (", e$message, ")")
   })
 }
-
+# ---------------------------
+# 3. Loop through all URLs
+# ---------------------------
 for (u in urls) {
   process_url(u)
 }
 
-message("Extraction complete. Data saved to: ", out_csv)
+message("✅ Extraction complete. Data saved to: ", out_csv)
+
+
+
 
 
 #then bring csv together with 
-Chelsa_month_pr <- read_csv("raw_data/CHELSA/CHELSA_BC_data_PR.csv") 
-unique_year_month <- Chelsa_month_pr %>%
-  distinct(year, month)
-
-Chelsa_month_pr <- Chelsa_month_pr %>% 
-  rename(precip = value) %>% select(-c(variable, cell))
-
-
-Chelsa_month_tas1 <- read_csv("raw_data/CHELSA/CHELSA_BC_data_tas.csv")
-Chelsa_month_tas2 <- read_csv("raw_data/CHELSA/CHELSA_BC_data_tas2.csv")
-unique_year_month1 <- Chelsa_month_tas1 %>%
-  distinct(year, month)
-unique_year_month2 <- Chelsa_month_tas2 %>%
-  distinct(year, month)
-
-Chelsa_month_tas1 <- Chelsa_month_tas1 %>% filter(month < 9)
-
-Chelsa_month_tas <- rbind(Chelsa_month_tas1, Chelsa_month_tas2)%>%
-  rename(tempmean_air = value) %>% select(-c(variable, cell))
-rm(Chelsa_month_tas1)
-rm(Chelsa_month_tas2)
-unique_year_month <- Chelsa_month_tas %>%
-  distinct(year, month)
-
-
-Chelsa_month_rsds1 <- read_csv("raw_data/CHELSA/CHELSA_BC_data_rsds.csv")
-Chelsa_month_rsds2 <- read_csv("raw_data/CHELSA/CHELSA_BC_data_rsds2.csv")
-unique_year_month1 <- Chelsa_month_rsds1 %>%
-  distinct(year, month)
-unique_year_month2 <- Chelsa_month_rsds2 %>%
-  distinct(year, month)
-# not missing any
-
-
-Chelsa_month_rsds <- rbind(Chelsa_month_rsds1, Chelsa_month_rsds2)%>%
-  rename(rsds = value) %>% select(-c(variable, cell))
-rm(Chelsa_month_rsds1)
-rm(Chelsa_month_rsds2)
-
+Chelsa_month_pr <- read_csv("raw_data/CHELSA/CHELSA_BC_data_PR.csv") %>%
+  rename(precip = value) %>% select(-variable)
+Chelsa_month_tas <- read_csv("raw_data/CHELSA/CHELSA_BC_data_tas.csv")%>%
+  rename(tempmean_air = value) %>% select(-variable)
+Chelsa_month_rsds <- read_csv("raw_data/CHELSA/CHELSA_BC_data_rsds.csv")%>%
+  rename(rsds = value) %>% select(-variable)
+Chelsa_month_tasmin <- read_csv("raw_data/CHELSA/CHELSA_BC_data_tasmin.csv")%>%
+  rename(tempmin_air = value) %>% select(-variable)
+Chelsa_month_tasmax <- read_csv("raw_data/CHELSA/CHELSA_BC_data_tasmax.csv")%>%
+  rename(tempmax_air = value) %>% select(-variable)
 
 CHELSA_month_data <- Chelsa_month_pr %>%
   full_join(Chelsa_month_tas, by = join_by(x, y, month, year)) %>%
-  full_join(Chelsa_month_rsds, by = join_by(x, y, month, year)) 
+  full_join(Chelsa_month_rsds, by = join_by(x, y, month, year)) %>%
+  full_join(Chelsa_month_tasmin, by = join_by(x, y, month, year)) %>%
+  full_join(Chelsa_month_tasmax, by = join_by(x, y, month, year)) 
 
 save(CHELSA_month_data, file = "code/output_data/intermediate_ocean_variables/CHELSA_month_data.RData")
 

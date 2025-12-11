@@ -415,6 +415,7 @@ NEP36_salt_5_cv_rast <- terra::rasterize(month_5_points, terra::rast(crs ="EPSG:
 
 
 #### CHELSA Monthly data for air temperature, precipitation and surface downwelling####
+#because we have daily max and daily min temps going to also be using those to idetify hotest parts and coldest parts of year
 
 #subset the year data by these start and end year, and just surface values
 Month_surf_sub <- CHELSA_month_data %>% 
@@ -422,7 +423,7 @@ Month_surf_sub <- CHELSA_month_data %>%
 #Summarise the predictor by year
 month_surf_summary_year <- Month_surf_sub %>% dplyr::group_by(x, y, year) %>% 
   dplyr::summarise(precip_mean_year = mean(precip, na.rm = TRUE), precip_min_year = min(precip, na.rm = TRUE), precip_max_year = max(precip, na.rm = TRUE), precip_sd_year = sd(precip, na.rm = TRUE),
-                   temp_mean_air_year = mean(tempmean_air, na.rm = TRUE), temp_max_air_year = max(tempmean_air, na.rm = TRUE), temp_min_air_year = min(tempmean_air, na.rm = TRUE), temp_sd_air_year = sd(tempmean_air, na.rm = TRUE),
+                   temp_mean_air_year = mean(tempmean_air, na.rm = TRUE), temp_meanmax_air_year = max(tempmean_air, na.rm = TRUE), temp_meanmin_air_year = min(tempmean_air, na.rm = TRUE), temp_sd_air_year = sd(tempmean_air, na.rm = TRUE), temp_max_air_year = max(tempmax_air, na.rm = TRUE), temp_min_air_year = min(tempmin_air),
                    rsds_mean_year = mean(rsds, na.rm = TRUE), rsds_max_year = max(rsds, na.rm = TRUE), rsds_min_year = min(rsds, na.rm = TRUE), rsds_sd_year = sd(rsds, na.rm = TRUE)) %>%
   mutate(precip_cv_year = precip_sd_year/precip_mean_year*100,
          temp_cv_air_year = temp_sd_air_year/temp_mean_air_year*100,
@@ -431,17 +432,19 @@ month_surf_summary_year <- Month_surf_sub %>% dplyr::group_by(x, y, year) %>%
 #Summarise the predictor into the desired climatologies for the entire time period
 month_surf_summary <- month_surf_summary_year %>% dplyr::group_by(x, y) %>% 
   dplyr::summarise(precip_mean = mean(precip_mean_year, na.rm = TRUE), precip_min = mean(precip_min_year, na.rm = TRUE), precip_max = mean(precip_max_year, na.rm = TRUE), precip_cv = mean(precip_cv_year, na.rm = TRUE),
-                   temp_mean_air = mean(temp_mean_air_year, na.rm = TRUE), temp_max_air = mean(temp_max_air_year, na.rm = TRUE), temp_min_air = mean(temp_min_air_year, na.rm = TRUE), temp_cv_air = mean(temp_cv_air_year, na.rm = TRUE),
+                   temp_mean_air = mean(temp_mean_air_year, na.rm = TRUE), temp_meanmax_air = mean(temp_meanmax_air_year, na.rm = TRUE), temp_meanmin_air = mean(temp_meanmin_air_year, na.rm = TRUE), temp_cv_air = mean(temp_cv_air_year, na.rm = TRUE), temp_max_air = mean(temp_max_air_year, na.rm = TRUE), temp_min_air = mean(temp_min_air_year, na.rm = TRUE),
                    rsds_mean = mean(rsds_mean_year, na.rm = TRUE), rsds_max = mean(rsds_max_year, na.rm = TRUE), rsds_min = mean(rsds_min_year, na.rm = TRUE), rsds_cv = mean(rsds_cv_year, na.rm = TRUE))
 
-#Convert to spatial points and transform to grid crs #NEED TO CHECK WHAT COORDINATE ARE IN AND MAKE SURE THIS WORKS
+#Convert to spatial points and transform to grid crs 
 month_surf_points <- sf::st_as_sf(month_surf_summary, coords=(c("x", "y")), crs = sf::st_crs(4326)) %>% sf::st_transform(crs = sf::st_crs(3573))
 
 #Rasterize all  predictors of interest onto the 1000m equal area grid with mean = akin to project, merge with surface values because loose very shallow areas
 chelsa_temp_air_mean_rast <- terra::rasterize(month_surf_points, terra::rast(crs ="EPSG:3573", extent = terra::ext(month_surf_points), res=1000),field = "temp_mean_air", fun=mean)
+chelsa_temp_air_meanmax_rast <- terra::rasterize(month_surf_points, terra::rast(crs ="EPSG:3573", extent = terra::ext(month_surf_points), res=1000),field = "temp_meanmax_air", fun=mean)
+chelsa_temp_air_meanmin_rast <- terra::rasterize(month_surf_points, terra::rast(crs ="EPSG:3573", extent = terra::ext(month_surf_points), res=1000),field = "temp_meanmin_air", fun=mean)
+chelsa_temp_air_cv_rast <- terra::rasterize(month_surf_points, terra::rast(crs ="EPSG:3573", extent = terra::ext(month_surf_points), res=1000),field = "temp_cv_air", fun=mean)
 chelsa_temp_air_max_rast <- terra::rasterize(month_surf_points, terra::rast(crs ="EPSG:3573", extent = terra::ext(month_surf_points), res=1000),field = "temp_max_air", fun=mean)
 chelsa_temp_air_min_rast <- terra::rasterize(month_surf_points, terra::rast(crs ="EPSG:3573", extent = terra::ext(month_surf_points), res=1000),field = "temp_min_air", fun=mean)
-chelsa_temp_air_cv_rast <- terra::rasterize(month_surf_points, terra::rast(crs ="EPSG:3573", extent = terra::ext(month_surf_points), res=1000),field = "temp_cv_air", fun=mean)
 chelsa_precip_mean_rast <- terra::rasterize(month_surf_points, terra::rast(crs ="EPSG:3573", extent = terra::ext(month_surf_points), res=1000),field = "precip_mean", fun=mean)
 chelsa_precip_max_rast <- terra::rasterize(month_surf_points, terra::rast(crs ="EPSG:3573", extent = terra::ext(month_surf_points), res=1000),field = "precip_max", fun=mean)
 chelsa_precip_min_rast <- terra::rasterize(month_surf_points, terra::rast(crs ="EPSG:3573", extent = terra::ext(month_surf_points), res=1000),field = "precip_min", fun=mean)
@@ -467,9 +470,9 @@ NEP36_layers <- c(NEP36_NH4_5_mean_rast, NEP36_NO3_5_mean_rast, NEP36_salt_5_mea
                 NEP36_PAR_5_max_rast, NEP36_temp_sur_mean_rast, NEP36_temp_sur_max_rast, NEP36_temp_sur_min_rast, NEP36_temp_5_mean_rast, NEP36_temp_5_max_rast, 
                 NEP36_temp_5_min_rast, NEP36_DO_5_mean_rast, NEP36_DO_5_min_rast, NEP36_salt_5_cv_rast, NEP36_temp_5_cv_rast, NEP36_temp_5_diff_rast,
                 NEP36_temp_sur_cv_rast, NEP36_temp_sur_diff_rast)
-CHELSA_layers <- c(chelsa_temp_air_mean_rast, chelsa_temp_air_max_rast, chelsa_temp_air_min_rast, chelsa_temp_air_cv_rast,
+CHELSA_layers <- c(chelsa_temp_air_mean_rast, chelsa_temp_air_meanmax_rast, chelsa_temp_air_meanmin_rast, chelsa_temp_air_cv_rast,
                    chelsa_precip_mean_rast, chelsa_precip_max_rast, chelsa_precip_min_rast, chelsa_precip_cv_rast,
-                   chelsa_rsds_mean_rast, chelsa_rsds_max_rast, chelsa_rsds_min_rast, chelsa_rsds_cv_rast)
+                   chelsa_rsds_mean_rast, chelsa_rsds_max_rast, chelsa_rsds_min_rast, chelsa_rsds_cv_rast, chelsa_temp_air_max_rast, chelsa_temp_air_min_rast)
 
 
 rm(bccm_NH4_5_mean_rast, bccm_NO3_5_mean_rast, bccm_salt_5_mean_rast, bccm_salt_5_min_rast, bccm_PAR_5_mean_rast, bccm_PAR_5_min_rast, 
@@ -481,7 +484,7 @@ rm(bccm_NH4_5_mean_rast, bccm_NO3_5_mean_rast, bccm_salt_5_mean_rast, bccm_salt_
    ssc_temp_sur_cv_rast, ssc_temp_sur_diff_rast, NEP36_NH4_5_mean_rast, NEP36_NO3_5_mean_rast, NEP36_salt_5_mean_rast, NEP36_salt_5_min_rast, NEP36_PAR_5_mean_rast, NEP36_PAR_5_min_rast, 
    NEP36_PAR_5_max_rast, NEP36_temp_sur_mean_rast, NEP36_temp_sur_max_rast, NEP36_temp_sur_min_rast, NEP36_temp_5_mean_rast, NEP36_temp_5_max_rast, 
    NEP36_temp_5_min_rast, NEP36_DO_5_mean_rast, NEP36_DO_5_min_rast, NEP36_salt_5_cv_rast, NEP36_temp_5_cv_rast, NEP36_temp_5_diff_rast,
-   NEP36_temp_sur_cv_rast, NEP36_temp_sur_diff_rast, chelsa_temp_air_mean_rast, chelsa_temp_air_max_rast, chelsa_temp_air_min_rast, chelsa_temp_air_cv_rast,
+   NEP36_temp_sur_cv_rast, NEP36_temp_sur_diff_rast, chelsa_temp_air_mean_rast, chelsa_temp_air_meanmax_rast, chelsa_temp_air_meanmin_rast, chelsa_temp_air_cv_rast,
    chelsa_precip_mean_rast, chelsa_precip_max_rast, chelsa_precip_min_rast, chelsa_precip_cv_rast,
    chelsa_rsds_mean_rast, chelsa_rsds_max_rast, chelsa_rsds_min_rast, chelsa_rsds_cv_rast, bathy_hg, bathy_ncc, bathy_qcs, bathy_ss, bathy_wcvi,
    BCCM_h_do_data, BCCM_h_do_grid, BCCM_h_NH4_data, BCCM_h_NH4_grid, BCCM_h_NO3_data, BCCM_h_NO3_grid, BCCM_h_salt_data, BCCM_h_salt_grid, BCCM_h_temp_data, BCCM_h_temp_grid, BCCM_h_urad_data, BCCM_h_urad_grid,
@@ -495,7 +498,7 @@ rm(bccm_NH4_5_mean_rast, bccm_NO3_5_mean_rast, bccm_salt_5_mean_rast, bccm_salt_
    temp_points, temp_sub, temp_summary, temp_summary_grid, temp_summary_year, urad_sub, 
    SSC_month_data, SSC_year_data, ssc_DO_sur_mean_rast, ssc_DO_sur_min_rast, 
    ssc_NH4_sur_mean_rast, ssc_NO3_sur_mean_rast, ssc_PAR_sur_max_rast, ssc_PAR_sur_mean_rast, ssc_PAR_sur_min_rast, 
-   ssc_salt_sur_cv_rast, ssc_salt_sur_mean_rast, ssc_salt_sur_min_rast)
+   ssc_salt_sur_cv_rast, ssc_salt_sur_mean_rast, ssc_salt_sur_min_rast, chelsa_temp_air_max_rast, chelsa_temp_air_min_rast)
 
 gc()
 
@@ -563,8 +566,8 @@ temp_s_cv_rast_nep36 <- terra::merge(SSC_Resampled[[19]], NEP36_Resampled[[19]],
 temp_s_diff_rast_nep36 <- terra::merge(SSC_Resampled[[20]], NEP36_Resampled[[20]], na.rm=TRUE) %>% terra::mask(bathy20m) %>% terra::crop(bathy20m)
 
 temp_air_mean_rast <- CHELSA_Resampled[[1]] %>% terra::mask(bathy20m) %>% terra::crop(bathy20m)
-temp_air_max_rast <- CHELSA_Resampled[[2]]  %>% terra::mask(bathy20m) %>% terra::crop(bathy20m)
-temp_air_min_rast <- CHELSA_Resampled[[3]]  %>% terra::mask(bathy20m) %>% terra::crop(bathy20m)
+temp_air_meanmax_rast <- CHELSA_Resampled[[2]]  %>% terra::mask(bathy20m) %>% terra::crop(bathy20m)
+temp_air_meanmin_rast <- CHELSA_Resampled[[3]]  %>% terra::mask(bathy20m) %>% terra::crop(bathy20m)
 temp_air_cv_rast <- CHELSA_Resampled[[4]]  %>% terra::mask(bathy20m) %>% terra::crop(bathy20m)
 precip_mean_rast <- CHELSA_Resampled[[5]]  %>% terra::mask(bathy20m) %>% terra::crop(bathy20m)
 precip_max_rast <- CHELSA_Resampled[[6]]  %>% terra::mask(bathy20m) %>% terra::crop(bathy20m)
@@ -574,7 +577,8 @@ rsds_mean_rast <- CHELSA_Resampled[[9]]  %>% terra::mask(bathy20m) %>% terra::cr
 rsds_max_rast <- CHELSA_Resampled[[10]] %>% terra::mask(bathy20m) %>% terra::crop(bathy20m)
 rsds_min_rast <- CHELSA_Resampled[[11]]  %>% terra::mask(bathy20m) %>% terra::crop(bathy20m)
 rsds_cv_rast <- CHELSA_Resampled[[12]]  %>% terra::mask(bathy20m) %>% terra::crop(bathy20m) 
-
+temp_air_max_rast <- CHELSA_Resampled[[13]]  %>% terra::mask(bathy20m) %>% terra::crop(bathy20m)
+temp_air_min_rast <- CHELSA_Resampled[[14]]  %>% terra::mask(bathy20m) %>% terra::crop(bathy20m)
 
 
 Predictor_Hindcast_Climatologies <- c(NH4_5_mean_rast_bccm, NO3_5_mean_rast_bccm, salt_5_mean_rast_bccm, salt_5_min_rast_bccm, PAR_5_mean_rast_bccm, PAR_5_min_rast_bccm, 
@@ -585,9 +589,9 @@ Predictor_Hindcast_Climatologies <- c(NH4_5_mean_rast_bccm, NO3_5_mean_rast_bccm
                                       PAR_5_max_rast_nep36, temp_s_mean_rast_nep36, temp_s_max_rast_nep36, temp_s_min_rast_nep36, temp_5_mean_rast_nep36, temp_5_max_rast_nep36, 
                                       temp_5_min_rast_nep36, do_5_mean_rast_nep36, do_5_min_rast_nep36, salt_5_cv_rast_nep36, temp_5_cv_rast_nep36, temp_5_diff_rast_nep36, 
                                       temp_s_cv_rast_nep36, temp_s_diff_rast_nep36,
-                                      temp_air_mean_rast, temp_air_max_rast, temp_air_min_rast, temp_air_cv_rast,
+                                      temp_air_mean_rast, temp_air_meanmax_rast, temp_air_meanmin_rast, temp_air_cv_rast,
                                       precip_mean_rast, precip_max_rast, precip_min_rast, precip_cv_rast, 
-                                      rsds_mean_rast, rsds_max_rast, rsds_min_rast, rsds_cv_rast)
+                                      rsds_mean_rast, rsds_max_rast, rsds_min_rast, rsds_cv_rast, temp_air_max_rast, temp_air_min_rast,)
 
 names(Predictor_Hindcast_Climatologies) <- c("NH4_5m_mean_bccm", "NO3_5m_mean_bccm", "salt_5m_mean_bccm", "salt_5m_min_bccm", "PAR_5m_mean_bccm", "PAR_5m_min_bccm", 
                                              "PAR_5m_max_bccm", "temp_s_mean_bccm", "temp_s_max_bccm", "temp_s_min_bccm", "temp_5m_mean_bccm", "temp_5m_max_bccm", 
@@ -595,9 +599,9 @@ names(Predictor_Hindcast_Climatologies) <- c("NH4_5m_mean_bccm", "NO3_5m_mean_bc
                                              "NH4_5m_mean_nep36", "NO3_5m_mean_nep36", "salt_5m_mean_nep36", "salt_5m_min_nep36", "PAR_5m_mean_nep36", "PAR_5m_min_nep36", 
                                              "PAR_5m_max_nep36", "temp_s_mean_nep36", "temp_s_max_nep36", "temp_s_min_nep36", "temp_5m_mean_nep36", "temp_5m_max_nep36", 
                                              "temp_5m_min_nep36", "do_5m_mean_nep36", "do_5m_min_nep36", "salt_5m_cv_nep36", "temp_5m_cv_nep36", "temp_5m_diff_nep36", "temp_s_cv_nep36", "temp_s_diff_nep36",
-                                             "temp_air_mean", "temp_air_max", "temp_air_min", "temp_air_cv",
+                                             "temp_air_mean", "temp_air_meanmax", "temp_air_meanmin", "temp_air_cv",
                                              "precip_mean", "precip_max", "precip_min", "precip_cv",
-                                             "rsds_mean","rsds_max", "rsds_min", "rsds_cv")
+                                             "rsds_mean","rsds_max", "rsds_min", "rsds_cv", "temp_air_max", "temp_air_min")
 
 # your SpatRaster with names already assigned:
 r <- Predictor_Hindcast_Climatologies
@@ -626,23 +630,9 @@ terra::tmpFiles()
 terra::tmpFiles(remove = TRUE)
 
 
-#Save the hindcast predictor raster
-# terra::writeRaster(Predictor_Hindcast_Climatologies,
-#   filename = paste0("code/output_data/processed_ocean_variables/Predictor_Hindcast_Climatologies_", paste(start),"-",paste(end),".tif"), 
-#   overwrite = TRUE)
 
 
 
-
-
-
-# comparing 2013-2023 data
-# PARs all look weird across Salish Sea and BCCM boundaries.
-# temp surface min values go below 0, so not going to use those. Matt used values below 0 filtered out to remove some inlets
-# Also planning to filter out DO <100 as that removes some inlets that are not predicted well by BCCM
-# NH4 is high in the fraser, some inlets (holberg), and in spots around HG; 
-#NO3 is high in the Broughton and Holberg Inlet
-# salt mean looks good. Salt min only changes around Nass, Skeena, Fraser, and a few major inlets, otherwise looks similar to salt mean
 
 #### Culmulative effects layer from Murray, change from polygon to 20 m raster
 cul_eff <- vect(st_read(dsn = "raw_data/anthropogenic/Cumulative_Impacts_Pacfic_Canada.gdb", layer = "Cumulative_Impacts_Pacific_Canada")) # impact score representing impacts from all activities and all habitats in each PU grid cell.
