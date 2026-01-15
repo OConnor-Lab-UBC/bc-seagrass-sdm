@@ -9,6 +9,8 @@
 # ---------
 # predict sdm models with sdmTMB 
 #
+
+# STILL TO DO, MAKE PREDICTIONS WITH SURVEY AND YEAR
 ###############################################################################
 #### Load modelling functions ####
 source("code/modelling-functions.R")
@@ -150,67 +152,12 @@ writeRaster(eelgrass_raster_qcs_percent, file.path("./raster/eelgrass_prediction
 
 
 
-
-
-
-
-PredictSDM <- function(env, model, survey_type, species) {
-  message("Predicting with environmental layers...")
-  
-  outdir <- file.path("code/output_data/seagrass_predictions/survey", species)
-  if (!dir.exists(outdir)) dir.create(outdir, recursive = TRUE)
-  
-  #predictions for each survey
-  predbysurvey <- function(s, ...) {
-    env$Survey <- as.factor(s)
-    pname <- paste0("Prediction_", s)
-    
-    #average across years
-    env_all <- data.frame()
-    for (y in 2013:2023) {
-      env$Year_factor <- as.factor(y)
-      env_all <- rbind(env_all, env)
-    }
-    
-    hold_all <- predict(model, newdata = env_all)
-    sims <- predict(model, newdata = env_all, nsim = 100)
-    hold_all$SE <- apply(sims, 1, sd)
-    
-    hold <- hold_all %>%
-      group_by(X_m, Y_m, ID, Survey) %>%
-      summarise(across(everything(), mean, na.rm = TRUE)) %>%
-      arrange(ID) %>%
-      as.data.frame()
-    
-    epreds <- env %>%
-      select(X_m, Y_m, X, Y, ID, Survey) %>%
-      left_join(hold %>% select(ID, est:SE, Survey), by = c("ID", "Survey"))
-    
-    save(epreds, file = file.path(outdir, paste0(pname, "_survey_preds.RData")))
-    return(epreds)
-  }
-  
-  predlist <- lapply(survey_type, FUN = predbysurvey)
-  message("Combining and averaging predictions across survey types...")
-  
-  all_preds <- do.call(rbind, predlist)
-  
-  mean_preds <- all_preds %>%
-    group_by(X_m, Y_m, ID) %>%
-    summarise(across(est:SE, mean, na.rm = TRUE)) %>%
-    arrange(ID) %>%
-    as.data.frame()
-  
-  save(mean_preds, file = file.path(outdir, paste0("MeanSurveyPreds_", species, ".RData")))
-  
-  return(mean_preds)
-}
-
 # Run function
 pred <- PredictSDM(
   env = env_20m_all_fhalf,
   model = fmodel_e_bccm_nospatial,
   survey_type = survey_type,
+  years = 2013:2023,
   species = "eelgrass"
 )
 
@@ -366,5 +313,167 @@ writeRaster(eelgrass_raster_qcs_sd, file.path("./raster/eelgrass_predictions_qcs
 
 
 
+## surfgrass
+
+
+#make predictions and get SE
+hold <- predict(fmodel_s_bccm, env_20m_all)
+sims <- predict(fmodel_s_bccm, newdata = env_20m_all, nsim = 100) #sim needs to be 500? ram is not working for this right now at 20m prediction cells
+hold$SE <- apply(sims, 1, sd)
+hold$SD <- apply(pclog(sims), 1, sd)
+surfgrass_predictions <- env_20m_all
+surfgrass_predictions <- bind_cols(surfgrass_predictions, hold %>% select(est:SD))
+
+# hold <- surfgrass_predictions %>%
+#   group_by(X_m, Y_m) %>%
+#   summarise(CV = sd(exp(est), na.rm = TRUE)/mean(exp(est)), counts_ln = mean(est), SE = mean(SE))
+
+# change to 0-1 away from log-odds (logit) space
+surfgrass_predictions <- surfgrass_predictions %>%
+  mutate(est_p = plogis(est))
+
+#save outputs####
+save(surfgrass_predictions, file = "code/output_data/surfgrass_predictions.RData")
+
+
+####Plots####         
+
+
+surfgrass_plot <- ggplot(surfgrass_predictions)+
+  geom_sf(data = coastline, linewidth = 0.1)+
+  geom_tile(aes(x = X_m, y = Y_m, colour=est_p, width=20,height=20))+
+  scale_colour_gradient(low = "#f7fcb9", high = "#006837")+
+  theme(panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        # Remove panel background
+        panel.background = element_blank(),
+        axis.text.x = element_blank(),
+        axis.text.y = element_blank(),
+        axis.ticks = element_blank())+
+  coord_sf(expand = FALSE)+
+  ylab("")+
+  xlab("") 
+surfgrass_plot
+ggsave("./figures/surfgrass.png", height = 6, width = 6)
+
+surfgrass_se_plot <- ggplot(surfgrass_predictions)+
+  geom_sf(data = coastline, linewidth = 0.1)+
+  geom_tile(aes(x = X_m, y = Y_m, colour=SE, width=20,height=20))+
+  scale_colour_viridis_b()+
+  theme(panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        # Remove panel background
+        panel.background = element_blank(),
+        axis.text.x = element_blank(),
+        axis.text.y = element_blank(),
+        axis.ticks = element_blank())+
+  coord_sf(expand = FALSE)+
+  ylab("")+
+  xlab("") 
+surfgrass_se_plot
+ggsave("./figures/surfgrass_se.png", height = 6, width = 6)
+
+# refer to https://pbs-assess.github.io/sdmTMB/articles/basic-intro.html to make plots of random spatial fields etc
+
+
+
+
+#save as raster, this changes to 100 m resolution though
+# surfgrass_raster <- surfgrass_predictions %>%
+#   mutate(x_round = round(X_m, -2), y_round = round(Y_m, -2)) %>%
+#   select(x_round, y_round, est_p)
+# 
+# surfgrass_raster <- rast(x = surfgrass_raster %>% as.matrix, type = "xyz", crs = "EPSG:3005")
+# writeRaster(surfgrass_raster, file.path("./raster/surfgrass_predictions.tif"), overwrite=TRUE)
+
+surfgrass_raster_hg <- surfgrass_predictions %>%
+  filter(region == "Haida Gwaii") %>%
+  select(X_m, Y_m, est_p)
+surfgrass_raster_hg <- rast(x = surfgrass_raster_hg %>% as.matrix, type = "xyz", crs = "EPSG:3005")
+writeRaster(surfgrass_raster_hg, file.path("./raster/surfgrass_predictions_hg.tif"), overwrite=TRUE)
+
+surfgrass_raster_ss <- surfgrass_predictions %>%
+  filter(region == "Salish Sea") %>%
+  select(X_m, Y_m, est_p)
+surfgrass_raster_ss <- rast(x = surfgrass_raster_ss %>% as.matrix, type = "xyz", crs = "EPSG:3005")
+writeRaster(surfgrass_raster_ss, file.path("./raster/surfgrass_predictions_ss.tif"), overwrite=TRUE)
+
+surfgrass_raster_wcvi <- surfgrass_predictions %>%
+  filter(region == "West Coast Vancouver Island") %>%
+  select(X_m, Y_m, est_p)
+surfgrass_raster_wcvi <- rast(x = surfgrass_raster_wcvi %>% as.matrix, type = "xyz", crs = "EPSG:3005")
+writeRaster(surfgrass_raster_wcvi, file.path("./raster/surfgrass_predictions_wcvi.tif"), overwrite=TRUE)
+
+surfgrass_raster_ncc <- surfgrass_predictions %>%
+  filter(region == "North Central Coast") %>%
+  select(X_m, Y_m, est_p)
+surfgrass_raster_ncc <- rast(x = surfgrass_raster_ncc %>% as.matrix, type = "xyz", crs = "EPSG:3005")
+writeRaster(surfgrass_raster_ncc, file.path("./raster/surfgrass_predictions_ncc.tif"), overwrite=TRUE)
+
+surfgrass_raster_qcs <- surfgrass_predictions %>%
+  filter(region == "Queen Charlotte Strait") %>%
+  select(X_m, Y_m, est_p)
+surfgrass_raster_qcs <- rast(x = surfgrass_raster_qcs %>% as.matrix, type = "xyz", crs = "EPSG:3005")
+writeRaster(surfgrass_raster_qcs, file.path("./raster/surfgrass_predictions_qcs.tif"), overwrite=TRUE)
+
+surfgrass_raster_hg_se <- surfgrass_predictions %>%
+  filter(region == "Haida Gwaii") %>%
+  select(X_m, Y_m, SE)
+surfgrass_raster_hg_se <- rast(x = surfgrass_raster_hg_se %>% as.matrix, type = "xyz", crs = "EPSG:3005")
+writeRaster(surfgrass_raster_hg_se, file.path("./raster/surfgrass_predictions_hg_se.tif"), overwrite=TRUE)
+
+surfgrass_raster_ss_se <- surfgrass_predictions %>%
+  filter(region == "Salish Sea") %>%
+  select(X_m, Y_m, SE)
+surfgrass_raster_ss_se <- rast(x = surfgrass_raster_ss_se %>% as.matrix, type = "xyz", crs = "EPSG:3005")
+writeRaster(surfgrass_raster_ss_se, file.path("./raster/surfgrass_predictions_ss_se.tif"), overwrite=TRUE)
+
+surfgrass_raster_wcvi_se <- surfgrass_predictions %>%
+  filter(region == "West Coast Vancouver Island") %>%
+  select(X_m, Y_m, SE)
+surfgrass_raster_wcvi_se <- rast(x = surfgrass_raster_wcvi_se %>% as.matrix, type = "xyz", crs = "EPSG:3005")
+writeRaster(surfgrass_raster_wcvi_se, file.path("./raster/surfgrass_predictions_wcvi_se.tif"), overwrite=TRUE)
+
+surfgrass_raster_ncc_se <- surfgrass_predictions %>%
+  filter(region == "North Central Coast") %>%
+  select(X_m, Y_m, SE)
+surfgrass_raster_ncc_se <- rast(x = surfgrass_raster_ncc_se %>% as.matrix, type = "xyz", crs = "EPSG:3005")
+writeRaster(surfgrass_raster_ncc_se, file.path("./raster/surfgrass_predictions_ncc_se.tif"), overwrite=TRUE)
+
+surfgrass_raster_qcs_se <- surfgrass_predictions %>%
+  filter(region == "Queen Charlotte Strait") %>%
+  select(X_m, Y_m, SE)
+surfgrass_raster_qcs_se <- rast(x = surfgrass_raster_qcs_se %>% as.matrix, type = "xyz", crs = "EPSG:3005")
+writeRaster(surfgrass_raster_qcs_se, file.path("./raster/surfgrass_predictions_qcs_se.tif"), overwrite=TRUE)
+
+surfgrass_raster_hg_sd <- surfgrass_predictions %>%
+  filter(region == "Haida Gwaii") %>%
+  select(X_m, Y_m, SD)
+surfgrass_raster_hg_sd <- rast(x = surfgrass_raster_hg_sd %>% as.matrix, type = "xyz", crs = "EPSG:3005")
+writeRaster(surfgrass_raster_hg_sd, file.path("./raster/surfgrass_predictions_hg_sd.tif"), overwrite=TRUE)
+
+surfgrass_raster_ss_sd <- surfgrass_predictions %>%
+  filter(region == "Salish Sea") %>%
+  select(X_m, Y_m, SD)
+surfgrass_raster_ss_sd <- rast(x = surfgrass_raster_ss_sd %>% as.matrix, type = "xyz", crs = "EPSG:3005")
+writeRaster(surfgrass_raster_ss_sd, file.path("./raster/surfgrass_predictions_ss_sd.tif"), overwrite=TRUE)
+
+surfgrass_raster_wcvi_sd <- surfgrass_predictions %>%
+  filter(region == "West Coast Vancouver Island") %>%
+  select(X_m, Y_m, SD)
+surfgrass_raster_wcvi_sd <- rast(x = surfgrass_raster_wcvi_sd %>% as.matrix, type = "xyz", crs = "EPSG:3005")
+writeRaster(surfgrass_raster_wcvi_sd, file.path("./raster/surfgrass_predictions_wcvi_sd.tif"), overwrite=TRUE)
+
+surfgrass_raster_ncc_sd <- surfgrass_predictions %>%
+  filter(region == "North Central Coast") %>%
+  select(X_m, Y_m, SD)
+surfgrass_raster_ncc_sd <- rast(x = surfgrass_raster_ncc_sd %>% as.matrix, type = "xyz", crs = "EPSG:3005")
+writeRaster(surfgrass_raster_ncc_sd, file.path("./raster/surfgrass_predictions_ncc_sd.tif"), overwrite=TRUE)
+
+surfgrass_raster_qcs_sd <- surfgrass_predictions %>%
+  filter(region == "Queen Charlotte Strait") %>%
+  select(X_m, Y_m, SD)
+surfgrass_raster_qcs_sd <- rast(x = surfgrass_raster_qcs_sd %>% as.matrix, type = "xyz", crs = "EPSG:3005")
+writeRaster(surfgrass_raster_qcs_sd, file.path("./raster/surfgrass_predictions_qcs_sd.tif"), overwrite=TRUE)
 
 
