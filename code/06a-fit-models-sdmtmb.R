@@ -686,6 +686,13 @@ save(m_eelgrass_forecast_bccm, m_eelgrass_forecast_spatial_bccm, forecast_predic
 ####Eelgrass delta model with percent cover ####
 dat2 <- subset(data, mean_PerCovZO > 0)
 #not all surveys had records of percent cover
+
+# recomend to use beta family which has to have percent cover rescaled to 0 to 1 with no 100% percent cover 
+
+dat2$cover_beta <- (dat2$mean_PerCovZO - 0.5) / 100
+
+range(dat2$cover_beta)
+
 dat2$Survey <- factor(dat2$Survey,
                       levels = c("ABL", "BHM", "Cuk", "GSU", "Mul", "RSU"))
 mesh2 <- make_mesh(dat2,
@@ -696,35 +703,39 @@ plot(mesh2)
 barrier_mesh2 <- add_barrier_mesh(mesh2, barrier_sf = coastline, proj_scaling = 1000, plot = TRUE)
 #better to have more flexible spline on depth
 #better with spatial
-m_e_per_1 <- sdmTMB_cv(formula = mean_PerCovZO ~ s(depth_stnd) + substrate + freshwater_sqrt_stnd +
-                         surftempmin_bccm_stnd + #bccm variables
+m_e_per_1 <- sdmTMB_cv(formula = cover_beta ~ s(depth_stnd, k=5) + substrate + freshwater_sqrt_stnd +
+                         surftempmin_bccm_stnd + PARmean_bccm_stnd+ #bccm variables
                          (1|Survey),  #random effect
                        mesh = barrier_mesh2, 
-                       family = Gamma(link = "log"), 
+                       family = Beta(link = "logit"), 
                        spatial = TRUE, 
+                       fold_ids = "fold",
                        data = dat2)
-m_e_per_1$sum_loglik # -9048
+m_e_per_1$sum_loglik # -9038
 
-m_e_per_2 <- sdmTMB_cv(formula = mean_PerCovZO ~ s(depth_stnd) + substrate + freshwater_sqrt_stnd +
+m_e_per_2 <- sdmTMB_cv(formula = cover_beta ~ s(depth_stnd, k=5) + substrate + freshwater_sqrt_stnd +
                          surftempmin_nep_stnd + PARmean_nep_stnd + #nep variables
                          (1|Survey),  #random effect
                        mesh = barrier_mesh2, 
-                       family = Gamma(link = "log"), 
+                       family = Beta(link = "logit"),
                        spatial = TRUE, 
+                       fold_ids = "fold",
                        data = dat2)
-m_e_per_2$sum_loglik # -9043
+m_e_per_2$sum_loglik # -9048
 
 #So best models that include all best factors from both nep and bccm
-m_e_per_bccm_final <- sdmTMB(formula = mean_PerCovZO ~ s(depth_stnd) + substrate + freshwater_sqrt_stnd +
-                               surftempmin_bccm_stnd  + PARmean_bccm_stnd + #bccm variables
-                         (1|Survey),  #random effect
+# best model has surftemp min, parmean, freshwater sqrt, substrate and depth but model was underdispersed!
+m_e_per_bccm_final <- sdmTMB(formula = cover_beta ~ s(depth_stnd, k=5), #+ substrate + #freshwater_sqrt_stnd +
+                               #surftempmin_bccm_stnd + PARmean_bccm_stnd, # + #+ #bccm variables
+                               #(1|Survey),  #random effect
                        mesh = barrier_mesh2, 
-                       family = Gamma(link = "log"), 
-                       spatial = TRUE, 
+                       family = Beta(link = "logit"), 
+                       spatial = FALSE, 
                        data = dat2)
+# Gamma and lognormal family don't work well
 
 
-m_e_per_nep_final <- sdmTMB(formula = mean_PerCovZO ~ s(depth_stnd) + substrate + freshwater_sqrt_stnd +
+m_e_per_nep_final <- sdmTMB(formula = mean_PerCovZO ~ s(depth_stnd, k=5) + substrate + freshwater_sqrt_stnd +
                          surftempmin_nep_stnd + PARmean_nep_stnd +  #nep variables
                          (1|Survey),  #random effect
                        mesh = barrier_mesh2, 
@@ -732,9 +743,8 @@ m_e_per_nep_final <- sdmTMB(formula = mean_PerCovZO ~ s(depth_stnd) + substrate 
                        spatial = TRUE, 
                        data = dat2)
 
-##ENDED HERE!!!
 sanity(m_e_per_bccm_final)
-
+sanity(m_e_per_nep_final)
 #print(fmodel_e_delta_bccm_nospatial)
 
 tidy(m_e_per_bccm_final)
@@ -743,22 +753,50 @@ tidy(m_e_per_nep_final)
 tidy(m_e_per_nep_final, "ran_pars", conf.int = TRUE)
 
 visreg::visreg(m_e_per_bccm_final, "depth_stnd")
-visreg::visreg(m_e_per_bccm_final, "substrate")
-visreg::visreg(m_e_per_bccm_final, "surftempmin_bccm_stnd")
-visreg::visreg(m_e_per_bccm_final, "Survey")
-
 visreg::visreg(m_e_per_nep_final, "depth_stnd")
+
+visreg::visreg(m_e_per_bccm_final, "substrate")
 visreg::visreg(m_e_per_nep_final, "substrate")
+
+visreg::visreg(m_e_per_bccm_final, "freshwater_sqrt_stnd")
+visreg::visreg(m_e_per_nep_final, "freshwater_sqrt_stnd")
+
+visreg::visreg(m_e_per_bccm_final, "surftempmin_bccm_stnd")
 visreg::visreg(m_e_per_nep_final, "surftempmin_nep_stnd")
+
+visreg::visreg(m_e_per_bccm_final, "PARmean_bccm_stnd")
+visreg::visreg(m_e_per_nep_final, "PARmean_nep_stnd")
+
+visreg::visreg(m_e_per_bccm_final, "Survey")
 visreg::visreg(m_e_per_nep_final, "Survey")
 
+library(DHARMa)
+sim <- simulateResiduals(
+  fittedModel = m_e_per_bccm_final,
+  n = 250,
+  refit = FALSE
+)
+fitted_vals <- fitted(m_e_per_bccm_final)
+plot(sim)
+summary(sim$scaledResiduals)
+plotResiduals(sim, fitted_vals)
+plotResiduals(sim, dat2$depth)
+
+set.seed(123)
+rq_res <- residuals(m_e_per_bccm_final, type = "mle-mvn")
+rq_res <- rq_res[is.finite(rq_res)] # some Inf
+qqnorm(rq_res);abline(0, 1)
+
+set.seed(123)
+ret<- simulate(m_e_per_bccm_final, nsim = 500, type = "mle-mvn") 
+r_ret <-  dharma_residuals(ret, m_e_per_bccm_final, return_DHARMa = TRUE)
+plot(r_ret)
+DHARMa::testResiduals(r_ret)
+
+DHARMa::testSpatialAutocorrelation(r_ret, x = dat2$X, y = dat2$Y)
 
 
-
-
-
-
-
+# residuals are not plotting right, need to figure out right family!!!
 
 
 

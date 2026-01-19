@@ -10,7 +10,7 @@
 # predict sdm models with sdmTMB 
 #
 
-# STILL TO DO, MAKE PREDICTIONS WITH SURVEY AND YEAR
+
 ###############################################################################
 #### Load modelling functions ####
 source("code/modelling-functions.R")
@@ -22,6 +22,8 @@ UsePackages(c("sdmTMB", "sdmTMBextra", "tidyverse", "sf", "future", "terra", "fu
 ####load prediction data####
 load("code/output_data/prediction_model_inputs.RData")
 load("code/output_data/seagrass_model_inputs.RData")
+load("code/output_data/model_results/final_eelgrass_model.RData")
+
 # make predictions and get standard error
 # fmodel_e_bccm_nospatial
 # testing forst for model with no year, just survey random effect
@@ -31,7 +33,37 @@ survey_type <- c("ABL", "BHM", "Cuk", "GDK", "GSU", "MSE", "Mul", "RSU")
 
 
 
-#This below was just for presentation, need to update with random factors 
+# Run function
+pred <- PredictSDM(
+  env = env_20m_all,
+  model = fmodel_e_nep_spatial,
+  survey_type = survey_type,
+  species = "eelgrass",
+  model_name  = "nep_spatial"
+)
+
+
+
+
+# change to 0-1 away from log-odds (logit) space
+pred <- pred %>%
+  mutate(est_p = plogis(est))
+
+#save(eelgrass_predictions, file = "code/output_data/eelgrass_predictions.RData")
+
+
+
+
+
+
+
+
+
+#NEED TO WORK ON THIS STUFF BELOW!
+
+
+#Percent cover eelgrass predictions
+
 eelgrass_predictions <- env_20m_all
 
 e_bin <- predict(fmodel_e_bccm_spatial, newdata = env_20m_all)
@@ -39,11 +71,6 @@ e_per <- predict(m_e_per_bccm_final, newdata = env_20m_all)
 e_bin_prob <- fmodel_e_bccm_spatial$family$linkinv(e_bin$est)
 e_per_exp <- m_e_per_bccm_final$family$linkinv(e_per$est)
 eelgrass_predictions$est_exp <- e_bin_prob * e_per_exp
-
-
-#just grab a quarter to test
-env_20m_all_fhalf <- env_20m_all %>% filter(ID < 8249999)
-#env_20m_all_shalf <- env_20m_all %>% filter(ID > 8249999)
 
 set.seed(28239)
 p_bin_sim <- predict(fmodel_e_bccm_spatial, newdata = env_20m_all, nsim = 100)
@@ -60,6 +87,10 @@ eelgrass_predictions$cv_binary <- apply(p_bin_prob_sim, 1, function(x) sd(x) / m
 
 plot(eelgrass_predictions$est_exp, eelgrass_predictions$median)
 
+
+
+
+##### plots ####
 ggplot((eelgrass_predictions), aes(X, Y, fill = median)) +
   geom_raster() +
   coord_fixed() +
@@ -133,81 +164,6 @@ eelgrass_se_plot_percent <- ggplot(eelgrass_predictions)+
   xlab("") 
 eelgrass_se_plot_percent
 ggsave("./figures/eelgrass_se_percent.png", height = 6, width = 6)
-
-
-
-eelgrass_raster_qcs <- eelgrass_predictions %>%
-  filter(region == "Queen Charlotte Strait") %>%
-  select(X_m, Y_m, median_binary)
-eelgrass_raster_qcs <- rast(x = eelgrass_raster_qcs %>% as.matrix, type = "xyz", crs = "EPSG:3005")
-writeRaster(eelgrass_raster_qcs, file.path("./raster/eelgrass_predictions_qcs_binary.tif"), overwrite=TRUE)
-
-eelgrass_raster_qcs_percent <- eelgrass_predictions %>%
-  filter(region == "Queen Charlotte Strait") %>%
-  select(X_m, Y_m, median)
-eelgrass_raster_qcs_percent <- rast(x = eelgrass_raster_qcs_percent %>% as.matrix, type = "xyz", crs = "EPSG:3005")
-writeRaster(eelgrass_raster_qcs_percent, file.path("./raster/eelgrass_predictions_qcs_percent.tif"), overwrite=TRUE)
-
-
-
-
-
-# Run function
-pred <- PredictSDM(
-  env = env_20m_all_fhalf,
-  model = fmodel_e_bccm_nospatial,
-  survey_type = survey_type,
-  years = 2013:2023,
-  species = "eelgrass"
-)
-
-
-# will need to recombine predictions to full study area
-
-
-# change to 0-1 away from log-odds (logit) space
-eelgrass_predictions <- eelgrass_predictions %>%
-  mutate(est_p = plogis(est))
-
-mean_preds <- mean_preds %>%
-  mutate(est_p = plogis(est))
-
-save(eelgrass_predictions, file = "code/output_data/eelgrass_predictions.RData")
-
-####Plots####         
-eelgrass_plot <- ggplot(eelgrass_predictions)+
-  geom_sf(data = coastline, linewidth = 0.1)+
-  geom_tile(aes(x = X_m, y = Y_m, colour=est_p, width=20,height=20))+
-  scale_colour_gradient(low = "#f7fcb9", high = "#006837")+
-  theme(panel.grid.major = element_blank(),
-        panel.grid.minor = element_blank(),
-        # Remove panel background
-        panel.background = element_blank(),
-        axis.text.x = element_blank(),
-        axis.text.y = element_blank(),
-        axis.ticks = element_blank())+
-  coord_sf(expand = FALSE)+
-  ylab("")+
-  xlab("") 
-eelgrass_plot
-ggsave("./figures/eelgrass.png", height = 6, width = 6)
-
-eelgrass_se_plot <- ggplot(eelgrass_predictions)+
-  geom_sf(data = coastline, linewidth = 0.1)+
-  geom_tile(aes(x = X_m, y = Y_m, colour=SE, width=20,height=20))+
-  scale_colour_viridis_b()+
-  theme(panel.grid.major = element_blank(),
-        panel.grid.minor = element_blank(),
-        # Remove panel background
-        panel.background = element_blank(),
-        axis.text.x = element_blank(),
-        axis.text.y = element_blank(),
-        axis.ticks = element_blank())+
-  coord_sf(expand = FALSE)+
-  ylab("")+
-  xlab("") 
-eelgrass_se_plot
-ggsave("./figures/eelgrass_se.png", height = 6, width = 6)
 
 
 #### save rasters ####
@@ -308,6 +264,10 @@ eelgrass_raster_qcs_sd <- eelgrass_predictions %>%
   select(X_m, Y_m, SD)
 eelgrass_raster_qcs_sd <- rast(x = eelgrass_raster_qcs_sd %>% as.matrix, type = "xyz", crs = "EPSG:3005")
 writeRaster(eelgrass_raster_qcs_sd, file.path("./raster/eelgrass_predictions_qcs_sd.tif"), overwrite=TRUE)
+
+
+
+
 
 
 

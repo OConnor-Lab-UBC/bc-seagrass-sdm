@@ -157,7 +157,7 @@ glm_ffs <- function(data, NumFolds){
     set.seed(2024)
     #performing model selection by glmStepAIC 
     caret_model <- CAST::ffs(response = sp_data$presence, 
-                             predictors = sp_data[,6:67], 
+                             predictors = sp_data[,6:69], 
                              method = "glm", 
                              family = "binomial",
                              trControl = fitControl)
@@ -189,49 +189,225 @@ glm_ffs <- function(data, NumFolds){
 #  AUC is computed.'
 ### We estimated the relative influence of covariates using a permutation method, based on the method implemented in MaxEnt software (Phillips et al. 2006). For each covariate we: (1) randomized the covariate with respect to the observations, (2) fit a model with the randomized covariate and all other non-randomized covariates, and (3) accessed model performance with the area under the receiver operating characteristic curve (AUC) metric. We completed steps (1) through (3) 10 times and returned a mean AUC value from the 10 permutations. We then calculated the AUC, the difference between the non-randomized model AUC and the permuted mean AUC from the randomized models. Finally, for each covariate, we divided the AUC by the sum of AUC values from all covariates to obtain the relative influence. A large AUC indicates that the randomized covariate has a large influence, while a small AUC indicates that the covariate has little influence on the model fit. For spatial random fields, we adjusted the procedure as randomization of sampling location (latitude and longitude) was not appropriate. We calculated the influence of the spatial random field by dropping it from the model, then measuring AUC between the model with random fields and the model without.
 
-varImp <- function( model, nosp_model, dat, preds, permute ) {
-  # Get inputs
-  obs <- dat[, "presence"]
-  env <- dat[, c("X","Y", preds)]
-  preds <- predict(model, type="response")
-  AUC <- ModelMetrics::auc( obs, preds$est )
-  vars <- names(env)[!names(env) %in% c("X","Y")]
-  var_reps <- rep(vars, each=permute)
-  var_reps <- c(var_reps, "spatial")
-  # Plan
-  plan(multisession)
-  # # Set seed
-  # set.seed(42)
-  # Randomize the order of variable v and make predictions
-  rand_mod <- function(v, rand_j, obs){
-    # require
-    require(sdmTMB)
-    require(ModelMetrics)
-    # predict
-    # randomize var
-    rand_j[v] <- sample( rand_j[[v]] )
-    # Predict with rand_j
-    p <- predict(model, newdata = rand_j, type="response")
-    # Calculate AUC
-    AUC <- ModelMetrics::auc(obs, p$est)
-    # Return AUC
-    return(AUC)
+# varImp_sdmTMB <- function(model, dat, preds, permute = 10) {
+#   library(sdmTMB)
+#   library(ModelMetrics)
+#   
+#   # ------------------------------
+#   # Check predictors exist
+#   # ------------------------------
+#   if(!all(preds %in% names(dat))) stop("Some predictors are missing from the dataset.")
+#   
+#   obs <- dat$presence
+#   
+#   # ------------------------------
+#   # Handle spatiotemporal models
+#   # ------------------------------
+#   # Handle spatiotemporal models ONLY when needed
+#   if(!is.null(model$spatiotemporal) && model$spatiotemporal != "off") {
+#     time_var <- model$time
+#     if(is.null(time_var) || !time_var %in% names(dat)) {
+#       stop("Model is spatiotemporal but time variable is missing from data.")
+#     }
+#     dat[[time_var]] <- as.integer(dat[[time_var]])
+#   }
+#   
+#   # ------------------------------
+#   # Base prediction (fixed effects only)
+#   # ------------------------------
+#   base_pred <- predict(model, newdata = dat, type = "response", re_form = NA)
+#   base_auc <- auc(obs, base_pred$est)
+#   rm(base_pred); gc()
+#   
+#   # ------------------------------
+#   # Permutation loop (sequential)
+#   # ------------------------------
+#   aucs <- vector("list", length(preds))
+#   names(aucs) <- preds
+#   
+#   for(v in preds) {
+#     perm_results <- numeric(permute)
+#     for(i in seq_len(permute)) {
+#       dat_perm <- dat
+#       
+#       # Shuffle the predictor, works for numeric and factor
+#       dat_perm[[v]] <- sample(dat_perm[[v]])
+#       
+#       # Safe prediction
+#       p <- try(predict(model, newdata = dat_perm, type = "response", re_form = NA), silent = TRUE)
+#       
+#       # Compute AUC or set NA on failure
+#       perm_results[i] <- ifelse(inherits(p, "try-error"), NA, auc(obs, p$est))
+#       
+#       rm(p, dat_perm); gc()
+#     }
+#     aucs[[v]] <- perm_results
+#   }
+#   
+#   # ------------------------------
+#   # Compute mean permuted AUC
+#   # ------------------------------
+#   perm_auc <- sapply(aucs, function(x) mean(x, na.rm = TRUE))
+#   
+#   # Ensure length matches predictors
+#   if(length(perm_auc) != length(preds)) stop("Mismatch between predictors and permuted AUCs.")
+#   
+#   # ------------------------------
+#   # Compute relative importance
+#   # ------------------------------
+#   imp <- pmax(0, base_auc - perm_auc)
+#   rel_imp <- round(100 * imp / sum(imp), 1)
+#   
+#   # ------------------------------
+#   # Return data frame
+#   # ------------------------------
+#   data.frame(
+#     term = preds,
+#     relimp = rel_imp,
+#     stringsAsFactors = FALSE
+#   )
+# }
+
+
+
+varImp_sdmTMB <- function(model, dat, preds, groups = NULL, permute = 10) {
+  library(sdmTMB)
+  library(ModelMetrics)
+  # ------------------------------
+  # Checks
+  # ------------------------------
+  if(!all(preds %in% names(dat))) {
+    stop("Some predictors are missing from the dataset.")
   }
-  # Get AUC values from preds form randomized env dataset
-  aucs <- unlist(future_lapply( var_reps, rand_mod, rand_j=env, obs=obs, future.seed=42 ))
-  names(aucs) <- var_reps
-  # Mean auc values across permutations
-  permuted_auc <- aggregate(aucs, by=list(names(aucs)), FUN=mean)
-  # Difference between original model AUC and randomized AUC
-  # Return 0 if negative (pmax == 0)
-  perm_imp <- pmax(0, (AUC - permuted_auc$x))
-  rel_imp <- 100 * perm_imp / sum(perm_imp) # as percentage
-  rel_imp <- round(rel_imp, 1)
-  # Return dataframe
-  relauc <- data.frame(terms = permuted_auc[,1], relimp = rel_imp,
-                       stringsAsFactors = FALSE)
-  # Return
-  return( relauc )
+  
+  obs <- dat$presence
+  
+  # ------------------------------
+  # Handle spatiotemporal models ONLY if needed
+  # ------------------------------
+  if(!is.null(model$spatiotemporal) && model$spatiotemporal != "off") {
+    time_var <- model$time
+    if(is.null(time_var) || !time_var %in% names(dat)) {
+      stop("Model is spatiotemporal but time variable is missing from data.")
+    }
+    dat[[time_var]] <- as.integer(dat[[time_var]])
+  }
+  
+  # ------------------------------
+  # Base AUC
+  # ------------------------------
+  base_pred <- predict(model, newdata = dat, type = "response", re_form = NA)
+  base_auc <- auc(obs, base_pred$est)
+  rm(base_pred); gc()
+  
+  # ======================================================
+  # 1️⃣ INDIVIDUAL VARIABLE IMPORTANCE
+  # ======================================================
+  
+  aucs_ind <- vector("list", length(preds))
+  names(aucs_ind) <- preds
+  
+  for(v in preds) {
+    perm_results <- numeric(permute)
+    for(i in seq_len(permute)) {
+      dat_perm <- dat
+      dat_perm[[v]] <- sample(dat_perm[[v]])
+      
+      p <- try(
+        predict(model, newdata = dat_perm, type = "response", re_form = NA),
+        silent = TRUE
+      )
+      
+      perm_results[i] <- ifelse(
+        inherits(p, "try-error"),
+        NA,
+        auc(obs, p$est)
+      )
+      
+      rm(p, dat_perm); gc()
+    }
+    aucs_ind[[v]] <- perm_results
+  }
+  
+  perm_auc_ind <- sapply(aucs_ind, mean, na.rm = TRUE)
+  imp_ind <- pmax(0, base_auc - perm_auc_ind)
+  rel_ind <- round(100 * imp_ind / sum(imp_ind), 1)
+  
+  ind_df <- data.frame(
+    term = preds,
+    relimp = rel_ind,
+    stringsAsFactors = FALSE
+  )
+  
+  # ======================================================
+  # 2️⃣ GROUPED VARIABLE IMPORTANCE (optional)
+  # ======================================================
+  
+  grp_df <- NULL
+  
+  if(!is.null(groups)) {
+    
+    # groups must be a named list
+    if(is.null(names(groups))) {
+      stop("Groups must be a *named* list.")
+    }
+    
+    aucs_grp <- vector("list", length(groups))
+    names(aucs_grp) <- names(groups)
+    
+    for(g in names(groups)) {
+      vars <- groups[[g]]
+      
+      if(!all(vars %in% preds)) {
+        stop(paste("Group", g, "contains variables not in preds."))
+      }
+      
+      perm_results <- numeric(permute)
+      
+      for(i in seq_len(permute)) {
+        dat_perm <- dat
+        
+        # Permute ALL variables in the group
+        for(v in vars) {
+          dat_perm[[v]] <- sample(dat_perm[[v]])
+        }
+        
+        p <- try(
+          predict(model, newdata = dat_perm, type = "response", re_form = NA),
+          silent = TRUE
+        )
+        
+        perm_results[i] <- ifelse(
+          inherits(p, "try-error"),
+          NA,
+          auc(obs, p$est)
+        )
+        
+        rm(p, dat_perm); gc()
+      }
+      
+      aucs_grp[[g]] <- perm_results
+    }
+    
+    perm_auc_grp <- sapply(aucs_grp, mean, na.rm = TRUE)
+    imp_grp <- pmax(0, base_auc - perm_auc_grp)
+    rel_grp <- round(100 * imp_grp / sum(imp_grp), 1)
+    
+    grp_df <- data.frame(
+      group = names(groups),
+      relimp = rel_grp,
+      stringsAsFactors = FALSE
+    )
+  }
+  
+  # ------------------------------
+  # Return both
+  # ------------------------------
+  list(
+    base_auc = base_auc,
+    individual = ind_df,
+    grouped = grp_df
+  )
 }
 
 # Calculate threshold-independent statistics using train and test data
@@ -241,7 +417,7 @@ evalStats <- function( folds, m, CV ){
     # Get train obs
     train <- CV[[i]][["train"]]
     sp_data_cv <- filter(seagrass_data_long, species == sp)
-    trainobs <- sp_data_cv[ train, 74]
+    trainobs <- sp_data_cv[ train, 76]
     # Get train preds
     trainpred <- plogis(predict(m$models[[i]])$est[train])
     # Calculate area under the receiver-operator curve (AUC))
@@ -250,7 +426,7 @@ evalStats <- function( folds, m, CV ){
     train.tjur <- tjur(trainobs, trainpred )
     # Get test indices
     test <- CV[[i]][["test"]]
-    testobs <- sp_data_cv[ test, 74]
+    testobs <- sp_data_cv[ test, 76]
     #testobs <- tobs$presence
     # Get test preds
     testpred <- plogis(predict(m$models[[i]])$est[test])
@@ -309,58 +485,118 @@ evalfmod <- function( x, thresh ){
   return(eval.df)
 } 
 
-PredictSDM <- function(env, model, survey_type, species, years) {
+# PredictSDM <- function(env, model, survey_type, species, years) {
+#   message("Predicting with environmental layers...")
+#   
+#   outdir <- file.path("code/output_data/seagrass_predictions/survey", species)
+#   if (!dir.exists(outdir)) dir.create(outdir, recursive = TRUE)
+#   
+#   #predictions for each survey
+#   predbysurvey <- function(s, ...) {
+#     env$Survey <- as.factor(s)
+#     pname <- paste0("Prediction_", s)
+#     
+#     #average across years
+#     env_all <- data.frame()
+#     for (y in years) {
+#       env$Year_factor <- as.factor(y)
+#       env_all <- rbind(env_all, env)
+#     }
+#     
+#     hold_all <- predict(model, newdata = env_all)
+#     sims <- predict(model, newdata = env_all, nsim = 100)
+#     hold_all$SE <- apply(sims, 1, sd)
+#     
+#     hold <- hold_all %>%
+#       group_by(X_m, Y_m, ID, Survey) %>%
+#       summarise(across(everything(), mean, na.rm = TRUE)) %>%
+#       arrange(ID) %>%
+#       as.data.frame()
+#     
+#     epreds <- env %>%
+#       select(X_m, Y_m, X, Y, ID, Survey) %>%
+#       left_join(hold %>% select(ID, est:SE, Survey), by = c("ID", "Survey"))
+#     
+#     save(epreds, file = file.path(outdir, paste0(pname, "_survey_preds.RData")))
+#     return(epreds)
+#   }
+#   
+#   predlist <- lapply(survey_type, FUN = predbysurvey)
+#   message("Combining and averaging predictions across survey types...")
+#   
+#   all_preds <- do.call(rbind, predlist)
+#   
+#   mean_preds <- all_preds %>%
+#     group_by(X_m, Y_m, ID) %>%
+#     summarise(across(est:SE, mean, na.rm = TRUE)) %>%
+#     arrange(ID) %>%
+#     as.data.frame()
+#   
+#   save(mean_preds, file = file.path(outdir, paste0("MeanSurveyPreds_", species, ".RData")))
+#   
+#   return(mean_preds)
+# }
+
+PredictSDM <- function(env, model, survey_type, species, model_name) {
   message("Predicting with environmental layers...")
   
-  outdir <- file.path("code/output_data/seagrass_predictions/survey", species)
+  outdir <- file.path(
+    "code/output_data/seagrass_predictions/survey",
+    species,
+    model_name
+  )
   if (!dir.exists(outdir)) dir.create(outdir, recursive = TRUE)
   
-  #predictions for each survey
-  predbysurvey <- function(s, ...) {
+  pred_list <- list()
+  
+  for (s in survey_type) {
+    message("  Survey: ", s)
+    
     env$Survey <- as.factor(s)
-    pname <- paste0("Prediction_", s)
     
-    #average across years
-    env_all <- data.frame()
-    for (y in years) {
-      env$Year_factor <- as.factor(y)
-      env_all <- rbind(env_all, env)
-    }
+    preds <- predict(model, newdata = env)
+    sims  <- predict(model, newdata = env, nsim = 100)
+    preds$SE <- apply(sims, 1, sd)
     
-    hold_all <- predict(model, newdata = env_all)
-    sims <- predict(model, newdata = env_all, nsim = 100)
-    hold_all$SE <- apply(sims, 1, sd)
-    
-    hold <- hold_all %>%
-      group_by(X_m, Y_m, ID, Survey) %>%
-      summarise(across(everything(), mean, na.rm = TRUE)) %>%
-      arrange(ID) %>%
-      as.data.frame()
-    
-    epreds <- env %>%
+    pred <- env %>%
       select(X_m, Y_m, X, Y, ID, Survey) %>%
-      left_join(hold %>% select(ID, est:SE, Survey), by = c("ID", "Survey"))
+      bind_cols(preds %>% select(est, SE))
     
-    save(epreds, file = file.path(outdir, paste0(pname, "_survey_preds.RData")))
-    return(epreds)
+    # Save survey-level predictions with model name
+    save(
+      pred,
+      file = file.path(
+        outdir,
+        paste0("Prediction_", species, "_", model_name, "_", s, ".RData")
+      )
+    )
+    
+    pred_list[[s]] <- pred
   }
   
-  predlist <- lapply(survey_type, FUN = predbysurvey)
-  message("Combining and averaging predictions across survey types...")
+  message("Averaging predictions across survey types...")
   
-  all_preds <- do.call(rbind, predlist)
+  all_preds <- bind_rows(pred_list)
   
-  mean_preds <- all_preds %>%
+  mean_pred <- all_preds %>%
     group_by(X_m, Y_m, ID) %>%
-    summarise(across(est:SE, mean, na.rm = TRUE)) %>%
-    arrange(ID) %>%
-    as.data.frame()
+    summarise(
+      across(c(est, SE), \(x) mean(x, na.rm = TRUE)),
+      .groups = "drop"
+    ) %>%
+    arrange(ID)
   
-  save(mean_preds, file = file.path(outdir, paste0("MeanSurveyPreds_", species, ".RData")))
+  # Save mean prediction with model name
+  save(
+    mean_pred,
+    file = file.path(
+      outdir,
+      paste0("MeanSurveyPreds_", species, "_", model_name, ".RData")
+    )
+  )
   
-  return(mean_preds)
+  return(mean_pred)
 }
-
 
 
 #Rasterizing function
