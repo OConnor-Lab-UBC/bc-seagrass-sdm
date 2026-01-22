@@ -42,7 +42,13 @@ pred <- PredictSDM(
   model_name  = "nep_spatial"
 )
 
-
+PredictSDM_bySurvey(
+  env = env_20m_all,
+  model = fmodel_e_nep_spatial,
+  survey_type = survey_type,
+  species = "eelgrass",
+  model_name  = "nep_spatial"
+)
 
 
 # change to 0-1 away from log-odds (logit) space

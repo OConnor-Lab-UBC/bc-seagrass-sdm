@@ -189,86 +189,6 @@ glm_ffs <- function(data, NumFolds){
 #  AUC is computed.'
 ### We estimated the relative influence of covariates using a permutation method, based on the method implemented in MaxEnt software (Phillips et al. 2006). For each covariate we: (1) randomized the covariate with respect to the observations, (2) fit a model with the randomized covariate and all other non-randomized covariates, and (3) accessed model performance with the area under the receiver operating characteristic curve (AUC) metric. We completed steps (1) through (3) 10 times and returned a mean AUC value from the 10 permutations. We then calculated the AUC, the difference between the non-randomized model AUC and the permuted mean AUC from the randomized models. Finally, for each covariate, we divided the AUC by the sum of AUC values from all covariates to obtain the relative influence. A large AUC indicates that the randomized covariate has a large influence, while a small AUC indicates that the covariate has little influence on the model fit. For spatial random fields, we adjusted the procedure as randomization of sampling location (latitude and longitude) was not appropriate. We calculated the influence of the spatial random field by dropping it from the model, then measuring AUC between the model with random fields and the model without.
 
-# varImp_sdmTMB <- function(model, dat, preds, permute = 10) {
-#   library(sdmTMB)
-#   library(ModelMetrics)
-#   
-#   # ------------------------------
-#   # Check predictors exist
-#   # ------------------------------
-#   if(!all(preds %in% names(dat))) stop("Some predictors are missing from the dataset.")
-#   
-#   obs <- dat$presence
-#   
-#   # ------------------------------
-#   # Handle spatiotemporal models
-#   # ------------------------------
-#   # Handle spatiotemporal models ONLY when needed
-#   if(!is.null(model$spatiotemporal) && model$spatiotemporal != "off") {
-#     time_var <- model$time
-#     if(is.null(time_var) || !time_var %in% names(dat)) {
-#       stop("Model is spatiotemporal but time variable is missing from data.")
-#     }
-#     dat[[time_var]] <- as.integer(dat[[time_var]])
-#   }
-#   
-#   # ------------------------------
-#   # Base prediction (fixed effects only)
-#   # ------------------------------
-#   base_pred <- predict(model, newdata = dat, type = "response", re_form = NA)
-#   base_auc <- auc(obs, base_pred$est)
-#   rm(base_pred); gc()
-#   
-#   # ------------------------------
-#   # Permutation loop (sequential)
-#   # ------------------------------
-#   aucs <- vector("list", length(preds))
-#   names(aucs) <- preds
-#   
-#   for(v in preds) {
-#     perm_results <- numeric(permute)
-#     for(i in seq_len(permute)) {
-#       dat_perm <- dat
-#       
-#       # Shuffle the predictor, works for numeric and factor
-#       dat_perm[[v]] <- sample(dat_perm[[v]])
-#       
-#       # Safe prediction
-#       p <- try(predict(model, newdata = dat_perm, type = "response", re_form = NA), silent = TRUE)
-#       
-#       # Compute AUC or set NA on failure
-#       perm_results[i] <- ifelse(inherits(p, "try-error"), NA, auc(obs, p$est))
-#       
-#       rm(p, dat_perm); gc()
-#     }
-#     aucs[[v]] <- perm_results
-#   }
-#   
-#   # ------------------------------
-#   # Compute mean permuted AUC
-#   # ------------------------------
-#   perm_auc <- sapply(aucs, function(x) mean(x, na.rm = TRUE))
-#   
-#   # Ensure length matches predictors
-#   if(length(perm_auc) != length(preds)) stop("Mismatch between predictors and permuted AUCs.")
-#   
-#   # ------------------------------
-#   # Compute relative importance
-#   # ------------------------------
-#   imp <- pmax(0, base_auc - perm_auc)
-#   rel_imp <- round(100 * imp / sum(imp), 1)
-#   
-#   # ------------------------------
-#   # Return data frame
-#   # ------------------------------
-#   data.frame(
-#     term = preds,
-#     relimp = rel_imp,
-#     stringsAsFactors = FALSE
-#   )
-# }
-
-
 
 varImp_sdmTMB <- function(model, dat, preds, groups = NULL, permute = 10) {
   library(sdmTMB)
@@ -555,7 +475,7 @@ PredictSDM <- function(env, model, survey_type, species, model_name) {
     env$Survey <- as.factor(s)
     
     preds <- predict(model, newdata = env)
-    sims  <- predict(model, newdata = env, nsim = 100)
+    sims  <- predict(model, newdata = env) # model, newdata = env, nsim = 100)
     preds$SE <- apply(sims, 1, sd)
     
     pred <- env %>%
@@ -598,6 +518,43 @@ PredictSDM <- function(env, model, survey_type, species, model_name) {
   return(mean_pred)
 }
 
+PredictSDM_bySurvey <- function(env, model, survey_type, species, model_name) {
+  
+  outdir <- file.path(
+    "code/output_data/seagrass_predictions/survey",
+    species,
+    model_name
+  )
+  if (!dir.exists(outdir)) dir.create(outdir, recursive = TRUE)
+  
+  for (s in survey_type) {
+    message("Predicting survey: ", s)
+    
+    env$Survey <- as.factor(s)
+    
+    preds <- predict(model, newdata = env)
+    sims  <- predict(model, newdata = env, nsim = 100)
+    preds$SE <- apply(sims, 1, sd)
+    
+    pred <- env %>%
+      select(X_m, Y_m, X, Y, ID, Survey) %>%
+      bind_cols(preds %>% select(est, SE))
+    
+    # Save survey-level predictions with model name
+    save(
+      pred,
+      file = file.path(
+        outdir,
+        paste0("Prediction_", species, "_", model_name, "_", s, ".RData")
+      )
+    )
+    
+    rm(pred, preds, env_s)
+    gc()
+  }
+  
+  invisible(TRUE)
+}
 
 #Rasterizing function
 rasterize_eelgrass_year <- function(year, poly_data, line_data, point_data, template_rast) {
