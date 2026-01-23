@@ -29,33 +29,99 @@ load("code/output_data/model_results/final_eelgrass_model.RData")
 # testing forst for model with no year, just survey random effect
 #env_20m_all_survey <- replicate_df(env_20m_all, "Survey", unique(data$Survey))
 
+# Parameters to set
 survey_type <- c("ABL", "BHM", "Cuk", "GDK", "GSU", "MSE", "Mul", "RSU")
+model_name<- "nep_nospatial"
+species <- "eelgrass"
 
-
-
-# Run function
-pred <- PredictSDM(
-  env = env_20m_all,
-  model = fmodel_e_nep_spatial,
-  survey_type = survey_type,
-  species = "eelgrass",
-  model_name  = "nep_spatial"
-)
-
+#Predict for each survey
 PredictSDM_bySurvey(
   env = env_20m_all,
   model = fmodel_e_nep_spatial,
   survey_type = survey_type,
-  species = "eelgrass",
-  model_name  = "nep_spatial"
+  species = species,
+  model_name  = model_name
 )
 
+#mean predictions across all surveys
+mean_pred <- AverageSurveyPredictions(
+  species    = species,
+  model_name = model_name
+)
 
 # change to 0-1 away from log-odds (logit) space
-pred <- pred %>%
+mean_pred <- mean_pred %>%
   mutate(est_p = plogis(est))
 
-#save(eelgrass_predictions, file = "code/output_data/eelgrass_predictions.RData")
+#### save rasters ####
+outdir <- file.path("./raster", model_name)
+if (!dir.exists(outdir)) dir.create(outdir, recursive = TRUE)
+
+raster_hg <- mean_pred %>%
+  filter(region == "Haida Gwaii") %>%
+  select(X_m, Y_m, est_p)
+raster_hg <- rast(x = raster_hg %>% as.matrix, type = "xyz", crs = "EPSG:3005")
+writeRaster(raster_hg, file.path(outdir, paste0(species, "_predictions_hg_", model_name, ".tif")), overwrite = TRUE)
+
+raster_ss <- mean_pred %>%
+  filter(region == "Salish Sea") %>%
+  select(X_m, Y_m, est_p)
+raster_ss <- rast(x = raster_ss %>% as.matrix, type = "xyz", crs = "EPSG:3005")
+writeRaster(raster_ss, file.path(outdir, paste0(species, "_predictions_ss_", model_name, ".tif")), overwrite = TRUE)
+
+raster_wcvi <- mean_pred %>%
+  filter(region == "West Coast Vancouver Island") %>%
+  select(X_m, Y_m, est_p)
+raster_wcvi <- rast(x = raster_wcvi %>% as.matrix, type = "xyz", crs = "EPSG:3005")
+writeRaster(raster_wcvi, file.path(outdir, paste0(species, "_predictions_wcvi_", model_name, ".tif")), overwrite = TRUE)
+
+raster_ncc <- mean_pred %>%
+  filter(region == "North Central Coast") %>%
+  select(X_m, Y_m, est_p)
+raster_ncc <- rast(x = raster_ncc %>% as.matrix, type = "xyz", crs = "EPSG:3005")
+writeRaster(raster_ncc, file.path(outdir, paste0(species, "_predictions_ncc_", model_name, ".tif")), overwrite = TRUE)
+
+raster_qcs <- mean_pred %>%
+  filter(region == "Queen Charlotte Strait") %>%
+  select(X_m, Y_m, est_p)
+raster_qcs <- rast(x = raster_qcs %>% as.matrix, type = "xyz", crs = "EPSG:3005")
+writeRaster(raster_qcs, file.path(outdir, paste0(species, "_predictions_qcs_", model_name, ".tif")), overwrite = TRUE)
+
+raster_hg_se <- mean_pred %>%
+  filter(region == "Haida Gwaii") %>%
+  select(X_m, Y_m, SE)
+raster_hg_se <- rast(x = raster_hg_se %>% as.matrix, type = "xyz", crs = "EPSG:3005")
+writeRaster(raster_hg_se, file.path(outdir, paste0(species, "_predictions_hg_se_", model_name, ".tif")), overwrite = TRUE)
+
+raster_ss_se <- mean_pred %>%
+  filter(region == "Salish Sea") %>%
+  select(X_m, Y_m, SE)
+raster_ss_se <- rast(x = raster_ss_se %>% as.matrix, type = "xyz", crs = "EPSG:3005")
+writeRaster(raster_ss_se, file.path(outdir, paste0(species, "_predictions_ss_se_", model_name, ".tif")), overwrite = TRUE)
+
+raster_wcvi_se <- mean_pred %>%
+  filter(region == "West Coast Vancouver Island") %>%
+  select(X_m, Y_m, SE)
+raster_wcvi_se <- rast(x = raster_wcvi_se %>% as.matrix, type = "xyz", crs = "EPSG:3005")
+writeRaster(raster_wcvi_se, file.path(outdir, paste0(species, "_predictions_wcvi_se_", model_name, ".tif")), overwrite = TRUE)
+
+raster_ncc_se <- mean_pred %>%
+  filter(region == "North Central Coast") %>%
+  select(X_m, Y_m, SE)
+raster_ncc_se <- rast(x = raster_ncc_se %>% as.matrix, type = "xyz", crs = "EPSG:3005")
+writeRaster(raster_ncc_se, file.path(outdir, paste0(species, "_predictions_ncc_se_", model_name, ".tif")), overwrite = TRUE)
+
+raster_qcs_se <- mean_pred %>%
+  filter(region == "Queen Charlotte Strait") %>%
+  select(X_m, Y_m, SE)
+raster_qcs_se <- rast(x = raster_qcs_se %>% as.matrix, type = "xyz", crs = "EPSG:3005")
+writeRaster(raster_qcs_se, file.path(outdir, paste0(species, "_predictions_qcs_se_", model_name, ".tif")), overwrite = TRUE)
+
+
+
+
+
+
 
 
 
@@ -171,105 +237,6 @@ eelgrass_se_plot_percent <- ggplot(eelgrass_predictions)+
 eelgrass_se_plot_percent
 ggsave("./figures/eelgrass_se_percent.png", height = 6, width = 6)
 
-
-#### save rasters ####
-#this changes to 100 m resolution though
-# eelgrass_raster <- eelgrass_predictions %>%
-#   mutate(x_round = round(X_m, -2), y_round = round(Y_m, -2)) %>%
-#   select(x_round, y_round, est_p)
-# 
-# eelgrass_raster <- rast(x = eelgrass_raster %>% as.matrix, type = "xyz", crs = "EPSG:3005")
-# writeRaster(eelgrass_raster, file.path("./raster/eelgrass_predictions.tif"), overwrite=TRUE)
-
-eelgrass_raster_hg <- eelgrass_predictions %>%
-  filter(region == "Haida Gwaii") %>%
-  select(X_m, Y_m, est_p)
-eelgrass_raster_hg <- rast(x = eelgrass_raster_hg %>% as.matrix, type = "xyz", crs = "EPSG:3005")
-writeRaster(eelgrass_raster_hg, file.path("./raster/eelgrass_predictions_hg.tif"), overwrite=TRUE)
-
-eelgrass_raster_ss <- eelgrass_predictions %>%
-  filter(region == "Salish Sea") %>%
-  select(X_m, Y_m, est_p)
-eelgrass_raster_ss <- rast(x = eelgrass_raster_ss %>% as.matrix, type = "xyz", crs = "EPSG:3005")
-writeRaster(eelgrass_raster_ss, file.path("./raster/eelgrass_predictions_ss.tif"), overwrite=TRUE)
-
-eelgrass_raster_wcvi <- eelgrass_predictions %>%
-  filter(region == "West Coast Vancouver Island") %>%
-  select(X_m, Y_m, est_p)
-eelgrass_raster_wcvi <- rast(x = eelgrass_raster_wcvi %>% as.matrix, type = "xyz", crs = "EPSG:3005")
-writeRaster(eelgrass_raster_wcvi, file.path("./raster/eelgrass_predictions_wcvi.tif"), overwrite=TRUE)
-
-eelgrass_raster_ncc <- eelgrass_predictions %>%
-  filter(region == "North Central Coast") %>%
-  select(X_m, Y_m, est_p)
-eelgrass_raster_ncc <- rast(x = eelgrass_raster_ncc %>% as.matrix, type = "xyz", crs = "EPSG:3005")
-writeRaster(eelgrass_raster_ncc, file.path("./raster/eelgrass_predictions_ncc.tif"), overwrite=TRUE)
-
-eelgrass_raster_qcs <- eelgrass_predictions %>%
-  filter(region == "Queen Charlotte Strait") %>%
-  select(X_m, Y_m, est_p)
-eelgrass_raster_qcs <- rast(x = eelgrass_raster_qcs %>% as.matrix, type = "xyz", crs = "EPSG:3005")
-writeRaster(eelgrass_raster_qcs, file.path("./raster/eelgrass_predictions_qcs.tif"), overwrite=TRUE)
-
-eelgrass_raster_hg_se <- eelgrass_predictions %>%
-  filter(region == "Haida Gwaii") %>%
-  select(X_m, Y_m, SE)
-eelgrass_raster_hg_se <- rast(x = eelgrass_raster_hg_se %>% as.matrix, type = "xyz", crs = "EPSG:3005")
-writeRaster(eelgrass_raster_hg_se, file.path("./raster/eelgrass_predictions_hg_se.tif"), overwrite=TRUE)
-
-eelgrass_raster_ss_se <- eelgrass_predictions %>%
-  filter(region == "Salish Sea") %>%
-  select(X_m, Y_m, SE)
-eelgrass_raster_ss_se <- rast(x = eelgrass_raster_ss_se %>% as.matrix, type = "xyz", crs = "EPSG:3005")
-writeRaster(eelgrass_raster_ss_se, file.path("./raster/eelgrass_predictions_ss_se.tif"), overwrite=TRUE)
-
-eelgrass_raster_wcvi_se <- eelgrass_predictions %>%
-  filter(region == "West Coast Vancouver Island") %>%
-  select(X_m, Y_m, SE)
-eelgrass_raster_wcvi_se <- rast(x = eelgrass_raster_wcvi_se %>% as.matrix, type = "xyz", crs = "EPSG:3005")
-writeRaster(eelgrass_raster_wcvi_se, file.path("./raster/eelgrass_predictions_wcvi_se.tif"), overwrite=TRUE)
-
-eelgrass_raster_ncc_se <- eelgrass_predictions %>%
-  filter(region == "North Central Coast") %>%
-  select(X_m, Y_m, SE)
-eelgrass_raster_ncc_se <- rast(x = eelgrass_raster_ncc_se %>% as.matrix, type = "xyz", crs = "EPSG:3005")
-writeRaster(eelgrass_raster_ncc_se, file.path("./raster/eelgrass_predictions_ncc_se.tif"), overwrite=TRUE)
-
-eelgrass_raster_qcs_se <- eelgrass_predictions %>%
-  filter(region == "Queen Charlotte Strait") %>%
-  select(X_m, Y_m, SE)
-eelgrass_raster_qcs_se <- rast(x = eelgrass_raster_qcs_se %>% as.matrix, type = "xyz", crs = "EPSG:3005")
-writeRaster(eelgrass_raster_qcs_se, file.path("./raster/eelgrass_predictions_qcs_se.tif"), overwrite=TRUE)
-
-eelgrass_raster_hg_sd <- eelgrass_predictions %>%
-  filter(region == "Haida Gwaii") %>%
-  select(X_m, Y_m, SD)
-eelgrass_raster_hg_sd <- rast(x = eelgrass_raster_hg_sd %>% as.matrix, type = "xyz", crs = "EPSG:3005")
-writeRaster(eelgrass_raster_hg_sd, file.path("./raster/eelgrass_predictions_hg_sd.tif"), overwrite=TRUE)
-
-eelgrass_raster_ss_sd <- eelgrass_predictions %>%
-  filter(region == "Salish Sea") %>%
-  select(X_m, Y_m, SD)
-eelgrass_raster_ss_sd <- rast(x = eelgrass_raster_ss_sd %>% as.matrix, type = "xyz", crs = "EPSG:3005")
-writeRaster(eelgrass_raster_ss_sd, file.path("./raster/eelgrass_predictions_ss_sd.tif"), overwrite=TRUE)
-
-eelgrass_raster_wcvi_sd <- eelgrass_predictions %>%
-  filter(region == "West Coast Vancouver Island") %>%
-  select(X_m, Y_m, SD)
-eelgrass_raster_wcvi_sd <- rast(x = eelgrass_raster_wcvi_sd %>% as.matrix, type = "xyz", crs = "EPSG:3005")
-writeRaster(eelgrass_raster_wcvi_sd, file.path("./raster/eelgrass_predictions_wcvi_sd.tif"), overwrite=TRUE)
-
-eelgrass_raster_ncc_sd <- eelgrass_predictions %>%
-  filter(region == "North Central Coast") %>%
-  select(X_m, Y_m, SD)
-eelgrass_raster_ncc_sd <- rast(x = eelgrass_raster_ncc_sd %>% as.matrix, type = "xyz", crs = "EPSG:3005")
-writeRaster(eelgrass_raster_ncc_sd, file.path("./raster/eelgrass_predictions_ncc_sd.tif"), overwrite=TRUE)
-
-eelgrass_raster_qcs_sd <- eelgrass_predictions %>%
-  filter(region == "Queen Charlotte Strait") %>%
-  select(X_m, Y_m, SD)
-eelgrass_raster_qcs_sd <- rast(x = eelgrass_raster_qcs_sd %>% as.matrix, type = "xyz", crs = "EPSG:3005")
-writeRaster(eelgrass_raster_qcs_sd, file.path("./raster/eelgrass_predictions_qcs_sd.tif"), overwrite=TRUE)
 
 
 

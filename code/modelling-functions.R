@@ -457,66 +457,66 @@ evalfmod <- function( x, thresh ){
 #   return(mean_preds)
 # }
 
-PredictSDM <- function(env, model, survey_type, species, model_name) {
-  message("Predicting with environmental layers...")
-  
-  outdir <- file.path(
-    "code/output_data/seagrass_predictions/survey",
-    species,
-    model_name
-  )
-  if (!dir.exists(outdir)) dir.create(outdir, recursive = TRUE)
-  
-  pred_list <- list()
-  
-  for (s in survey_type) {
-    message("  Survey: ", s)
-    
-    env$Survey <- as.factor(s)
-    
-    preds <- predict(model, newdata = env)
-    sims  <- predict(model, newdata = env) # model, newdata = env, nsim = 100)
-    preds$SE <- apply(sims, 1, sd)
-    
-    pred <- env %>%
-      select(X_m, Y_m, X, Y, ID, Survey) %>%
-      bind_cols(preds %>% select(est, SE))
-    
-    # Save survey-level predictions with model name
-    save(
-      pred,
-      file = file.path(
-        outdir,
-        paste0("Prediction_", species, "_", model_name, "_", s, ".RData")
-      )
-    )
-    
-    pred_list[[s]] <- pred
-  }
-  
-  message("Averaging predictions across survey types...")
-  
-  all_preds <- bind_rows(pred_list)
-  
-  mean_pred <- all_preds %>%
-    group_by(X_m, Y_m, ID) %>%
-    summarise(
-      across(c(est, SE), \(x) mean(x, na.rm = TRUE)),
-      .groups = "drop"
-    ) %>%
-    arrange(ID)
-  
-  # Save mean prediction with model name
-  save(
-    mean_pred,
-    file = file.path(
-      outdir,
-      paste0("MeanSurveyPreds_", species, "_", model_name, ".RData")
-    )
-  )
-  
-  return(mean_pred)
-}
+# PredictSDM <- function(env, model, survey_type, species, model_name) {
+#   message("Predicting with environmental layers...")
+#   
+#   outdir <- file.path(
+#     "code/output_data/seagrass_predictions/survey",
+#     species,
+#     model_name
+#   )
+#   if (!dir.exists(outdir)) dir.create(outdir, recursive = TRUE)
+#   
+#   pred_list <- list()
+#   
+#   for (s in survey_type) {
+#     message("  Survey: ", s)
+#     
+#     env$Survey <- as.factor(s)
+#     
+#     preds <- predict(model, newdata = env)
+#     sims  <- predict(model, newdata = env) # model, newdata = env, nsim = 100)
+#     preds$SE <- apply(sims, 1, sd)
+#     
+#     pred <- env %>%
+#       select(X_m, Y_m, X, Y, ID, Survey) %>%
+#       bind_cols(preds %>% select(est, SE))
+#     
+#     # Save survey-level predictions with model name
+#     save(
+#       pred,
+#       file = file.path(
+#         outdir,
+#         paste0("Prediction_", species, "_", model_name, "_", s, ".RData")
+#       )
+#     )
+#     
+#     pred_list[[s]] <- pred
+#   }
+#   
+#   message("Averaging predictions across survey types...")
+#   
+#   all_preds <- bind_rows(pred_list)
+#   
+#   mean_pred <- all_preds %>%
+#     group_by(X_m, Y_m, ID) %>%
+#     summarise(
+#       across(c(est, SE), \(x) mean(x, na.rm = TRUE)),
+#       .groups = "drop"
+#     ) %>%
+#     arrange(ID)
+#   
+#   # Save mean prediction with model name
+#   save(
+#     mean_pred,
+#     file = file.path(
+#       outdir,
+#       paste0("MeanSurveyPreds_", species, "_", model_name, ".RData")
+#     )
+#   )
+#   
+#   return(mean_pred)
+# }
 
 PredictSDM_bySurvey <- function(env, model, survey_type, species, model_name) {
   
@@ -537,7 +537,7 @@ PredictSDM_bySurvey <- function(env, model, survey_type, species, model_name) {
     preds$SE <- apply(sims, 1, sd)
     
     pred <- env %>%
-      select(X_m, Y_m, X, Y, ID, Survey) %>%
+      select(X_m, Y_m, X, Y, ID, region, Survey) %>%
       bind_cols(preds %>% select(est, SE))
     
     # Save survey-level predictions with model name
@@ -549,12 +549,54 @@ PredictSDM_bySurvey <- function(env, model, survey_type, species, model_name) {
       )
     )
     
-    rm(pred, preds, env_s)
+    rm(pred, preds)
     gc()
   }
   
   invisible(TRUE)
 }
+
+AverageSurveyPredictions <- function(species, model_name) {
+  
+  indir <- file.path(
+    "code/output_data/seagrass_predictions/survey",
+    species,
+    model_name
+  )
+  
+  files <- list.files(
+    indir,
+    pattern = "^Prediction_.*\\.RData$",
+    full.names = TRUE
+  )
+  
+  message("Loading ", length(files), " survey prediction files...")
+  
+  all_preds <- lapply(files, function(f) {
+    load(f)
+    pred
+  }) |> bind_rows()
+  
+  mean_pred <- all_preds %>%
+    group_by(X_m, Y_m, ID) %>%
+    summarise(
+      est = mean(est, na.rm = TRUE),
+      SE  = mean(SE,  na.rm = TRUE),
+      .groups = "drop"
+    ) %>%
+    arrange(ID)
+  
+  save(
+    mean_pred,
+    file = file.path(
+      indir,
+      paste0("MeanSurveyPreds_", species, "_", model_name, ".RData")
+    )
+  )
+  
+  mean_pred
+}
+
 
 #Rasterizing function
 rasterize_eelgrass_year <- function(year, poly_data, line_data, point_data, template_rast) {
