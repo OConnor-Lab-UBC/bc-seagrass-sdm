@@ -537,8 +537,8 @@ PredictSDM_bySurvey <- function(env, model, survey_type, species, model_name) {
     preds$SE <- apply(sims, 1, sd)
     
     pred <- env %>%
-      select(X_m, Y_m, X, Y, ID, region, Survey) %>%
-      bind_cols(preds %>% select(est, SE))
+      dplyr::select(X_m, Y_m, X, Y, ID, region, Survey) %>%
+      bind_cols(preds %>% dplyr::select(est, SE))
     
     # Save survey-level predictions with model name
     save(
@@ -578,7 +578,7 @@ AverageSurveyPredictions <- function(species, model_name) {
   }) |> bind_rows()
   
   mean_pred <- all_preds %>%
-    group_by(X_m, Y_m, ID) %>%
+    group_by(X_m, Y_m, ID, region) %>%
     summarise(
       est = mean(est, na.rm = TRUE),
       SE  = mean(SE,  na.rm = TRUE),
