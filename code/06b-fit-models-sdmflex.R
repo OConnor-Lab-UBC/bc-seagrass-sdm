@@ -18,7 +18,11 @@ library(terra)
 
 load("code/output_data/seagrass_model_inputs.RData")
 load("code/output_data/prediction_model_inputs.RData")
-seagrass_data_long <- seagrass_data_long %>% select(-saltmean_sq_stnd, -slope_sqrt_stnd, -saltmin_sq_stnd)
+seagrass_data_long <- seagrass_data_long %>% select(-saltmean_bccm_sq_stnd, -saltmean_nep_sq_stnd, -slope_sqrt_stnd, -saltmin_bccm_sq_stnd, -saltmin_nep_sq_stnd)
+seagrass_data_long <- seagrass_data_long %>%
+  mutate(Survey = as.factor(substr(HKey, 1, 3)),
+         HKey = as.factor(HKey),
+         Year_factor = as.factor(Year))
 
 rei_df <- env_20m_all %>%
   select(X_m, Y_m, rei_stnd)
@@ -57,6 +61,18 @@ points <- vect(slope_df, geom = c("x", "y"), crs = "EPSG:3005")
 slope_raster <- rasterize(points, r_template, field = "slope_stnd")
 names(slope_raster) <- "slope_stnd"
 
+prmin_df <- env_20m_all %>%
+  select(X_m, Y_m, prmin_stnd)
+names(prmin_df) <- c("x", "y", "prmin_stnd")  # Rename to expected column names
+
+# Create SpatVector of points
+points <- vect(prmin_df, geom = c("x", "y"), crs = "EPSG:3005")
+
+# Rasterize using the 'z' values
+prmin_raster <- rasterize(points, r_template, field = "prmin_stnd")
+names(prmin_raster) <- "prmin_stnd"
+
+
 substrate_df <- env_20m_all %>%
   select(X_m, Y_m, substrate)
 substrate_levels <- c("Rock", "Mixed", "Sand", "Mud")
@@ -75,6 +91,8 @@ names(substrate_raster) <- "substrate"
 
 somevar <- terra::rast(c(rei_raster, slope_raster, depth_raster, substrate_raster))
 
+# TESTING FITTING WITH MORE VARIABLES. STARTING WITH RF
+
 
 ####Eelgrass model####
 sp = "ZO"
@@ -84,7 +102,7 @@ data$substrate <- match(data$substrate, substrate_levels)
 print(paste(sp, " present in ", round((sum(data$presence)/nrow(data))*100,2), "% of observations", sep = ""))
 
 # predictors
-predictors_continuous = c("depth_stnd", "slope_stnd", "rei_stnd")
+predictors_continuous = c("depth_stnd", "slope_stnd", "rei_stnd", "prmin_stnd")
 predictors_cat = c("substrate")
 
 # random forest model
@@ -105,6 +123,18 @@ rf_t <-
     ntree=500,
     thr = c("max_sens_spec", "equal_sens_spec", "max_sorensen")
   )
+
+raf_df <- sdm_summarize(models = list(rf_t))
+knitr::kable(
+  raf_df %>% dplyr::select(
+    model,
+    AUC = AUC_mean,
+    TSS = TSS_mean,
+    JACCARD = JACCARD_mean,
+    BOYCE = BOYCE_mean,
+    IMAE = IMAE_mean
+  )
+)
 
 #glm
 glm1 <- 
@@ -161,38 +191,38 @@ net_t1<- fit_net(
   decay = 0.1
 )
 
-# maxent model, this one takes a long time so maybe notworking?
-max_t1 <- 
-  fit_max(
-    data = data,
-    response = "presence",
-    predictors = predictors_continuous,
-    predictors_f = predictors_cat,
-    partition = "fold",
-    background = NULL,
-    fit_formula = NULL,
-    thr = c("max_sens_spec", "equal_sens_spec", "max_sorensen"),
-    clamp = TRUE,
-    classes = "default",
-    pred_type = "cloglog",
-    regmult = 1
-  )
+# # maxent model, this one takes a long time so maybe notworking?
+# max_t1 <- 
+#   fit_max(
+#     data = data,
+#     response = "presence",
+#     predictors = predictors_continuous,
+#     predictors_f = predictors_cat,
+#     partition = "fold",
+#     background = NULL,
+#     fit_formula = NULL,
+#     thr = c("max_sens_spec", "equal_sens_spec", "max_sorensen"),
+#     clamp = TRUE,
+#     classes = "default",
+#     pred_type = "cloglog",
+#     regmult = 1
+#   )
+# 
+# # support vector machine, this one takes a long time so maybe notworking?
+# svm_t1 <- 
+#   fit_svm(
+#     data = data,
+#     response = "presence",
+#     predictors = predictors_continuous,
+#     predictors_f = predictors_cat,
+#     partition = "fold",
+#     fit_formula = NULL,
+#     thr = c("max_sens_spec", "equal_sens_spec", "max_sorensen"),
+#     sigma = "automatic",
+#     C = 1
+#   )
 
-# support vector machine, this one takes a long time so maybe notworking?
-svm_t1 <- 
-  fit_svm(
-    data = data,
-    response = "presence",
-    predictors = predictors_continuous,
-    predictors_f = predictors_cat,
-    partition = "fold",
-    fit_formula = NULL,
-    thr = c("max_sens_spec", "equal_sens_spec", "max_sorensen"),
-    sigma = "automatic",
-    C = 1
-  )
-
-merge_df <- sdm_summarize(models = list(rf_t, glm1, gbm_t1, gam1, net_t1, svm_t1, max_t1))
+merge_df <- sdm_summarize(models = list(rf_t, glm1, gbm_t1, gam1, net_t1))
 knitr::kable(
   merge_df %>% dplyr::select(
     model,
@@ -208,14 +238,14 @@ knitr::kable(
 
 mensemble <- 
   fit_ensemble(
-    models = list(rf_t,  gbm_t1,  net_t1, svm_t1, max_t1),
+    models = list(rf_t, glm1, gbm_t1, gam1, net_t1),
     ens_method = "meanw",
     thr = c("max_sens_spec", "equal_sens_spec", "max_sorensen"),
     thr_model = "max_sens_spec",
     metric = "TSS"
   )
 
-model_perf <- sdm_summarize(list(rf_t, gbm_t1, net_t1,svm_t1, max_t1, mensemble))
+model_perf <- sdm_summarize(list(rf_t, glm1, gbm_t1, gam1, net_t1, mensemble))
 model_perf
 
 pr_1 <- sdm_predict(

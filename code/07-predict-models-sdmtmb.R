@@ -50,7 +50,7 @@ mean_pred <- mean_pred %>%
   mutate(est_p = plogis(est))
 
 #### save rasters ####
-outdir <- file.path("./raster", model_name)
+outdir <- file.path("./raster", species, model_name)
 if (!dir.exists(outdir)) dir.create(outdir, recursive = TRUE)
 
 raster_hg <- mean_pred %>%
