@@ -27,6 +27,12 @@ UsePackages <- function( pkgs, load=TRUE, locn="http://cran.rstudio.com/" ) {
 #######################
 #####  Data prep  #####
 #######################
+Mode <- function(x) {
+  x <- x[!is.na(x)]
+  if (length(x) == 0) return(NA_character_)
+  ux <- unique(x)
+  ux[which.max(tabulate(match(x, ux)))]
+}
 
 
 # Get land data for the study area
