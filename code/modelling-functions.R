@@ -617,3 +617,45 @@ rasterize_eelgrass_year <- function(year, poly_data, line_data, point_data, temp
   result_r <- ifel(!is.na(poly_r) | !is.na(line_r) | !is.na(point_r), 1, NA)
   return(result_r)
 }
+
+
+evaluate_occurrence <- function(df, observed_col, predicted_col) {
+  
+  # Convert column names to strings
+  obs_name <- deparse(substitute(observed_col))
+  pred_name <- deparse(substitute(predicted_col))
+  
+  # Filter out NAs
+  df <- df %>%
+    filter(!is.na(.data[[obs_name]]), !is.na(.data[[pred_name]])) %>%
+    mutate(
+      Presence = factor(.data[[obs_name]], levels = c(0,1), labels = c("Absent", "Present"))
+    )
+  
+  # Extract vectors for statistical tests
+  pred_vec <- df[[pred_name]]
+  group_vec <- df$Presence
+  
+  # Mann-Whitney U test
+  wilcox_test <- wilcox.test(pred_vec ~ group_vec, exact = FALSE)
+  
+  # Cliff's delta
+  cliffs_delta <- cliff.delta(pred_vec ~ group_vec)
+  
+  # Summary stats per group
+  summary_stats <- df %>%
+    group_by(Presence) %>%
+    summarise(
+      n = n(),
+      mean_pred = mean(.data[[pred_name]], na.rm = TRUE),
+      median_pred = median(.data[[pred_name]], na.rm = TRUE),
+      .groups = "drop"
+    )
+  
+  # Return results as a list
+  list(
+    wilcox_test = wilcox_test,
+    cliffs_delta = cliffs_delta,
+    summary_stats = summary_stats
+  )
+}
