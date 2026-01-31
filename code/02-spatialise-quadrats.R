@@ -50,6 +50,9 @@ library(Hmisc)
 #load_data####
 load("code/output_data/processed_observations/seagrass_data.RData")
 load("code/output_data/processed_observations/abl_seagrass_data.RData")
+load("code/output_data/processed_observations/remotedsensed_data.RData")
+
+remote.spdf <- remote.spdf %>% select(-Type, -Source, -Method, -Transect_length, -Quadrat, - Identification)
 
 coastline_full <- st_read("raw_data/CHS_HWL2015_Coastline.gdb", layer = "Line_CHS_Pacific_HWL_2015_5028437")
 boundary <- coastline_full %>%
@@ -462,7 +465,7 @@ spatialised<-spatialised %>% select("Survey","Year","Month","Day","HKey","ID" , 
              "LonDeep","LatDeep","LonShallow","LatShallow", "CorDepthM", "Slope", "Substrate", "PerCovZO", "PH", "ZO")
 
 spatialised<- spatialised%>%
-  rbind(ABL.spdf)
+  rbind(ABL.spdf, remote.spdf)
 
 
 write.csv( spatialised, file="code/output_data/SpatializedQuadrats_notaggregated.csv") 
@@ -495,11 +498,14 @@ names(mean_att) <- c("ID", "mean_CorDepthM", "mean_slope", "mean_PerCovZO", "PH"
 #
 ##Quadrat attributes - most common substrate
 Mode <- function(x) {
-   ux <- unique(x)
-   ux[which.max(tabulate(match(x, ux)))]
- }
+  x <- x[!is.na(x)]
+  if (length(x) == 0) return(NA)
+  
+  ux <- unique(x)
+  ux[which.max(tabulate(match(x, ux)))]
+}
 
-mode_att <- aggregate( . ~ ID, Mode, data = spatialised[c("ID", "Substrate")])
+mode_att <- aggregate( . ~ ID, Mode, data = spatialised[c("ID", "Substrate")], na.action = na.pass)
 
 ## Add back attributes
 att <- merge(att, mean_att, by="ID")

@@ -8,9 +8,9 @@
 # Objective:
 # ---------
 # Select only observations in SDM prediction area ( <20m depth) add in predictor covariates. 
-# Where we don't have substrate and slope observations from divers, add in modelled data
-# Remove observations where no depth observation from divers. 
-#
+# Where we don't have depth, substrate and slope observations from divers (and remoted sensed data), add in modelled data
+
+
 ###############################################################################
 # Load packages
 library(sf)
@@ -36,7 +36,7 @@ load("code/output_data/processed_observations/seagrass_data_spatialized_aggregat
 spat <- spat %>%
   rename(Slope = mean_slope,
          CorDepthM = mean_CorDepthM)
-# 99,397 obs at 20 m resolution
+# 1000516 obs at 20 m resolution
 
 # check covariate observations
 summary(spat$Slope) 

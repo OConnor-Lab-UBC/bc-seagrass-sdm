@@ -830,4 +830,45 @@ dat_sf <- dat %>%
 st_write(dat_sf, "code/output_data/processed_observations/dat_transect.shp", append=FALSE)
 
 
+##### remote sensed observations. Some are derived from shorezone data (marsh) and some are directly observed from satalite imagery (bared beach or bare tidal flat). All shorezone datapoints were verified with sat imagery
+# imagery used was primarily from 2023 so setting year for these observations to 2023
+remote_absenses <- st_read("raw_data/RemoteSensedAbsences/remotedsensedabsences2023.shp")
 
+remote_absenses$Type <- "Research"
+remote_absenses$Source <- "MSEA&Shorezone"
+remote_absenses$Survey <- "Remote"
+remote_absenses$HKey <- seq_len(nrow(remote_absenses))
+remote_absenses<- remote_absenses%>% 
+  mutate (HKey = paste0(Source,"_",HKey))
+
+remote_absenses$Method <- "RemoteSensed"
+remote_absenses$Year <- "2023"
+remote_absenses$Month <- NA
+remote_absenses$Day <- NA
+remote_absenses$LatShallow <- NA
+remote_absenses$LonShallow <- NA
+remote_absenses$Transect_length <- NA
+remote_absenses$Quadrat <- NA
+remote_absenses$CorDepthM <- NA
+remote_absenses$Substrate <- NA
+remote_absenses$Slope <- NA
+remote_absenses$PerCovZO <- 0
+remote_absenses$PH <- 0
+remote_absenses$ZO <- 0
+remote_absenses$Identification <- "Keep"
+remote_absenses <- remote_absenses %>%
+  rename(LatDeep = Lat, LonDeep = Lon)
+remote_absenses <- remote_absenses[fnames]
+remote_absenses$ID <- paste(remote_absenses$HKey, "1", sep="_")
+
+
+remote.spdf <- remote_absenses %>% st_transform(crs = "EPSG:3005") %>%  
+  mutate(
+    X = st_coordinates(.)[, 1],
+    Y = st_coordinates(.)[, 2]
+  )
+
+remote.spdf <- st_drop_geometry(remote.spdf)
+
+## Save files
+save(remote.spdf, file="code/output_data/processed_observations/remotedsensed_data.RData")
