@@ -22,7 +22,7 @@ UsePackages(c("sdmTMB", "sdmTMBextra", "tidyverse", "sf", "future", "terra", "fu
 load("code/output_data/prediction_model_inputs.RData")
 load("code/output_data/seagrass_model_inputs.RData")
 load("code/output_data/model_results/final_eelgrass_model.RData")
-
+unique(data$Survey)
 # make predictions and get standard error
 
 # Parameters to set
@@ -30,10 +30,13 @@ survey_type <- c("ABL", "BHM", "Cuk", "GDK", "GSU", "MSE", "Mul", "RSU")
 model_name<- "nep_spatial"
 species <- "eelgrass"
 
+model <- get(paste0("fmodel_e_", model_name))
+
+
 #Predict for each survey
 PredictSDM_bySurvey(
   env = env_20m_all,
-  model = fmodel_e_nep_spatial,
+  model = model,
   survey_type = survey_type,
   species = species,
   model_name  = model_name
@@ -116,44 +119,44 @@ writeRaster(raster_qcs_se, file.path(outdir, paste0(species, "_predictions_qcs_s
 
 ##### plots ####
 #these take a long time to make 
-ggplot((mean_pred), aes(X, Y, fill = median)) +
-  geom_raster() +
-  coord_fixed() +
-  scale_fill_viridis_c(trans = "sqrt")
-
-prediction_plot <- ggplot(mean_pred)+
-  geom_sf(data = coastline, linewidth = 0.1)+
-  geom_tile(aes(x = X_m, y = Y_m, colour=est_p, width=20,height=20))+
-  scale_colour_gradient(low = "#f7fcb9", high = "#006837")+
-  theme(panel.grid.major = element_blank(),
-        panel.grid.minor = element_blank(),
-        # Remove panel background
-        panel.background = element_blank(),
-        axis.text.x = element_blank(),
-        axis.text.y = element_blank(),
-        axis.ticks = element_blank())+
-  coord_sf(expand = FALSE)+
-  ylab("")+
-  xlab("") 
-prediction_plot
-ggsave(paste0("./figures/", species, ".png", height = 6, width = 6))
-
-se_plot <- ggplot(mean_pred)+
-  geom_sf(data = coastline, linewidth = 0.1)+
-  geom_tile(aes(x = X_m, y = Y_m, colour=SE, width=20,height=20))+
-  scale_colour_viridis_b()+
-  theme(panel.grid.major = element_blank(),
-        panel.grid.minor = element_blank(),
-        # Remove panel background
-        panel.background = element_blank(),
-        axis.text.x = element_blank(),
-        axis.text.y = element_blank(),
-        axis.ticks = element_blank())+
-  coord_sf(expand = FALSE)+
-  ylab("")+
-  xlab("") 
-se_plot
-ggsave(paste0("./figures/", species, "_se.png", height = 6, width = 6))
+# ggplot((mean_pred), aes(X, Y, fill = median)) +
+#   geom_raster() +
+#   coord_fixed() +
+#   scale_fill_viridis_c(trans = "sqrt")
+# 
+# prediction_plot <- ggplot(mean_pred)+
+#   geom_sf(data = coastline, linewidth = 0.1)+
+#   geom_tile(aes(x = X_m, y = Y_m, colour=est_p, width=20,height=20))+
+#   scale_colour_gradient(low = "#f7fcb9", high = "#006837")+
+#   theme(panel.grid.major = element_blank(),
+#         panel.grid.minor = element_blank(),
+#         # Remove panel background
+#         panel.background = element_blank(),
+#         axis.text.x = element_blank(),
+#         axis.text.y = element_blank(),
+#         axis.ticks = element_blank())+
+#   coord_sf(expand = FALSE)+
+#   ylab("")+
+#   xlab("") 
+# prediction_plot
+# ggsave(paste0("./figures/", species, ".png", height = 6, width = 6))
+# 
+# se_plot <- ggplot(mean_pred)+
+#   geom_sf(data = coastline, linewidth = 0.1)+
+#   geom_tile(aes(x = X_m, y = Y_m, colour=SE, width=20,height=20))+
+#   scale_colour_viridis_b()+
+#   theme(panel.grid.major = element_blank(),
+#         panel.grid.minor = element_blank(),
+#         # Remove panel background
+#         panel.background = element_blank(),
+#         axis.text.x = element_blank(),
+#         axis.text.y = element_blank(),
+#         axis.ticks = element_blank())+
+#   coord_sf(expand = FALSE)+
+#   ylab("")+
+#   xlab("") 
+# se_plot
+# ggsave(paste0("./figures/", species, "_se.png", height = 6, width = 6))
 
 
 # refer to https://pbs-assess.github.io/sdmTMB/articles/basic-intro.html to make plots of random spatial fields etc
