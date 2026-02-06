@@ -36,7 +36,10 @@ load("code/output_data/processed_observations/seagrass_data_spatialized_aggregat
 spat <- spat %>%
   rename(Slope = mean_slope,
          CorDepthM = mean_CorDepthM)
-# 1000516 obs at 20 m resolution
+
+spat <- spat %>% filter(Survey!="Remote")
+
+# 97623 obs at 20 m resolution
 
 # check covariate observations
 summary(spat$Slope) 

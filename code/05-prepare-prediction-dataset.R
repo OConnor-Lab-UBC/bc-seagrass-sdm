@@ -755,31 +755,31 @@ mess_raster_hg <- env_20m_all %>%
   filter(region == "Haida Gwaii") %>%
   select(X_m, Y_m, mess)
 mess_raster_hg <- rast(x = mess_raster_hg %>% as.matrix, type = "xyz", crs = "EPSG:3005")
-writeRaster(mess_raster_hg, file.path("./raster/mess_predictions_hg.tif"), overwrite=TRUE)
+writeRaster(mess_raster_hg, file.path("./raster/mess/mess_predictions_hg.tif"), overwrite=TRUE)
 
 mess_raster_ss <- env_20m_all %>%
   filter(region == "Salish Sea") %>%
   select(X_m, Y_m, mess)
 mess_raster_ss <- rast(x = mess_raster_ss %>% as.matrix, type = "xyz", crs = "EPSG:3005")
-writeRaster(mess_raster_ss, file.path("./raster/mess_predictions_ss.tif"), overwrite=TRUE)
+writeRaster(mess_raster_ss, file.path("./raster/mess/mess_predictions_ss.tif"), overwrite=TRUE)
 
 mess_raster_wcvi <- env_20m_all %>%
   filter(region == "West Coast Vancouver Island") %>%
   select(X_m, Y_m, mess)
 mess_raster_wcvi <- rast(x = mess_raster_wcvi %>% as.matrix, type = "xyz", crs = "EPSG:3005")
-writeRaster(mess_raster_wcvi, file.path("./raster/mess_predictions_wcvi.tif"), overwrite=TRUE)
+writeRaster(mess_raster_wcvi, file.path("./raster/mess/mess_predictions_wcvi.tif"), overwrite=TRUE)
 
 mess_raster_ncc <- env_20m_all %>%
   filter(region == "North Central Coast") %>%
   select(X_m, Y_m, mess)
 mess_raster_ncc <- rast(x = mess_raster_ncc %>% as.matrix, type = "xyz", crs = "EPSG:3005")
-writeRaster(mess_raster_ncc, file.path("./raster/mess_predictions_ncc.tif"), overwrite=TRUE)
+writeRaster(mess_raster_ncc, file.path("./raster/mess/mess_predictions_ncc.tif"), overwrite=TRUE)
 
 mess_raster_qcs <- env_20m_all %>%
   filter(region == "Queen Charlotte Strait") %>%
   select(X_m, Y_m, mess)
 mess_raster_qcs <- rast(x = mess_raster_qcs %>% as.matrix, type = "xyz", crs = "EPSG:3005")
-writeRaster(mess_raster_qcs, file.path("./raster/mess_predictions_qcs.tif"), overwrite=TRUE)
+writeRaster(mess_raster_qcs, file.path("./raster/mess/mess_predictions_qcs.tif"), overwrite=TRUE)
 
 
 
@@ -841,31 +841,31 @@ mess_raster_hg_tv <- env_20m_all %>%
   filter(region == "Haida Gwaii") %>%
   select(X_m, Y_m, mess_tv)
 mess_raster_hg_tv <- rast(x = mess_raster_hg_tv %>% as.matrix, type = "xyz", crs = "EPSG:3005")
-writeRaster(mess_raster_hg_tv, file.path("./raster/mess_predictions_hg_tv.tif"), overwrite=TRUE)
+writeRaster(mess_raster_hg_tv, file.path("./raster/mess/mess_predictions_hg_tv.tif"), overwrite=TRUE)
 
 mess_raster_ss_tv <- env_20m_all %>%
   filter(region == "Salish Sea") %>%
   select(X_m, Y_m, mess_tv)
 mess_raster_ss_tv <- rast(x = mess_raster_ss_tv %>% as.matrix, type = "xyz", crs = "EPSG:3005")
-writeRaster(mess_raster_ss_tv, file.path("./raster/mess_predictions_ss_tv.tif"), overwrite=TRUE)
+writeRaster(mess_raster_ss_tv, file.path("./raster/mess/mess_predictions_ss_tv.tif"), overwrite=TRUE)
 
 mess_raster_wcvi_tv <- env_20m_all %>%
   filter(region == "West Coast Vancouver Island") %>%
   select(X_m, Y_m, mess_tv)
 mess_raster_wcvi_tv <- rast(x = mess_raster_wcvi_tv %>% as.matrix, type = "xyz", crs = "EPSG:3005")
-writeRaster(mess_raster_wcvi_tv, file.path("./raster/mess_predictions_wcvi_tv.tif"), overwrite=TRUE)
+writeRaster(mess_raster_wcvi_tv, file.path("./raster/mess/mess_predictions_wcvi_tv.tif"), overwrite=TRUE)
 
 mess_raster_ncc_tv <- env_20m_all %>%
   filter(region == "North Central Coast") %>%
   select(X_m, Y_m, mess_tv)
 mess_raster_ncc_tv <- rast(x = mess_raster_ncc_tv %>% as.matrix, type = "xyz", crs = "EPSG:3005")
-writeRaster(mess_raster_ncc_tv, file.path("./raster/mess_predictions_ncc_tv.tif"), overwrite=TRUE)
+writeRaster(mess_raster_ncc_tv, file.path("./raster/mess/mess_predictions_ncc_tv.tif"), overwrite=TRUE)
 
 mess_raster_qcs_tv <- env_20m_all %>%
   filter(region == "Queen Charlotte Strait") %>%
   select(X_m, Y_m, mess_tv)
 mess_raster_qcs_tv <- rast(x = mess_raster_qcs_tv %>% as.matrix, type = "xyz", crs = "EPSG:3005")
-writeRaster(mess_raster_qcs_tv, file.path("./raster/mess_predictions_qcs_tv.tif"), overwrite=TRUE)
+writeRaster(mess_raster_qcs_tv, file.path("./raster/mess/mess_predictions_qcs_tv.tif"), overwrite=TRUE)
 
 
 #save outputs####

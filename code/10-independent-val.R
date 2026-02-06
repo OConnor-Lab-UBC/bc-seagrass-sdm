@@ -8,8 +8,7 @@
 # Objective:
 # ---------
 # Compare independent data sets to sdms
-# when adding multiple different sdms will want to look at areas correctly classified (when creating sf object just have different columns be different models)
-#
+
 ###############################################################################
 
 #load packages####
@@ -26,7 +25,7 @@ library(reshape2)
 #load netforce eelgrass  data 2013-2023
 eelgrass_indep <- rast(c("code/output_data/independent_validation/BCeelgrass_netforce_2013_2023.tif"))
 
-# from looking previously there is no difference in the predictions if eelgrass has been observered more times so just change all to 1. A Spearman correlation of –0.0303 suggests that higher modelled probabilities do not correspond in any meaningful way to more years of observed presence.
+# from looking previously there is no difference in the predictions if eelgrass has been observed more times so just change all to 1. A Spearman correlation of –0.0303 suggests that higher modelled probabilities do not correspond in any meaningful way to more years of observed presence.
 values(eelgrass_indep)[values(eelgrass_indep) >= 1] <- 1
 names(eelgrass_indep)<-"obs"
 
@@ -58,11 +57,29 @@ for (f in folders) {
     pattern = "\\.tif$",
     full.names = TRUE
   )
-  tif_files <- tif_files[!grepl("se", basename(tif_files))]
-  r_list <- lapply(tif_files, rast)
-  m <- do.call(mosaic, r_list)
-  mosaics[[basename(f)]] <- m
+  
+  # split files
+  se_files  <- tif_files[grepl("se", basename(tif_files), ignore.case = TRUE)]
+  pred_files <- tif_files[!grepl("se", basename(tif_files), ignore.case = TRUE)]
+  
+  folder_name <- basename(f)
+  mosaics[[folder_name]] <- list()
+  
+  # mosaic prediction files (no se)
+  if (length(pred_files) > 0) {
+    r_pred <- lapply(pred_files, rast)
+    mosaics[[folder_name]]$pred <- do.call(mosaic, r_pred)
+  }
+  
+  #mosaic SE files
+  if (length(se_files) > 0) {
+    r_se <- lapply(se_files, rast)
+    mosaics[[folder_name]]$se <- do.call(mosaic, r_se)
+  }
 }
+
+#save(mosaics,  file = "code/output_data/seagrass_predictions/eelgrass_prediction_mosaics.RData")
+#load("code/output_data/seagrass_predictions/eelgrass_prediction_mosaics.RData")
 
 #load substrate layer
 substrate_all <- terra::vrt(c("raw_data/substrate_20m/updated/hg_20m.tif", "raw_data/substrate_20m/updated/ncc_20m.tif", "raw_data/substrate_20m/updated/qcs_20m.tif", "raw_data/substrate_20m/updated/sog_20m.tif", "raw_data/substrate_20m/updated/wcvi_20m.tif"), "substrate.vrt", overwrite=T)
@@ -72,18 +89,19 @@ crs(substrate_all) <- "EPSG:3005"
 
 # Ensure rasters align, just take model predictions where there is observed data
 # we can only compare in areas where eelgrass has been observed as there is no absence data from independent dataset
+mosaics_flat <- unlist(mosaics, recursive = FALSE)
 
-eelgrass_sdm_resampled <- lapply(mosaics, function(r) {
+eelgrass_sdm_resampled <- lapply(mosaics_flat, function(r) {
   if (!compareGeom(r, eelgrass_indep, crs = TRUE, stopOnError = FALSE)) {
     r <- project(r, eelgrass_indep)  }
   crop(
     resample(r, eelgrass_indep, method = "bilinear"),
     eelgrass_indep)})
-plot(eelgrass_sdm_resampled[[1]])
+#plot(eelgrass_sdm_resampled[[1]])
 observed_cells <- which(values(eelgrass_indep) > 0)
 coords <- xyFromCell(eelgrass_indep, observed_cells)
 
-eelgrass_stack <- c(eelgrass_sdm_resampled[[1]], eelgrass_sdm_resampled[[2]], eelgrass_sdm_resampled[[3]], eelgrass_sdm_resampled[[4]])
+eelgrass_stack <- c(eelgrass_sdm_resampled[[1]], eelgrass_sdm_resampled[[3]], eelgrass_sdm_resampled[[5]], eelgrass_sdm_resampled[[7]])
 names(eelgrass_stack) <- c("bccm_nospatial", "bccm_spatial", "nep_nospatial", "nep_spatial")
 
 r_points <- as.points(eelgrass_indep, na.rm = TRUE)
@@ -166,47 +184,6 @@ ggplot(df_melt, aes(x = Model, y = Prediction, fill = rock_group)) +
   )
 #nep no spatial comes out as best
 
-# false negatives
-false_negatives_by_substrate <- lapply(models, function(m) {
-  thr <- threshold[m]
-
-  eelgrass_df %>%
-    mutate(
-      pred = as.numeric(.data[[m]]),
-      false_negative = pred < thr
-    ) %>%
-    filter(!is.na(pred)) %>%
-    group_by(rock_group) %>%
-    summarise(
-      Model = m,
-      FN_Rate = mean(false_negative, na.rm = TRUE),
-      n = n(),
-      .groups = "drop"
-    )
-}) %>%
-  bind_rows()
-
-false_negatives_by_substrate
-
-# Plot: FN rates by model and substrate
-ggplot(false_negatives_by_substrate,
-       aes(x = Model, y = FN_Rate, fill = rock_group)) +
-  geom_col(position = "dodge") +
-  scale_y_continuous(labels = scales::percent_format(accuracy = 1)) +
-  scale_fill_manual(values = c("Rock" = "#D95F02", "Not Rock" = "#1B9E77")) +
-  labs(
-    y = "False Negative Rate (Missed Observed Eelgrass)",
-    x = "Model",
-    fill = "Substrate",
-    title = "False Negative Rates by Model and Substrate"
-  ) +
-  theme_bw() +
-  theme(
-    axis.text.x = element_text(angle = 45, hjust = 1),
-    panel.grid.minor = element_blank()
-  )
-# none of the models preform any better when looking at false negatives
-
 
 results_thresholds <- do.call(rbind, lapply(1:nrow(threshold_table), function(i) {
   row <- threshold_table[i, ]
@@ -245,7 +222,7 @@ ggplot(results_thresholds,
   ) +
   theme_bw() +
   theme(axis.text.x = element_text(angle = 45, hjust = 1))
-
+#bccm spatial marginally had better
 
 ggplot(results_thresholds %>% filter(rock_group == "Not Rock"),
        aes(x = Pred_Suitable, y = FN_Rate, color = Threshold_Method, label = Model)) +
@@ -300,6 +277,8 @@ ggplot(area_retained,
   theme(axis.text.x = element_text(angle = 45, hjust = 1))
 # Within a given threshold method, models are very similar, but choice of threshold really affects results
 #Model choice had minimal influence on the proportion of observed eelgrass retained after thresholding, with differences between models consistently <5% for a given thresholding method. In contrast, threshold selection strongly influenced retained observed area, with differences exceeding 50% within individual models.
+# bccm spatial does seem to perform consistently better across all metrics
+# nep spatial is worse though, that should be eliminated 
 
 ggplot(area_retained,
        aes(x = Threshold_Method,

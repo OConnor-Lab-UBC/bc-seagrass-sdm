@@ -12,6 +12,9 @@
 ###############################################################################
 ###TO DO SOME OF THE PERCENT COVERS FOR ZM AND PH ARE NULL AND NEED TO BE 0, NEED TO UPDATE IN DATABASE !! see below 
 
+#when looking at subtidal and intertidal data together nep spatial, nep no spatial, and bccm spatial are all comparable
+# when looking at subtidal nep spatial and bccm spatial are the best preforming and very similar
+
 #functions
 source("code/modelling-functions.R")
 
@@ -132,7 +135,7 @@ model_comparison %>%
     desc(abs(cliffs_delta)),   # strongest separation
     wilcox_p                   # strongest significance
   )
-#NEP model spatial and then nep no spatial come out as best
+#NEP model no spatial and then nep spatial come out as best but not much difference to bccm spatial. bccm no spatial is not significant
 
 #spearmans
 df <- validation_sf %>%
@@ -158,7 +161,7 @@ pred_cols <- c(
 
 obs_pc   <- "PC_mid"
 obs_pa   <- "ZM"
-threshold_default <- 0.04 # nep spatial preds TSS threshold
+threshold_default <- 0.05 # bccm spatial preds TSS threshold
 
 cor_results <- map_dfr(pred_cols, function(p) {
   
@@ -175,9 +178,9 @@ cor_results <- map_dfr(pred_cols, function(p) {
 })
 
 cor_results
-#model nep nospatial shows the strongest monotonic relationship.
-rho <- 0.117
-pval <- 0.001
+#model nep nospatial shows the strongest monotonic relationship but bccm spatial and nep spatial similar. below is rho and pval for bccm spatial
+rho <- 0.103
+pval <- 0.0241
 
 roc_results <- map_dfr(pred_cols, function(p) {
   
@@ -203,10 +206,12 @@ roc_results <- map_dfr(pred_cols, function(p) {
 
 roc_results
 
-tss_threshold <- 0.0221
+#threshold for bccm spatial
+tss_threshold <- 0.0195
 
 
-# nep spatial still best but AUC and TSS is horrible 0.602 and 0.241
+# nep spatial still best but AUC and TSS is horrible 0.596 and 0.203. BCCM spatial is 0.589 and 0.214
+# very little difference between all 4 models. nep spatial has and oddly low tss threshold
 
 confusion_results <- map(pred_cols, function(p) {
   
@@ -225,10 +230,38 @@ confusion_results <- map(pred_cols, function(p) {
 })
 
 names(confusion_results) <- pred_cols
-confusion_results$eelgrass_nep_spatial_pred
-
+confusion_results$eelgrass_bccm_spatial_pred
+# this model is very sensitive, so catches all true presences but most predicted 1s are wrong. Terrible specificity, fails at identifying absences. 
 # what about if we exclude intertidal sites becasue model not built with intertidal data
+
+
 df_nointertidal <- df %>% filter(Survey != "Intertidal")
+validation_sf_nointertidal <- validation_sf %>% filter(Survey != "Intertidal")
+
+
+#wilcox
+zm_pa_results_no_intertidal <- list(
+  e_bccm_nospatial = evaluate_occurrence(validation_sf_nointertidal, observed_col = ZM, predicted_col = eelgrass_bccm_nospatial_pred),
+  e_bccm_spatial = evaluate_occurrence(validation_sf_nointertidal, observed_col = ZM, predicted_col = eelgrass_bccm_spatial_pred),
+  e_nep_nospatial = evaluate_occurrence(validation_sf_nointertidal, observed_col = ZM, predicted_col = eelgrass_nep_nospatial_pred),
+  e_nep_spatial = evaluate_occurrence(validation_sf_nointertidal, observed_col = ZM, predicted_col = eelgrass_nep_spatial_pred)
+)
+
+model_comparison_no_intertidal <- imap_dfr(zm_pa_results_no_intertidal, function(res, model) {
+  tibble(
+    model = model,
+    wilcox_p     = res$wilcox_test$p.value,
+    cliffs_delta = res$cliffs_delta$estimate#,
+    #median_pres  = res$summary_stats
+  )
+})
+
+model_comparison_no_intertidal %>%
+  arrange(
+    desc(abs(cliffs_delta)),   # strongest separation
+    wilcox_p                   # strongest significance
+  )
+#NEP model spatial and bccm spatial come out the same and good 
 
 cor_nointertidal <- map_dfr(pred_cols, function(p) {
   
@@ -245,9 +278,9 @@ cor_nointertidal <- map_dfr(pred_cols, function(p) {
 })
 
 cor_nointertidal
-# nep spatial is still best, then nep no spatial 
+# nep spatial and bccm spatial best and comparable
 
-rho_nointertidal <- 0.428 # this is for nep spatial
+rho_nointertidal <- 0.421 # this is for bccm spatial
 pval_nointertidal <- 0.0000001 
 
 
@@ -275,9 +308,10 @@ roc_nointertidal <- map_dfr(pred_cols, function(p) {
 
 
 roc_nointertidal
-# nep spatial best AUC is 0.860 and TSS is 0.67
+# bccm spatial and nep spatial best AUC and TSS is but only BCCM spatial tss threshold is reasonable, unlike nep spatial threshold is too low
+# bccm spatial auc = 0.855, TSS= 0.645
 
-tss_threshold_nointertidal <- 0.0216 # this is for nep spatial though
+tss_threshold_nointertidal <- 0.0203 # this is for bccm spatial though
 
 
 
@@ -312,7 +346,7 @@ wilcox_presence <- presence_df %>%
   group_by(Presence) %>%
   summarise(
     p = wilcox.test(
-      eelgrass_nep_nospatial_pred ~ Tidal_zone
+      eelgrass_bccm_spatial_pred ~ Tidal_zone
     )$p.value,
     .groups = "drop"
   ) %>%
@@ -331,8 +365,8 @@ threshold_df <- data.frame(
 )
 
 # Determine overall y-axis limits
-y_min <- min(c(presence_df$eelgrass_nep_nospatial_pred, abundance_df$eelgrass_nep_nospatial_pred), na.rm = TRUE)
-y_max <- max(c(presence_df$eelgrass_nep_nospatial_pred, abundance_df$eelgrass_nep_nospatial_pred), na.rm = TRUE)
+y_min <- min(c(presence_df$eelgrass_bccm_spatial_pred, abundance_df$eelgrass_bccm_spatial_pred), na.rm = TRUE)
+y_max <- max(c(presence_df$eelgrass_bccm_spatial_pred, abundance_df$eelgrass_bccm_spatial_pred), na.rm = TRUE)
 
 # Offset for stars and sample sizes
 y_star_offset <- 0.01 * y_max
@@ -343,7 +377,7 @@ p_presence <- ggplot(
   presence_df,
   aes(
     x = Presence,
-    y = eelgrass_nep_spatial_pred,
+    y = eelgrass_bccm_spatial_pred,
     fill = Tidal_zone
   )
 ) +
@@ -384,7 +418,7 @@ p_presence <- ggplot(
 
 
 kw_abundance <- kruskal.test(
-  eelgrass_nep_nospatial_pred ~ PC_ZM,
+  eelgrass_bccm_nospatial_pred ~ PC_ZM,
   data = abundance_df
 )
 
@@ -404,7 +438,7 @@ abundance_counts <- abundance_df %>%
 # Build plot
 p_abundance <- ggplot(
   abundance_df,
-  aes(x = PC_ZM, y = eelgrass_nep_spatial_pred, fill = Tidal_zone)
+  aes(x = PC_ZM, y = eelgrass_bccm_spatial_pred, fill = Tidal_zone)
 ) +
   geom_boxplot(
     position = position_dodge2(width = 0.75), 
@@ -484,7 +518,27 @@ zm_plot
 
 
 
+confusion_results_no_intertidal <- map(pred_cols, function(p) {
+  
+  thr <- roc_results %>%
+    filter(model == p) %>%
+    pull(tss_threshold)
+  
+  df_bin_nointertidal <- df_nointertidal %>%
+    mutate(Pred_binary = if_else(.data[[p]] >= thr, 1, 0))
+  
+  confusionMatrix(
+    factor(df_bin_nointertidal$Pred_binary),
+    factor(df_bin_nointertidal[[obs_pa]]),
+    positive = "1"
+  )
+})
 
+names(confusion_results_no_intertidal) <- pred_cols
+confusion_results_no_intertidal$eelgrass_bccm_spatial_pred
+# this model is still sensitive (0.88), so catches most true presence. Specificity = 0.7593 so 76% ob absences
+# Pos Pred Value (precision) = 0.3607 So when the model predicts eelgrass, it’s right only 36% of the time.not great
+# Kappa = 0.397 this model still has moderate skill
 
 
 

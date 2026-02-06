@@ -31,14 +31,15 @@ seagrass_data_long <- seagrass_data_long %>%
 facVars <- c("substrate", "Survey")
 
 # might have corrected this upstream but if not
-seagrass_data_long <- seagrass_data_long %>%
-  mutate(
-    Survey = if_else(
-      grepl("MSEA&Shorezone", HKey),
-      "Remote",
-      Survey
-    )
-  )
+# seagrass_data_long <- seagrass_data_long %>%
+#   mutate(
+#     Survey = if_else(
+#       grepl("MSEA&Shorezone", HKey),
+#       "Remote",
+#       Survey
+#     )
+#   )
+
 
 
 ####Eelgrass model####
@@ -47,7 +48,7 @@ numFolds <- length(unique(seagrass_data$fold_eelgrass))
 data <- filter(seagrass_data_long, species == sp) %>% rename(fold = fold_eelgrass)
 data <- data %>% mutate(Survey = as.factor(Survey)) # was still not recognizing i changed survye to factor so did it again
 print(paste(sp, " present in ", round((sum(data$presence)/nrow(data))*100,2), "% of observations", sep = ""))
-# eelgrass in 3.62% of 20 m aggregated observations
+# eelgrass in 3.7% of 20 m aggregated observations
 
 
 ####test variable correlation####
@@ -98,16 +99,17 @@ plan(multisession)
 # model indicated by looking at ffs and at variable relative importance and also considering what is important for future change, and also what resulted in highest AUC, Tjur and sum loglikelihood
 # no spatial
 # AUC = 0.940, tjur = 0.264, loglike -9258
-m_e_1 <- sdmTMB_cv(formula = presence ~ s(depth_stnd, k = 3) + substrate + slope_stnd + rei_stnd +
-                      s(airtempmin_stnd, k = 3) + rsdscv_stnd + #chelsa variables
+m_e_1 <- sdmTMB_cv(formula = presence ~ s(depth_stnd, k = 3) + substrate + slope_stnd + rei_stnd +  
+                      s(airtempmin_stnd, k = 3) + rsdsmin_stnd + #chelsa variables
                       saltcv_bccm_stnd + NH4_bccm_stnd + tempmin_bccm_stnd + #bccm variables
                      (1|Survey),  #random effect
                    mesh = barrier_mesh, family = binomial(link = "logit"), spatial = FALSE, data = data, fold_ids = "fold")
 
 eval_cv_bccm_nospatial <- evalStats( folds=1:numFolds,m=m_e_1, CV=cv_list_eelgrass$cv)
+eval_cv_bccm_nospatial
 
 # best bccm model with spatial 
-# AUC 0.943, tjur 0.326, loglike -9658
+# AUC 0.939, tjur 0.309, loglike -9468
 m_e_2 <- sdmTMB_cv(formula = presence ~ s(depth_stnd, k = 3) + substrate + slope_stnd + rei_stnd +
                      ##chelsa variables, chelsa variables change in importance compared to non spatial model
                      saltcv_bccm_stnd + NH4_bccm_stnd + #bccm variables
@@ -115,30 +117,30 @@ m_e_2 <- sdmTMB_cv(formula = presence ~ s(depth_stnd, k = 3) + substrate + slope
                     mesh = barrier_mesh, family = binomial(link = "logit"), spatial = TRUE, data = data, fold_ids = "fold")
 
 eval_cv_bccm_spatial <- evalStats( folds=1:numFolds,m=m_e_2, CV=cv_list_eelgrass$cv)
-
+eval_cv_bccm_spatial
 
 # nep model no spatial
-#AUC = 0.938, tjur = 0.257, loglike -9267 
+#AUC = 0.930, tjur = 0.234, loglike -9252 
 m_e_3 <- sdmTMB_cv(formula = presence ~  s(depth_stnd, k = 3) + substrate + slope_stnd + rei_stnd + 
-                     s(airtempmin_stnd, k = 3) + rsdscv_stnd + #chelsa variables
-                     saltcv_nep_stnd + tempcv_nep_stnd  + #    ##nep variables
+                     s(airtempmin_stnd, k = 3) + rsdsmin_stnd + #chelsa variables
+                     saltcv_nep_stnd + tempcv_nep_stnd + #    ##nep variables
                      (1|Survey),  #random effect
                    mesh = barrier_mesh, family = binomial(link = "logit"), spatial = FALSE, data = data, fold_ids = "fold")
 
 eval_cv_nep_nospatial <- evalStats( folds=1:numFolds,m=m_e_3,CV=cv_list_eelgrass$cv)
-
+eval_cv_nep_nospatial
 
 
 # find nep model with spatial 
-#AUC = 0.945, tjur = 0.325, loglike -9672 
+#AUC = 0.937, tjur = 0.304, loglike -9481 
 m_e_4 <- sdmTMB_cv(formula = presence ~  s(depth_stnd, k = 3) + substrate + slope_stnd + rei_stnd + 
-                     #chelsa variables not important when spatial field
+                     airtempmin_stnd + #chelsa variables not as important when spatial field
                      saltcv_nep_stnd + tempcv_nep_stnd + ##nep variables
                      (1|Survey),  #random effect
                    mesh = barrier_mesh, family = binomial(link = "logit"), spatial = TRUE, data = data, fold_ids = "fold")
 
 eval_cv_nep_spatial <- evalStats( folds=1:numFolds,m=m_e_4,CV=cv_list_eelgrass$cv)
-
+eval_cv_nep_spatial
 
 # cv stats from all best models and save
 eval_cv_list <- list(eval_cv_bccm_nospatial, eval_cv_bccm_spatial, eval_cv_nep_nospatial, eval_cv_nep_spatial)
@@ -150,8 +152,8 @@ save(eval_cv_list, file = "code/output_data/model_results/eval_cv.RData")
 ####SDMtmb full model####
 # fit full model bccm 
 #remove year for testing
-fmodel_e_bccm_nospatial <- sdmTMB(formula = presence ~ s(depth_stnd, k = 3) + substrate + slope_stnd + rei_stnd +
-                                    s(airtempmin_stnd, k = 3) + rsdscv_stnd + #chelsa variables
+fmodel_e_bccm_nospatial <- sdmTMB(formula = presence ~ s(depth_stnd, k = 3) + substrate + slope_stnd + rei_stnd +  
+                                    s(airtempmin_stnd, k = 3) + rsdsmin_stnd + #chelsa variables
                                     saltcv_bccm_stnd + NH4_bccm_stnd + tempmin_bccm_stnd + #bccm variables
                                     (1|Survey),  #random effect
                                 mesh = barrier_mesh, family = binomial(link = "logit"), spatial = FALSE, data = data)
@@ -162,12 +164,13 @@ fmodel_e_bccm_spatial <- sdmTMB(formula = presence ~ s(depth_stnd, k = 3) + subs
                                 mesh = barrier_mesh, family = binomial(link = "logit"), spatial = TRUE, data = data)
 
 fmodel_e_nep_nospatial <- sdmTMB(formula = presence ~  s(depth_stnd, k = 3) + substrate + slope_stnd + rei_stnd + 
-                                   s(airtempmin_stnd, k = 3) + rsdscv_stnd + #chelsa variables
-                                   saltcv_nep_stnd + tempcv_nep_stnd  + #    ##nep variables
+                                   s(airtempmin_stnd, k = 3) + rsdsmin_stnd + #chelsa variables
+                                   saltcv_nep_stnd + tempcv_nep_stnd + #    ##nep variables
                                    (1|Survey),  #random effect
                                  mesh = barrier_mesh, family = binomial(link = "logit"), spatial = FALSE, data = data)
 
 fmodel_e_nep_spatial <- sdmTMB(formula = presence ~ s(depth_stnd, k = 3) + substrate + slope_stnd + rei_stnd + 
+                                 airtempmin_stnd + #chelsa variables not as important when spatial field
                                  saltcv_nep_stnd + tempcv_nep_stnd + ##nep variables
                                  (1|Survey),  #random effect
                                mesh = barrier_mesh, family = binomial(link = "logit"), spatial = TRUE, data = data)
@@ -177,33 +180,33 @@ save(data, fmodel_e_bccm_nospatial, fmodel_e_bccm_spatial, fmodel_e_nep_nospatia
 
 
 #have a look at marginal effects
-ggeffects::ggpredict(model = fmodel_e_bccm_nospatial,  terms = "depth_stnd[all]") %>% plot() # decreases with depth
-ggeffects::ggpredict(model = fmodel_e_nep_nospatial,  terms = "depth_stnd[all]") %>% plot() # decreases with depth
-
-ggeffects::ggpredict(model = fmodel_e_bccm_nospatial,  terms = "substrate") %>% plot() # more in sand and mud
-ggeffects::ggpredict(model = fmodel_e_nep_nospatial,  terms = "substrate") %>% plot() # more in sand and mud
-
-ggeffects::ggpredict(model = fmodel_e_bccm_nospatial,  terms = "slope_stnd[all]") %>% plot() # presence declines with slope
-ggeffects::ggpredict(model = fmodel_e_nep_nospatial,  terms = "slope_stnd[all]") %>% plot() # presence declines with slope
-
-ggeffects::ggpredict(model = fmodel_e_bccm_nospatial,  terms = "rei_stnd[all]") %>% plot() #presence declines with exposure
-ggeffects::ggpredict(model = fmodel_e_nep_nospatial,  terms = "rei_stnd[all]") %>% plot() #presence declines with exposure
-
-ggeffects::ggpredict(model = fmodel_e_bccm_nospatial,  terms = "airtempmin_stnd[all]") %>% plot() # presence increases as air temp min increases
-ggeffects::ggpredict(model = fmodel_e_nep_nospatial,  terms = "airtempmin_stnd[all]") %>% plot() # presence increases as air temp min increases
-
-ggeffects::ggpredict(model = fmodel_e_bccm_nospatial,  terms = "rsdscv_stnd[all]") %>% plot() # presence decreases as rsds cv increases
-ggeffects::ggpredict(model = fmodel_e_nep_nospatial,  terms = "rsdscv_stnd[all]") %>% plot() # presence decreases as rsds cv increases
-
-ggeffects::ggpredict(model = fmodel_e_bccm_nospatial,  terms = "saltcv_bccm_stnd[all]") %>% plot() # as salinity variability increases presence goes down
-ggeffects::ggpredict(model = fmodel_e_nep_nospatial,  terms = "saltcv_nep_stnd[all]") %>% plot() # as salinity variability increases presence goes down
-
-ggeffects::ggpredict(model = fmodel_e_bccm_nospatial,  terms = "NH4_bccm_stnd[all]") %>% plot() # as NH4 increases presence goes up
-
-ggeffects::ggpredict(model = fmodel_e_nep_nospatial,  terms = "tempcv_nep_stnd[all]") %>% plot() # as tempcv increases presence goes up
-
-ggeffects::ggpredict(model = fmodel_e_bccm_nospatial,  terms = "Survey") %>% plot() # # Remote sensed adds survey effect 
-ggeffects::ggpredict(model = fmodel_e_nep_nospatial,  terms = "Survey") %>% plot() # # Remote sensed adds survey effect 
+# ggeffects::ggpredict(model = fmodel_e_bccm_nospatial,  terms = "depth_stnd[all]") %>% plot() # decreases with depth
+# ggeffects::ggpredict(model = fmodel_e_nep_nospatial,  terms = "depth_stnd[all]") %>% plot() # decreases with depth
+# 
+# ggeffects::ggpredict(model = fmodel_e_bccm_nospatial,  terms = "substrate") %>% plot() # more in sand and mud
+# ggeffects::ggpredict(model = fmodel_e_nep_nospatial,  terms = "substrate") %>% plot() # more in sand and mud
+# 
+# ggeffects::ggpredict(model = fmodel_e_bccm_nospatial,  terms = "slope_stnd[all]") %>% plot() # presence declines with slope
+# ggeffects::ggpredict(model = fmodel_e_nep_nospatial,  terms = "slope_stnd[all]") %>% plot() # presence declines with slope
+# 
+# ggeffects::ggpredict(model = fmodel_e_bccm_nospatial,  terms = "rei_stnd[all]") %>% plot() #presence declines with exposure
+# ggeffects::ggpredict(model = fmodel_e_nep_nospatial,  terms = "rei_stnd[all]") %>% plot() #presence declines with exposure
+# 
+# ggeffects::ggpredict(model = fmodel_e_bccm_nospatial,  terms = "airtempmin_stnd[all]") %>% plot() # presence increases as air temp min increases
+# ggeffects::ggpredict(model = fmodel_e_nep_nospatial,  terms = "airtempmin_stnd[all]") %>% plot() # presence increases as air temp min increases
+# 
+# ggeffects::ggpredict(model = fmodel_e_bccm_nospatial,  terms = "rsdscv_stnd[all]") %>% plot() # presence decreases as rsds cv increases
+# ggeffects::ggpredict(model = fmodel_e_nep_nospatial,  terms = "rsdscv_stnd[all]") %>% plot() # presence decreases as rsds cv increases
+# 
+# ggeffects::ggpredict(model = fmodel_e_bccm_nospatial,  terms = "saltcv_bccm_stnd[all]") %>% plot() # as salinity variability increases presence goes down
+# ggeffects::ggpredict(model = fmodel_e_nep_nospatial,  terms = "saltcv_nep_stnd[all]") %>% plot() # as salinity variability increases presence goes down
+# 
+# ggeffects::ggpredict(model = fmodel_e_bccm_nospatial,  terms = "NH4_bccm_stnd[all]") %>% plot() # as NH4 increases presence goes up
+# 
+# ggeffects::ggpredict(model = fmodel_e_nep_nospatial,  terms = "tempcv_nep_stnd[all]") %>% plot() # as tempcv increases presence goes up
+# 
+# ggeffects::ggpredict(model = fmodel_e_bccm_nospatial,  terms = "Survey") %>% plot() # # Remote sensed adds survey effect 
+# ggeffects::ggpredict(model = fmodel_e_nep_nospatial,  terms = "Survey") %>% plot() # # Remote sensed adds survey effect 
 
 
 # Model check
@@ -281,19 +284,18 @@ save(eval_results, file = "code/output_data/model_results/eelgrass_eval_final_mo
 
 # The smaller the error measure (eer) returned values, the better the model predictions fit the observations.
 
-
 #get relative importance
-prednames_bccm_nospatial <- c("depth_stnd", "substrate", "rei_stnd", "slope_stnd", "Survey", "rsdscv_stnd", "airtempmin_stnd", "saltcv_bccm_stnd", "NH4_bccm_stnd", "tempmin_bccm_stnd")
+prednames_bccm_nospatial <- c("depth_stnd", "substrate", "rei_stnd", "slope_stnd", "Survey", "rsdsmin_stnd", "airtempmin_stnd", "saltcv_bccm_stnd", "NH4_bccm_stnd", "tempmin_bccm_stnd")
 prednames_bccm_spatial <- c("depth_stnd", "substrate", "rei_stnd", "slope_stnd", "Survey", "saltcv_bccm_stnd", "NH4_bccm_stnd")
 
-prednames_nep_nospatial <- c("depth_stnd", "substrate", "rei_stnd", "slope_stnd", "Survey", "rsdscv_stnd", "airtempmin_stnd", "saltcv_nep_stnd", "tempcv_nep_stnd")
-prednames_nep_spatial <- c("depth_stnd", "substrate", "rei_stnd", "slope_stnd", "Survey", "saltcv_nep_stnd", "tempcv_nep_stnd")
+prednames_nep_nospatial <- c("depth_stnd", "substrate", "rei_stnd", "slope_stnd", "Survey", "rsdsmin_stnd", "airtempmin_stnd", "saltcv_nep_stnd", "tempcv_nep_stnd")
+prednames_nep_spatial <- c("depth_stnd", "substrate", "rei_stnd", "slope_stnd", "Survey", "airtempmin_stnd", "saltcv_nep_stnd", "tempcv_nep_stnd")
 
 
   
 groups <- list(
   Geomorphic = c("depth_stnd", "slope_stnd", "rei_stnd", "substrate"),
-  Atmospheric = c("airtempmin_stnd", "rsdscv_stnd"),
+  Atmospheric = c("airtempmin_stnd", "rsdsmin_stnd"),
   Oceanographic = c("saltcv_bccm_stnd", "NH4_bccm_stnd", "tempmin_bccm_stnd"),
   Random = c("Survey")
 )
@@ -315,7 +317,7 @@ save(relimp_e_bccm_nospatial, file = "code/output_data/model_results/relimp_e_bc
 
 groups <- list(
   Geomorphic = c("depth_stnd", "slope_stnd", "rei_stnd", "substrate"),
-  #Atmospheric = c("airtempmin_stnd", "rsdscv_stnd"),
+  #Atmospheric = c("airtempmin_stnd", "rsdsmin_stnd"),
   Oceanographic = c("saltcv_bccm_stnd", "NH4_bccm_stnd"),
   Random = c("Survey")
 )
@@ -329,7 +331,7 @@ save(relimp_e_bccm_spatial, file = "code/output_data/model_results/relimp_e_bccm
 
 groups <- list(
   Geomorphic = c("depth_stnd", "slope_stnd", "rei_stnd", "substrate"),
-  Atmospheric = c("airtempmin_stnd", "rsdscv_stnd"),
+  Atmospheric = c("airtempmin_stnd", "rsdsmin_stnd"),
   Oceanographic = c("saltcv_nep_stnd", "tempcv_nep_stnd"),
   Random = c("Survey")
 )
@@ -343,7 +345,7 @@ save(relimp_e_nep_nospatial, file = "code/output_data/model_results/relimp_e_nep
 
 groups <- list(
   Geomorphic = c("depth_stnd", "slope_stnd", "rei_stnd", "substrate"),
-  #Atmospheric = c("airtempmin_stnd", "rsdscv_stnd"),
+  Atmospheric = c("airtempmin_stnd"), #, "rsdsmin_stnd"),
   Oceanographic = c("saltcv_nep_stnd", "tempcv_nep_stnd"),
   Random = c("Survey")
 )

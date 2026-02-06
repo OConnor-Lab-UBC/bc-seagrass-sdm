@@ -154,10 +154,11 @@ crs(substrate_all) <- "EPSG:3005"
 bathy_all <- terra::vrt(c("raw_data/envlayers-20m-hg/bathymetry.tif", "raw_data/envlayers-20m-ncc/bathymetry.tif", "raw_data/envlayers-20m-qcs/bathymetry.tif", "raw_data/envlayers-20m-wcvi/bathymetry.tif", "raw_data/envlayers-20m-shelfsalishsea/bathymetry.tif"), "bathy.vrt", overwrite=T)
 slope_all <- terra::vrt(c("raw_data/envlayers-20m-hg/slope.tif", "raw_data/envlayers-20m-ncc/slope.tif", "raw_data/envlayers-20m-qcs/slope.tif", "raw_data/envlayers-20m-wcvi/slope.tif", "raw_data/envlayers-20m-shelfsalishsea/slope.tif"), "slope.vrt", overwrite=T)
 
-# get predictions
+# get predictions (tried loading from mosaics earlier and didn't work)
 parent_dir <- "raster/eelgrass"
 folders <- list.dirs(parent_dir, recursive = FALSE)
 
+# load and mosaic eelgrass SDM rasters from 4 different SDM predictions
 mosaics <- list()
 
 for (f in folders) {
@@ -180,33 +181,37 @@ for (f in folders) {
     mosaics[[folder_name]]$pred <- do.call(mosaic, r_pred)
   }
   
-  # mosaic SE files
+  #mosaic SE files
   if (length(se_files) > 0) {
     r_se <- lapply(se_files, rast)
     mosaics[[folder_name]]$se <- do.call(mosaic, r_se)
   }
 }
 
-sdm_resampled <- lapply(mosaics, function(p) {
+
+mosaics_flat <- unlist(mosaics, recursive = FALSE)
+sdm_resampled <- lapply(mosaics_flat, function(p) {
   
   lapply(p, function(r) {
     
+    r <- terra::writeRaster(r, tempfile(fileext = ".tif"), overwrite = TRUE)
+    
     if (!terra::compareGeom(r, bathy_all, crs = TRUE, stopOnError = FALSE)) {
-      r <- project(r, bathy_all)
+      r <- terra::project(r, bathy_all)
     }
     
-    crop(
-      resample(r, bathy_all, method = "bilinear"),
+    terra::crop(
+      terra::resample(r, bathy_all, method = "bilinear"),
       bathy_all
     )
   })
 })
 
 
-rstack <- c(sdm_resampled[[1]]$pred, sdm_resampled[[1]]$se, sdm_resampled[[2]]$pred, sdm_resampled[[2]]$se, sdm_resampled[[3]]$pred, sdm_resampled[[3]]$se, sdm_resampled[[4]]$pred, sdm_resampled[[4]]$se)
+rstack <- c(sdm_resampled[[1]], sdm_resampled[[2]], sdm_resampled[[3]], sdm_resampled[[4]], sdm_resampled[[5]], sdm_resampled[[6]], sdm_resampled[[7]], sdm_resampled[[8]])
 names(rstack) <- c("eelgrass_bccm_nospatial_pred", "eelgrass_bccm_nospatial_se", "eelgrass_bccm_spatial_pred", "eelgrass_bccm_spatial_se", "eelgrass_nep_nospatial_pred", "eelgrass_nep_nospatial_pred", "eelgrass_nep_spatial_pred", "eelgrass_nep_spatial_se")
 
-
+rstack <- terra::rast(rstack)
 
 
 bathy_extract <- terra::extract(bathy_all, validation_sf)

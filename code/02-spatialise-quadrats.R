@@ -464,11 +464,14 @@ names(nquads)[2] <- "NumQuadrats"
 spatialised<-spatialised %>% select("Survey","Year","Month","Day","HKey","ID" , "X", "Y",
              "LonDeep","LatDeep","LonShallow","LatShallow", "CorDepthM", "Slope", "Substrate", "PerCovZO", "PH", "ZO")
 
-spatialised<- spatialised%>%
+write.csv( spatialised, file="code/output_data/SpatializedQuadrats_notaggregated.csv") 
+
+
+spatialised<- spatialised %>%
   rbind(ABL.spdf, remote.spdf)
 
 
-write.csv( spatialised, file="code/output_data/SpatializedQuadrats_notaggregated.csv") 
+
 
 
 # Convert to spdf
@@ -481,7 +484,7 @@ st_write(spatialised.spdf, "code/output_data/processed_observations/SpatializedQ
 
 save(spatialised, file="code/output_data/processed_observations/seagrass_data_spatialized.RData")
 
-
+#spatialised<- spatialised %>% filter(Survey != "Remote")
 
 #----------------------------------------------------------------------------#
 
