@@ -37,6 +37,7 @@ spat <- spat %>%
   rename(Slope = mean_slope,
          CorDepthM = mean_CorDepthM)
 
+# remove the remote sensed observations that we tested as they don't improve model preformance and they are not as accurate as dive observations
 spat <- spat %>% filter(Survey!="Remote")
 
 # 97623 obs at 20 m resolution

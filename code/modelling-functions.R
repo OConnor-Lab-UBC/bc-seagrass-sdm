@@ -384,6 +384,61 @@ calcThresh <- function( x ){
   return(obspred)
 }
 
+# evalulate forecast 
+evaluate_forecast <- function(obs_train,
+                              pred_train,
+                              obs_test,
+                              pred_test,
+                              threshold = NULL) {
+  
+  # Coerce to numeric
+  obs_train <- as.numeric(obs_train)
+  obs_test  <- as.numeric(obs_test)
+  pred_train <- as.numeric(pred_train)
+  pred_test  <- as.numeric(pred_test)
+  
+  # Use provided threshold or fallback
+  if(is.null(threshold)) {
+    threshold <- max(0.01, mean(obs_train))  # fallback for rare species
+  }
+  
+  # Binary predictions
+  pred_train_bin <- as.numeric(pred_train >= threshold)
+  pred_test_bin  <- as.numeric(pred_test  >= threshold)
+  
+  # Confusion matrices
+  cm_train <- table(factor(obs_train, levels = c(0,1)),
+                    factor(pred_train_bin, levels = c(0,1)))
+  cm_test  <- table(factor(obs_test, levels = c(0,1)),
+                    factor(pred_test_bin, levels = c(0,1)))
+  
+  # TSS
+  sens_train <- ifelse(sum(cm_train["1",]) > 0, cm_train["1","1"]/sum(cm_train["1",]), NA)
+  spec_train <- ifelse(sum(cm_train["0",]) > 0, cm_train["0","0"]/sum(cm_train["0",]), NA)
+  TSS_train  <- sens_train + spec_train - 1
+  
+  sens_test  <- ifelse(sum(cm_test["1",]) > 0, cm_test["1","1"]/sum(cm_test["1",]), NA)
+  spec_test  <- ifelse(sum(cm_test["0",]) > 0, cm_test["0","0"]/sum(cm_test["0",]), NA)
+  TSS_test   <- sens_test + spec_test - 1
+  
+  # Other metrics
+  Tjur_train <- mean(pred_train[obs_train==1]) - mean(pred_train[obs_train==0])
+  Tjur_test  <- mean(pred_test[obs_test==1]) - mean(pred_test[obs_test==0])
+  RMSE_train <- sqrt(mean((obs_train - pred_train)^2))
+  RMSE_test  <- sqrt(mean((obs_test - pred_test)^2))
+  AUC_train  <- ModelMetrics::auc(obs_train, pred_train)
+  AUC_test   <- ModelMetrics::auc(obs_test, pred_test)
+  
+  # Return
+  data.frame(
+    dataset = c("training","forecast"),
+    AUC = c(AUC_train, AUC_test),
+    TjurR2 = c(Tjur_train, Tjur_test),
+    RMSE = c(RMSE_train, RMSE_test),
+    TSS = c(TSS_train, TSS_test),
+    threshold_used = threshold
+  )
+}
 
 evalfmod <- function( x, thresh ){
   eval.df <- data.frame()

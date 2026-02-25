@@ -21,7 +21,7 @@ UsePackages(c("sdmTMB", "sdmTMBextra", "tidyverse", "sf", "future", "terra", "fu
 ####load prediction data####
 load("code/output_data/prediction_model_inputs.RData")
 load("code/output_data/seagrass_model_inputs.RData")
-load("code/output_data/model_results/final_eelgrass_model.RData")
+#load("code/output_data/model_results/final_eelgrass_model.RData")
 unique(data$Survey)
 # make predictions and get standard error
 

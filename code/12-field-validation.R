@@ -62,24 +62,6 @@ validation_sf <- validation_sf %>%
 validation_sf <- validation_sf %>%
   filter(!HKey %in% c(74, 84, 85, 161))
 
-# noticed error in database that have alerted to Sandie so remove this once it is changed
-validation_sf$PC_ZM[validation_sf$HKey == "125"] <- "51-75"
-validation_sf$PC_PH[validation_sf$HKey == "125"] <- "0"
-
-# here are some more errors that need to be addressed in database still
-validation_sf$PC_ZM[validation_sf$HKey == "160"] <- "0"
-validation_sf$PC_ZM[validation_sf$HKey == "536"] <- "0"
-validation_sf$PC_ZM[validation_sf$HKey == "585"] <- "0"
-validation_sf$PC_PH[validation_sf$HKey == "160"] <- "0"
-validation_sf$PC_PH[validation_sf$HKey == "536"] <- "0"
-validation_sf$PC_PH[validation_sf$HKey == "588"] <- "26-50"
-validation_sf$ZM[validation_sf$HKey == "35"] <- "0"
-validation_sf$ZM[validation_sf$HKey == "521"] <- "0"
-validation_sf$PH[validation_sf$HKey == "521"] <- "1"
-validation_sf$ZM[validation_sf$HKey == "545"] <- "0"
-validation_sf$PH[validation_sf$HKey == "545"] <- "1"
-# Also in HKey 35 need to remove NT and UL as they were drift observations, and also remove PT observation as must be wrong, PC is 0 and there is no rock at site
-
 # determine difference between observed and modelled environmental layers
 # if either observed or modelled layers were mixed these were always retained as we are just looking at predominant substrate and most sites are actually mixed in reality
 validation_sf <- validation_sf %>%

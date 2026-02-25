@@ -8,10 +8,7 @@
 #
 # Objective:
 # ---------
-# extract oceanography data from BCCM, NEP36, Salish Sea Cast, CHELSA, WorldClim
-#
-# STILL TO DO
-# ADD NEP36 data and atmospheric data
+# extract oceanography data from BCCM, NEP36, Salish Sea Cast, CHELSA
 ###############################################################################
 
 #load packages####
