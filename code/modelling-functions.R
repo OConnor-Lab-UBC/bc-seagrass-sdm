@@ -124,6 +124,11 @@ mdb_connection <- function(db_file_path)  {
 #####  SDM Functions #####
 ##########################
 
+# tjur <- function(y, pred){
+#   mean(pred[y == 1], na.rm = TRUE) - mean(pred[y == 0], na.rm = TRUE)
+# }
+
+
 tjur <- function(y, pred) {
   categories <- sort(unique(y))
   m1 <- mean(pred[which(y == categories[1])], na.rm = TRUE)
@@ -136,6 +141,43 @@ ll_binomial <- function(withheld_y, withheld_mu) {
 # cloglog inverse link from stats::family()
 pclog <- function(x){
   pmax(pmin(-expm1(-exp(x)), 1 - .Machine$double.eps), .Machine$double.eps)
+}
+
+
+
+rmse <- function(obs, pred) {
+  sqrt(mean((obs - pred)^2))
+}
+
+tss_metric <- function(obs, pred, threshold) {
+  pred_bin <- as.numeric(pred >= threshold)
+  cm <- table(factor(obs, levels = c(0,1)),
+              factor(pred_bin, levels = c(0,1)))
+  
+  sens <- ifelse(sum(cm["1",]) > 0, cm["1","1"]/sum(cm["1",]), NA)
+  spec <- ifelse(sum(cm["0",]) > 0, cm["0","0"]/sum(cm["0",]), NA)
+  sens + spec - 1
+}
+
+get_optimal_threshold <- function(obs, pred) {
+  df <- data.frame(
+    id = seq_along(obs),
+    obs = obs,
+    pred = pred
+  )
+  
+  out <- tryCatch({
+    PresenceAbsence::optimal.thresholds(
+      df,
+      opt.methods = "MaxSens+Spec"
+    )$predicted[1]
+  }, error = function(e) NA)
+  
+  if(is.null(out) || is.na(out)) {
+    out <- mean(obs)  # prevalence fallback
+  }
+  
+  return(out)
 }
 
 # forward feature selection glm
