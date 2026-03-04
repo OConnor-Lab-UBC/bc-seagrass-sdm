@@ -86,53 +86,54 @@ plan(multisession)
 
 # model indicated by looking at ffs and at variable relative importance and also considering what is important for future change, and also what resulted in highest AUC, Tjur and sum loglikelihood
 # no spatial
-# AUC = 0.940, tjur = 0.264, loglike -9258
+# AUC = 0.93, tjur = 0.26, loglike -9284
 m_e_1 <- sdmTMB_cv(formula = presence ~ s(depth_stnd, k = 3) + substrate + slope_stnd + rei_stnd +  
                       s(airtempmin_stnd, k = 3) + rsdsmin_stnd + #chelsa variables
                       saltcv_bccm_stnd + NH4_bccm_stnd + tempmin_bccm_stnd + #bccm variables
                      (1|Survey),  #random effect
                    mesh = barrier_mesh, family = binomial(link = "logit"), spatial = FALSE, data = data, fold_ids = "fold")
 
-eval_cv_bccm_nospatial <- evalStats( folds=1:numFolds,m=m_e_1, CV=cv_list_eelgrass$cv)
+eval_cv_bccm_nospatial <- evalStats(folds = 1:numFolds,  m = m_e_1,  CV = cv_list_eelgrass$cv,  response_col = "presence")
 eval_cv_bccm_nospatial
 
 # best bccm model with spatial 
-# AUC 0.939, tjur 0.309, loglike -9468
+# AUC 0.92, tjur 0.27, loglike -10135
 m_e_2 <- sdmTMB_cv(formula = presence ~ s(depth_stnd, k = 3) + substrate + slope_stnd + rei_stnd +
                      ##chelsa variables, chelsa variables change in importance compared to non spatial model
                      saltcv_bccm_stnd + NH4_bccm_stnd + #bccm variables
                      (1|Survey),  #random effect
-                    mesh = barrier_mesh, family = binomial(link = "logit"), spatial = TRUE, data = data, fold_ids = "fold")
-
-eval_cv_bccm_spatial <- evalStats( folds=1:numFolds,m=m_e_2, CV=cv_list_eelgrass$cv)
+                    mesh = barrier_mesh, family = binomial(link = "logit"), spatial = TRUE, data = data, fold_ids = "fold") # this is the model that will be used 
+#m_e_2$models
+eval_cv_bccm_spatial <- evalStats(folds = 1:numFolds,  m = m_e_2,  CV = cv_list_eelgrass$cv,  response_col = "presence")
 eval_cv_bccm_spatial
 
+
 # nep model no spatial
-#AUC = 0.930, tjur = 0.234, loglike -9252 
+#AUC = 0.930, tjur = 0.25, loglike -9280 
 m_e_3 <- sdmTMB_cv(formula = presence ~  s(depth_stnd, k = 3) + substrate + slope_stnd + rei_stnd + 
                      s(airtempmin_stnd, k = 3) + rsdsmin_stnd + #chelsa variables
                      saltcv_nep_stnd + tempcv_nep_stnd + #    ##nep variables
                      (1|Survey),  #random effect
                    mesh = barrier_mesh, family = binomial(link = "logit"), spatial = FALSE, data = data, fold_ids = "fold")
 
-eval_cv_nep_nospatial <- evalStats( folds=1:numFolds,m=m_e_3,CV=cv_list_eelgrass$cv)
+eval_cv_nep_nospatial <- evalStats(folds = 1:numFolds,  m = m_e_3,  CV = cv_list_eelgrass$cv,  response_col = "presence")
 eval_cv_nep_nospatial
 
 
 # find nep model with spatial 
-#AUC = 0.937, tjur = 0.304, loglike -9481 
+#AUC = 0.92, tjur = 0.27, loglike -10175 
 m_e_4 <- sdmTMB_cv(formula = presence ~  s(depth_stnd, k = 3) + substrate + slope_stnd + rei_stnd + 
                      airtempmin_stnd + #chelsa variables not as important when spatial field
                      saltcv_nep_stnd + tempcv_nep_stnd + ##nep variables
                      (1|Survey),  #random effect
                    mesh = barrier_mesh, family = binomial(link = "logit"), spatial = TRUE, data = data, fold_ids = "fold")
 
-eval_cv_nep_spatial <- evalStats( folds=1:numFolds,m=m_e_4,CV=cv_list_eelgrass$cv)
+eval_cv_nep_spatial <- evalStats(folds = 1:numFolds,  m = m_e_4,  CV = cv_list_eelgrass$cv,  response_col = "presence")
 eval_cv_nep_spatial
 
 # cv stats from all best models and save
 eval_cv_list <- list(eval_cv_bccm_nospatial, eval_cv_bccm_spatial, eval_cv_nep_nospatial, eval_cv_nep_spatial)
-save(eval_cv_list, file = "code/output_data/model_results/eval_cv.RData")
+save(eval_cv_list, file = "code/output_data/model_results/eelgrass_eval_cv.RData")
 # NEP spatial and BCCM spatial winners and metrics very comparable to each other. For sum log likelihood BCCM spatial is better, but again pretty marginal
 # the spatial random fields is able to account for the atmospheric variables and they are no longer important in the model. 
 
@@ -466,7 +467,7 @@ forecast_predict_eelgrass_bccm <- evaluate_forecast(
   pred_train = pre_2013,
   obs_test = obs_forecast,
   pred_test = forecast,
-  threshold = 0.05 # from full model fit
+  threshold = 0.037 # from cv model fit
 )
 
 forecast_predict_eelgrass_bccm$model <- "BCCM_no_spatial"
@@ -477,7 +478,7 @@ forecast_predict_eelgrass_bccm_spatial <- evaluate_forecast(
   pred_train = pre_2013_spatial,
   obs_test = obs_forecast,
   pred_test = forecast_spatial,
-  threshold = 0.04 # from full model fit
+  threshold = 0.037 # from cv model fit
 )
 
 forecast_predict_eelgrass_bccm_spatial$model <- "BCCM_spatial"
@@ -519,7 +520,7 @@ forecast_predict_eelgrass_nep <- evaluate_forecast(
   pred_train = pre_2013,
   obs_test = obs_forecast,
   pred_test = forecast,
-  threshold = 0.05 # from full model fit
+  threshold = 0.037 # from cv model fit
 )
 
 forecast_predict_eelgrass_nep$model <- "NEP_no_spatial"
@@ -530,7 +531,7 @@ forecast_predict_eelgrass_nep_spatial <- evaluate_forecast(
   pred_train = pre_2013,
   obs_test = obs_forecast,
   pred_test = forecast,
-  threshold = 0.04 # from full model fit
+  threshold = 0.037 # from cv model fit
 )
 
 forecast_predict_eelgrass_nep_spatial$model <- "NEP_spatial"
@@ -707,43 +708,43 @@ plan(multisession)
 
 # bccm model indicated by looking at ffs and at variable relative importance and also considering what is important for future change, and also what resulted in highest AUC, Tjur and sum loglikelihood
 # no spatial 
-# AUC = 0.964, tjur = 0.255, loglike -3583 
+# AUC = 0.968, tjur = 0.248, loglike -3706 
 m_s_1 <- sdmTMB_cv(formula = presence ~ s(depth_stnd) + tidal_sqrt_stnd  + s(rei_sqrt_stnd, k = 3) + substrate + cul_eff_stnd + 
                       airtempcv_stnd + prmean_stnd + rsdsmin_stnd + #chelsa variables
                       saltcv_bccm_stnd + NO3_bccm_stnd + tempmin_bccm_stnd + surftempcv_bccm_stnd + #bccm variables
                       (1|Survey),  #random effect
                     mesh = barrier_mesh, family = binomial(link = "logit"), spatial = FALSE, data = data, fold_ids = "fold")
-eval_cv_bccm_nospatial <- evalStats( folds=1:numFolds,m=m_s_1,CV=cv_list_seagrass$cv)
+eval_cv_bccm_nospatial <- evalStats( folds=1:numFolds,m=m_s_1,CV=cv_list_seagrass$cv,  response_col = "presence")
 eval_cv_bccm_nospatial
 
 # bccm model with spatial
-# AUC = 0.968, tjur = 0.179, loglike -3689 
+# AUC = 0.968, tjur = 0.324, loglike -6333 
 m_s_2 <- sdmTMB_cv(formula = presence ~ s(depth_stnd) + s(rei_sqrt_stnd, k = 3) + substrate +    
                      airtempcv_stnd +  
                      surftempcv_bccm_stnd + 
                      (1|Survey),  #random effect
                    mesh = barrier_mesh, family = binomial(link = "logit"), spatial = TRUE, data = data, fold_ids = "fold")
-eval_cv_bccm_spatial <- evalStats( folds=1:numFolds,m=m_s_2,CV=cv_list_seagrass$cv)
+eval_cv_bccm_spatial <- evalStats( folds=1:numFolds,m=m_s_2,CV=cv_list_seagrass$cv,  response_col = "presence")
 eval_cv_bccm_spatial
 
 # nep model no spatial
-# AUC = 0.965, tjur = 0.268, loglike -3543 
+# AUC = 0.969, tjur = 0.240, loglike -3724 
 m_s_3 <- sdmTMB_cv(formula = presence ~ s(depth_stnd) + tidal_sqrt_stnd  + s(rei_sqrt_stnd, k = 3) + substrate + cul_eff_stnd + 
                      airtempcv_stnd + prmean_stnd + #chelsa variables
                      saltmean_nep_stnd +  tempmean_nep_stnd + surftempcv_nep_stnd + #nep variables
                      (1|Survey),  #random effect
                    mesh = barrier_mesh, family = binomial(link = "logit"), spatial = FALSE, data = data, fold_ids = "fold")
-eval_cv_nep_nospatial <- evalStats( folds=1:numFolds,m=m_s_3,CV=cv_list_seagrass$cv)
+eval_cv_nep_nospatial <- evalStats( folds=1:numFolds,m=m_s_3,CV=cv_list_seagrass$cv,  response_col = "presence")
 eval_cv_nep_nospatial
 
 # nep model spatial 
-# AUC = 0.968, tjur = 0.206, loglike -3667
+# AUC = 0.969, tjur = 0.291, loglike -4464
 m_s_4 <- sdmTMB_cv(formula = presence ~ s(depth_stnd) + s(rei_sqrt_stnd, k = 3) + substrate +  
                      airtempcv_stnd + prmean_stnd + #chelsa variables
                      saltmean_nep_stnd + tempmean_nep_stnd + surftempcv_nep_stnd + #nep variables
                      (1|Survey),  #random effect
                    mesh = barrier_mesh, family = binomial(link = "logit"), spatial = TRUE, data = data, fold_ids = "fold")
-eval_cv_nep_spatial <- evalStats( folds=1:numFolds,m=m_s_4,CV=cv_list_seagrass$cv)
+eval_cv_nep_spatial <- evalStats( folds=1:numFolds,m=m_s_4,CV=cv_list_seagrass$cv,  response_col = "presence")
 eval_cv_nep_spatial
 
 # cv stats from all best models and save
@@ -1057,7 +1058,7 @@ save(samps, mcmc_res, ret, r_ret, file = "code/output_data/model_results/residua
 
 #### test forecasting
 # left a few years gap 2010-2012 #trained model with 1993-2009
-data_pre2013 <- data %>% filter(Year < 2010)
+data_pre2013 <- data %>% dplyr::filter(Year < 2010)
 unique(data_pre2013$Survey)
 mesh_pre2013 <- make_mesh(data = data_pre2013, xy_cols = c("X", "Y"), cutoff = 85) 
 plot(mesh_pre2013)
@@ -1095,7 +1096,7 @@ forecast_predict_surfgrass_bccm <- evaluate_forecast(
   pred_train = pre_2013,
   obs_test = obs_forecast,
   pred_test = forecast,
-  threshold = 0.01 # from full model fit
+  threshold = 0.014 # from cv model fit
 )
 
 forecast_predict_surfgrass_bccm$model <- "BCCM_no_spatial"
@@ -1106,7 +1107,7 @@ forecast_predict_surfgrass_bccm_spatial <- evaluate_forecast(
   pred_train = pre_2013_spatial,
   obs_test = obs_forecast,
   pred_test = forecast_spatial,
-  threshold = 0.02 # from full model fit
+  threshold = 0.014 # from cv model fit
 )
 
 forecast_predict_surfgrass_bccm_spatial$model <- "BCCM_spatial"
@@ -1149,7 +1150,7 @@ forecast_predict_surfgrass_nep <- evaluate_forecast(
   pred_train = pre_2013,
   obs_test = obs_forecast,
   pred_test = forecast,
-  threshold = 0.01 # from full model fit
+  threshold = 0.014 # from cv model fit
 )
 
 forecast_predict_surfgrass_nep$model <- "NEP_no_spatial"
@@ -1160,7 +1161,7 @@ forecast_predict_surfgrass_nep_spatial <- evaluate_forecast(
   pred_train = pre_2013,
   obs_test = obs_forecast,
   pred_test = forecast,
-  threshold = 0.02 # from full model fit
+  threshold = 0.014 # from cv model fit
 )
 
 forecast_predict_surfgrass_nep_spatial$model <- "NEP_spatial"

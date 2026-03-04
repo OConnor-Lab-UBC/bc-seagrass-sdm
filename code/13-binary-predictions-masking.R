@@ -16,6 +16,8 @@
 # decide on best threshold, from model and whether to modify it based on field validation
 # models that does best across 4 forms of validation is sdmtmb bccm spatial
 
+# tss from sdm tmb models was from full model, should get tss also from cv folds and the 
+
 ###############################################################################
 
 library(terra)

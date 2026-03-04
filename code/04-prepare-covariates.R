@@ -263,20 +263,24 @@ sp_blocks_eelgrass <- cv_spatial(x = spatialised_sf,
                         column = NULL,
                         k = 10, # 10 or more is recommended best practice Yates et al 2023
                         hexagon = FALSE,
-                        size = 40000,  #in meters, matern range is 32km for eelgrass and 71km for surfgrass
+                        size = 110000,  #in meters, matern range ~ 106km for eelgrass and 192km for surfgrass
                         selection = "random",
                         biomod2 = FALSE,
                         seed = 42, # to ensure reproducibility
                         plot = FALSE)
 
+#having trouble getting presences in all blocks for surfgrass
+# not possible to have blocks that are greater than matern range for surfgrass (192km)
+# You generally want: Block size ≈ scale of autocorrelation
+
 sp_blocks_seagrass <- cv_spatial(x = spatialised_sf,
                                  column = NULL,
                                  k = 10, # 10 or more is recommended best practice Yates et al 2023
                                  hexagon = FALSE,
-                                 size = 75000,  #in meters, matern range is 32km for eelgrass and 71km for surfgrass
+                                 size = 160000,  #in meters, matern range ~ 106km for eelgrass and 192km for surfgrass
                                  selection = "random",
                                  biomod2 = FALSE,
-                                 seed = 42, # to ensure reproducibility
+                                 seed = 123, # to ensure reproducibility
                                  plot = FALSE)
 spatialised_sf$fold_eelgrass <- sp_blocks_eelgrass$folds_ids
 spatialised_sf$fold_seagrass <- sp_blocks_seagrass$folds_ids
