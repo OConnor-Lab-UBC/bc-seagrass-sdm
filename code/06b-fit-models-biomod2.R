@@ -37,6 +37,84 @@ seagrass_data_long <- seagrass_data_long %>%
     HKey = as.factor(HKey),
     Year_factor = as.factor(Year)
   )
+
+
+
+#GBM and GXBOOST are the best models so need to tune to find best hyper parameters
+## eelgrass
+sp = "ZO"
+numFolds <- length(unique(seagrass_data$fold_eelgrass))
+dat2 <- filter(seagrass_data_long, species == sp) %>% rename(fold = fold_eelgrass)
+
+pred_vars <- c(
+  "depth_stnd", "slope_stnd", "rei_stnd", "substrate",
+  "airtempmin_stnd", "rsdsmin_stnd", "prmin_stnd",
+  "saltcv_bccm_stnd", "NH4_bccm_stnd", "tempmin_bccm_stnd"
+)
+
+#surfgrass
+sp = "PH"
+numFolds <- length(unique(seagrass_data$fold_seagrass))
+dat2 <- filter(seagrass_data_long, species == sp) %>% rename(fold = fold_seagrass)
+
+pred_vars <- c("depth_stnd", "tidal_sqrt_stnd", "rei_sqrt_stnd", "substrate", "cul_eff_stnd", 
+                 "airtempcv_stnd", "prmean_stnd", "rsdsmin_stnd", "saltcv_bccm_stnd", 
+                 "NO3_bccm_stnd", "tempmin_bccm_stnd", "surftempcv_bccm_stnd") 
+
+gbm_grid <- expand.grid(
+  interaction.depth = c(2,3,4),
+  shrinkage = c(0.01, 0.005),
+  n.minobsinnode = c(5,10)
+)
+
+gbm_tuning <- tune_gbm(
+  dat = dat2,
+  predictors = pred_vars,
+  gbm_grid = gbm_grid
+)
+
+
+head(gbm_tuning)
+
+best_gbm <- gbm_tuning[1,]
+print (best_gbm)
+#eelgrass
+#    depth    lr minobs  trees       AUC     AUC_sd
+#    2 0.005     10 4696.2 0.9211391 0.01825039
+
+#surfgrass
+#  depth    lr minobs  trees       AUC     AUC_sd
+#     4 0.005      5 2418.9 0.9446731 0.03416803
+
+xgb_results <- tune_xgboost_spatial_parallel(
+  dat = dat2,                   # your full data frame with presence/absence
+  pred_vars = c(
+    "depth_stnd", "slope_stnd", "rei_stnd", "substrate",
+    "airtempmin_stnd", "rsdsmin_stnd", "prmin_stnd",
+    "saltcv_bccm_stnd", "NH4_bccm_stnd", "tempmin_bccm_stnd"),  # predictor columns
+  folds = dat2$fold,            # pre-defined fold column
+  eta_vals = c(0.01, 0.05, 0.1),   # learning rates to try
+  max_depth_vals = c(3, 5, 7),     # tree depths to try
+  subsample_vals = c(0.7, 1),      # row subsampling
+  colsample_bytree_vals = c(0.7, 1), # column subsampling
+  nrounds = 5000,                  # max trees
+  early_stop = 50,                 # early stopping rounds
+  n_cores = 4                      # number of parallel cores to use
+)
+
+
+#eelgrass
+# Because multiple parameter combinations produced nearly identical AUC values, we selected a slightly less complex model (max_depth = 5) to reduce overfitting and improve model generalization.
+#Chose these parameters
+#eta = 0.05
+#max_depth = 5
+#subsample = 0.7
+#colsample_bytree = 0.7
+
+#surfgrass
+
+
+
 ###############################################################################
 # MODEL CONFIGURATION
 ###############################################################################
@@ -88,6 +166,7 @@ model_configs <- list(
     ocean_model = "nep"
   )
 )
+
 ml_models <- c("GBM", "RF", "XGBOOST", "ANN", "CTA")
 ###############################################################################
 # MAIN LOOP
@@ -116,6 +195,17 @@ for (config_name in names(model_configs)) {
   )
   gbm_threshold <- gbm_cv_results$mean_threshold
   
+  # 2a. Independent XGBoost CV
+  message("Running independent XGBoost CV...")
+  xgb_cv_results <- run_xgb_cv(
+    dat = biomod_results$data,
+    predictors = config$pred_vars,
+    response = "presence",
+    fold_col = "fold"
+  )
+  
+  xgb_threshold <- xgb_cv_results$mean_threshold
+  
   # 3. Temporal forecast
   message("Running temporal forecast...")
   forecast_results <- run_temporal_forecast(
@@ -123,13 +213,15 @@ for (config_name in names(model_configs)) {
     pred_vars = config$pred_vars,
     config = config,
     biomod_thresholds = biomod_results$tss_thresholds,
-    gbm_threshold = gbm_threshold
+    gbm_threshold = gbm_threshold,
+    xgb_threshold = xgb_threshold
   )
   
   # Combine metrics
   cv_metrics_combined <- biomod_results$auc_metrics %>%
     left_join(biomod_results$tss_thresholds, by = "algo") %>%
-    bind_rows(gbm_cv_results)
+    bind_rows(gbm_cv_results) %>%
+    bind_rows(xgb_cv_results)
   
   all_results[[config_name]] <- list(
     config = config,
@@ -189,140 +281,6 @@ save(cv_summary, file = "code/output_data/model_results/seagrass_cv_metrics_biom
 save(forecast_summary, file = "code/output_data/model_results/seagrass_forecast_metrics_biomod2.RData")
 
 
-
-#### make projection of GBM eelgrass models only
-#this was not working in biomod!
-load("code/output_data/prediction_model_inputs.RData")
-
-#BCCM model
-env<- env_20m_all %>% dplyr::select(depth_stnd, slope_stnd, rei_stnd, substrate, airtempmin_stnd, rsdsmin_stnd, prmin_stnd, 
-                                    saltcv_bccm_stnd, NH4_bccm_stnd, tempmin_bccm_stnd)
-
-set.seed(123)
-# make a full gbm model without cv
-gbm_fit <- gbm(
-  presence ~ .,
-  data = dat2[, c("presence", pred_vars)],
-  distribution = "bernoulli",
-  n.trees = 5000,
-  interaction.depth = 3,
-  shrinkage = 0.005,
-  bag.fraction = 0.5,
-  n.minobsinnode = 10,
-  train.fraction = 1,
-  verbose = FALSE
-)
-
-gbm_prob <- predict(
-  gbm_fit,
-  newdata = env,
-  n.trees = 5000,
-  type = "response"   # returns probabilities for bernoulli 
-)
-
-range(gbm_prob)
-
-
-env_20m_all$gbm_prob <- gbm_prob
-
-outdir <- file.path("./raster/eelgrass/gbm_bccm")
-if (!dir.exists(outdir)) dir.create(outdir, recursive = TRUE)
-
-raster_hg <- env_20m_all %>%
-  filter(region == "Haida Gwaii") %>%
-  dplyr::select(X_m, Y_m, gbm_prob)
-raster_hg <- rast(x = raster_hg %>% as.matrix, type = "xyz", crs = "EPSG:3005")
-writeRaster(raster_hg, file.path(outdir, paste0("eelgrass_predictions_hg_gbm_bccm.tif")), overwrite = TRUE)
-
-raster_ss <- env_20m_all %>%
-  filter(region == "Salish Sea") %>%
-  dplyr::select(X_m, Y_m, gbm_prob)
-raster_ss <- rast(x = raster_ss %>% as.matrix, type = "xyz", crs = "EPSG:3005")
-writeRaster(raster_ss, file.path(outdir, paste0("eelgrass_predictions_ss_gbm_bccm.tif")), overwrite = TRUE)
-
-raster_wcvi <- env_20m_all %>%
-  filter(region == "West Coast Vancouver Island") %>%
-  dplyr::select(X_m, Y_m, gbm_prob)
-raster_wcvi <- rast(x = raster_wcvi %>% as.matrix, type = "xyz", crs = "EPSG:3005")
-writeRaster(raster_wcvi, file.path(outdir, paste0("eelgrass_predictions_wcvi_gbm_bccm.tif")), overwrite = TRUE)
-
-raster_ncc <- env_20m_all %>%
-  filter(region == "North Central Coast") %>%
-  dplyr::select(X_m, Y_m, gbm_prob)
-raster_ncc <- rast(x = raster_ncc %>% as.matrix, type = "xyz", crs = "EPSG:3005")
-writeRaster(raster_ncc, file.path(outdir, paste0("eelgrass_predictions_ncc_gbm_bccm.tif")), overwrite = TRUE)
-
-raster_qcs <- env_20m_all %>%
-  filter(region == "Queen Charlotte Strait") %>%
-  dplyr::select(X_m, Y_m, gbm_prob)
-raster_qcs <- rast(x = raster_qcs %>% as.matrix, type = "xyz", crs = "EPSG:3005")
-writeRaster(raster_qcs, file.path(outdir, paste0("eelgrass_predictions_qcs_gbm_bccm.tif")), overwrite = TRUE)
-
-
-
-#NEP model
-env<- env_20m_all %>% dplyr::select(depth_stnd, slope_stnd, rei_stnd, substrate, airtempmin_stnd, rsdsmin_stnd, prmin_stnd, 
-                                    saltcv_nep_stnd, tempcv_nep_stnd)
-
-set.seed(123)
-# make a full gbm model without cv
-gbm_fit <- gbm(
-  presence ~ .,
-  data = dat2[, c("presence", pred_vars)],
-  distribution = "bernoulli",
-  n.trees = 5000,
-  interaction.depth = 3,
-  shrinkage = 0.005,
-  bag.fraction = 0.5,
-  n.minobsinnode = 10,
-  train.fraction = 1,
-  verbose = FALSE
-)
-
-gbm_prob <- predict(
-  gbm_fit,
-  newdata = env,
-  n.trees = 5000,
-  type = "response"   # returns probabilities for bernoulli 
-)
-
-range(gbm_prob)
-
-
-env_20m_all$gbm_prob <- gbm_prob
-
-outdir <- file.path("./raster/eelgrass/gbm_nep")
-if (!dir.exists(outdir)) dir.create(outdir, recursive = TRUE)
-
-raster_hg <- env_20m_all %>%
-  filter(region == "Haida Gwaii") %>%
-  dplyr::select(X_m, Y_m, gbm_prob)
-raster_hg <- rast(x = raster_hg %>% as.matrix, type = "xyz", crs = "EPSG:3005")
-writeRaster(raster_hg, file.path(outdir, paste0("eelgrass_predictions_hg_gbm_nep.tif")), overwrite = TRUE)
-
-raster_ss <- env_20m_all %>%
-  filter(region == "Salish Sea") %>%
-  dplyr::select(X_m, Y_m, gbm_prob)
-raster_ss <- rast(x = raster_ss %>% as.matrix, type = "xyz", crs = "EPSG:3005")
-writeRaster(raster_ss, file.path(outdir, paste0("eelgrass_predictions_ss_gbm_nep.tif")), overwrite = TRUE)
-
-raster_wcvi <- env_20m_all %>%
-  filter(region == "West Coast Vancouver Island") %>%
-  dplyr::select(X_m, Y_m, gbm_prob)
-raster_wcvi <- rast(x = raster_wcvi %>% as.matrix, type = "xyz", crs = "EPSG:3005")
-writeRaster(raster_wcvi, file.path(outdir, paste0("eelgrass_predictions_wcvi_gbm_nep.tif")), overwrite = TRUE)
-
-raster_ncc <- env_20m_all %>%
-  filter(region == "North Central Coast") %>%
-  dplyr::select(X_m, Y_m, gbm_prob)
-raster_ncc <- rast(x = raster_ncc %>% as.matrix, type = "xyz", crs = "EPSG:3005")
-writeRaster(raster_ncc, file.path(outdir, paste0("eelgrass_predictions_ncc_gbm_nep.tif")), overwrite = TRUE)
-
-raster_qcs <- env_20m_all %>%
-  filter(region == "Queen Charlotte Strait") %>%
-  dplyr::select(X_m, Y_m, gbm_prob)
-raster_qcs <- rast(x = raster_qcs %>% as.matrix, type = "xyz", crs = "EPSG:3005")
-writeRaster(raster_qcs, file.path(outdir, paste0("eelgrass_predictions_qcs_gbm_nep.tif")), overwrite = TRUE)
 
 
 

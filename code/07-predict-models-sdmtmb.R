@@ -22,16 +22,17 @@ UsePackages(c("sdmTMB", "sdmTMBextra", "tidyverse", "sf", "future", "terra", "fu
 load("code/output_data/prediction_model_inputs.RData")
 load("code/output_data/seagrass_model_inputs.RData")
 #load("code/output_data/model_results/final_eelgrass_model.RData")
+load("code/output_data/model_results/final_surfgrass_model.RData")
 unique(data$Survey)
 # make predictions and get standard error
 
 # Parameters to set
 survey_type <- c("ABL", "BHM", "Cuk", "GDK", "GSU", "MSE", "Mul", "RSU")
 model_name<- "nep_spatial"
-species <- "eelgrass"
+species <- "surfgrass"
 
-model <- get(paste0("fmodel_e_", model_name))
-
+#model <- get(paste0("fmodel_e_", model_name))
+model <- get(paste0("fmodel_s_", model_name))
 
 #Predict for each survey
 PredictSDM_bySurvey(

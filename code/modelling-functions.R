@@ -711,7 +711,184 @@ evaluate_occurrence <- function(df, observed_col, predicted_col) {
 ###############################################################################
 # BIOMOD2 Cross-Validation Wrapper
 ###############################################################################
+tune_gbm <- function(dat, predictors, gbm_grid) {
+  
+  library(gbm)
+  library(pROC)
+  library(dplyr)
+  library(parallel)
+  
+  folds <- sort(unique(dat$fold))
+  
+  # ---- parallel setup ----
+  ncores <- detectCores() - 1
+  cl <- makeCluster(ncores)
+  
+  clusterEvalQ(cl, {
+    library(gbm)
+    library(pROC)
+    library(dplyr)
+  })
+  
+  clusterExport(
+    cl,
+    c("dat","predictors","gbm_grid","folds"),
+    envir = environment()
+  )
+  
+  results <- parLapply(cl, 1:nrow(gbm_grid), function(i) {
+    
+    params <- gbm_grid[i,]
+    
+    fold_auc <- c()
+    fold_trees <- c()
+    
+    for(f in folds) {
+      
+      train_dat <- dat %>% filter(fold != f)
+      test_dat  <- dat %>% filter(fold == f)
+      
+      gbm_model <- gbm(
+        formula = presence ~ .,
+        data = train_dat[, c("presence", predictors)],
+        distribution = "bernoulli",
+        n.trees = 5000,
+        interaction.depth = params$interaction.depth,
+        shrinkage = params$shrinkage,
+        n.minobsinnode = params$n.minobsinnode,
+        bag.fraction = 0.7,
+        train.fraction = 1,
+        verbose = FALSE
+      )
+      
+      best_iter <- gbm.perf(
+        gbm_model,
+        method = "OOB",
+        plot.it = FALSE
+      )
+      
+      preds <- predict(
+        gbm_model,
+        test_dat[, predictors],
+        n.trees = best_iter,
+        type = "response"
+      )
+      
+      auc_val <- pROC::auc(test_dat$presence, preds)
+      
+      fold_auc <- c(fold_auc, as.numeric(auc_val))
+      fold_trees <- c(fold_trees, best_iter)
+      
+    }
+    
+    data.frame(
+      depth = params$interaction.depth,
+      lr = params$shrinkage,
+      minobs = params$n.minobsinnode,
+      trees = mean(fold_trees),
+      AUC = mean(fold_auc),
+      AUC_sd = sd(fold_auc)
+    )
+  })
+  
+  stopCluster(cl)
+  
+  results <- do.call(rbind, results)
+  
+  results[order(-results$AUC), ]
+}
+
+tune_xgboost_spatial_parallel <- function(dat, pred_vars, folds,
+                                          eta_vals = c(0.01, 0.05, 0.1),
+                                          max_depth_vals = c(3, 5, 7),
+                                          subsample_vals = c(0.7, 1),
+                                          colsample_bytree_vals = c(0.7, 1),
+                                          nrounds = 5000, early_stop = 50,
+                                          n_cores = parallel::detectCores() - 1) {
+  
+  library(xgboost)
+  library(pROC)
+  library(dplyr)
+  library(foreach)
+  library(doParallel)
+  
+  # Convert predictors to numeric matrix
+  X <- model.matrix(~ . -1, data = dat[, pred_vars, drop = FALSE])
+  y <- as.numeric(dat$presence)
+  
+  # Create tuning grid
+  xgb_grid <- expand.grid(
+    eta = eta_vals,
+    max_depth = max_depth_vals,
+    subsample = subsample_vals,
+    colsample_bytree = colsample_bytree_vals
+  )
+  
+  # Setup parallel backend
+  cl <- makeCluster(n_cores)
+  registerDoParallel(cl)
+  
+  results <- foreach(i = 1:nrow(xgb_grid), .combine = rbind, .packages = c("xgboost", "pROC", "dplyr")) %dopar% {
+    
+    params <- xgb_grid[i, ]
+    fold_aucs <- c()
+    
+    for(f in unique(folds)) {
+      
+      train_idx <- which(folds != f)
+      test_idx  <- which(folds == f)
+      
+      dtrain <- xgb.DMatrix(data = X, label = y)
+      dtest  <- xgb.DMatrix(data = X[test_idx, ], label = y[test_idx])
+      
+      watchlist <- list(train = dtrain, eval = dtest)
+      
+      xgb_mod <- xgb.train(
+        params = list(
+          objective = "binary:logistic",
+          eta = params$eta,
+          max_depth = params$max_depth,
+          subsample = params$subsample,
+          colsample_bytree = params$colsample_bytree,
+          eval_metric = "auc"
+        ),
+        data = dtrain,
+        nrounds = nrounds,
+        watchlist = watchlist,
+        early_stopping_rounds = early_stop,
+        verbose = 0
+      )
+      
+      preds <- predict(xgb_mod, X[test_idx, ])
+      fold_auc <- as.numeric(pROC::auc(y[test_idx], preds))
+      fold_aucs <- c(fold_aucs, fold_auc)
+    }
+    
+    # Return results for this parameter combination
+    data.frame(
+      eta = params$eta,
+      max_depth = params$max_depth,
+      subsample = params$subsample,
+      colsample_bytree = params$colsample_bytree,
+      mean_AUC = mean(fold_aucs),
+      sd_AUC = sd(fold_aucs)
+    )
+  }
+  
+  # Stop cluster
+  stopCluster(cl)
+  
+  # Sort results by mean AUC
+  results <- results %>% arrange(desc(mean_AUC))
+  return(results)
+}
+
+
 run_biomod_cv <- function(data, config, ml_models) {
+  
+  library(biomod2)
+  library(dplyr)
+  library(doParallel)
   
   dat <- data %>%
     dplyr::select(presence, X_m, Y_m, fold, Year, all_of(config$pred_vars)) %>%
@@ -735,7 +912,12 @@ run_biomod_cv <- function(data, config, ml_models) {
   for (k in seq_along(folds)) {
     cv_table[dat$fold == folds[k], k] <- FALSE
   }
+  
   colnames(cv_table) <- c(paste0("_allData_RUN", seq_len(K)), "_allData_allRun")
+  
+  #---------------------------------
+  # MODEL OPTIONS
+  #---------------------------------
   
   myOptions <- bm_ModelingOptions(
     data.type = "binary",
@@ -743,16 +925,70 @@ run_biomod_cv <- function(data, config, ml_models) {
     strategy = "bigboss"
   )
   
+  #---------------------------------
+  # MANUALLY MODIFY GBM
+  #---------------------------------
+  
+  if ("GBM" %in% ml_models) {
+    
+    myOptions@options$GBM.binary.gbm.gbm <- list(
+      distribution = "bernoulli",
+      n.trees = 5000,
+      interaction.depth = 2,
+      shrinkage = 0.005,
+      n.minobsinnode = 10,
+      bag.fraction = 0.7,
+      train.fraction = 1
+    )
+  }
+  
+  #---------------------------------
+  # MANUALLY MODIFY XGBOOST
+  #---------------------------------
+  
+  if ("XGBOOST" %in% ml_models) {
+    
+    myOptions@options$XGBOOST.binary.xgboost.xgboost <- list(
+      nrounds = 1500,
+      max_depth = 5,
+      eta = 0.05,
+      gamma = 1,
+      colsample_bytree = 0.7,
+      min_child_weight = 5,
+      subsample = 0.7
+    )
+  }
+  
+  #---------------------------------
+  # PARALLEL SETUP
+  #---------------------------------
+  
+  cores <- parallel::detectCores() - 1
+  cl <- makeCluster(cores)
+  registerDoParallel(cl)
+  
+  #---------------------------------
+  # RUN MODELS
+  #---------------------------------
+  
   myBiomodModelOut <- BIOMOD_Modeling(
     bm.format = myBiomodData,
     models = ml_models,
+    OPT.user = myOptions,
     CV.strategy = "user.defined",
     CV.user.table = cv_table,
     CV.do.full.models = TRUE,
     metric.eval = c("AUCroc", "TSS", "KAPPA"),
     var.import = 3,
-    seed.val = 123
+    seed.val = 123,
+    nb.cpu = cores
   )
+  
+  stopCluster(cl)
+  
+  #---------------------------------
+  # EVALUATION
+  #---------------------------------
   
   evals <- get_evaluations(myBiomodModelOut)
   
@@ -802,9 +1038,9 @@ run_gbm_cv <- function(dat, predictors, response = "presence", fold_col = "fold"
       data = train[, c(response, predictors)],
       distribution = "bernoulli",
       n.trees = 5000,
-      interaction.depth = 3,
+      interaction.depth = 2,
       shrinkage = 0.005,
-      bag.fraction = 0.5,
+      bag.fraction = 0.7,
       n.minobsinnode = 10,
       train.fraction = 1,
       verbose = FALSE
@@ -843,22 +1079,88 @@ run_gbm_cv <- function(dat, predictors, response = "presence", fold_col = "fold"
   result$algo <- "GBM_robust"
   return(result)
 }
+
+###############################################################################
+# Independent XGB Cross-Validation (correct threshold)
+###############################################################################
+run_xgb_cv <- function(dat, predictors, response = "presence", fold_col = "fold") {
+  
+  library(xgboost)
+  library(dplyr)
+  
+  # Build design matrix once
+  X <- model.matrix(~ . - 1, data = dat[, predictors])
+  y <- dat[[response]]
+  
+  dtrain <- xgb.DMatrix(data = X, label = y)
+  
+  # Build fold list for xgb.cv
+  folds <- split(seq_len(nrow(dat)), dat[[fold_col]])
+  
+  # Run cross-validation
+  xgb_cv <- xgb.cv(
+    params = list(
+      objective = "binary:logistic",
+      eval_metric = "auc",
+      max_depth = 5,
+      eta = 0.05,
+      gamma = 1,
+      min_child_weight = 5,
+      subsample = 0.7,
+      colsample_bytree = 0.7
+    ),
+    data = dtrain,
+    folds = folds,
+    nrounds = 1500,
+    early_stopping_rounds = 50,
+    prediction = TRUE,
+    verbose = 0
+  )
+  
+  # Predictions from CV
+  p <- xgb_cv$pred
+  y <- dat[[response]]
+  
+  # Metrics
+  thr <- get_tss_threshold(y, p)
+  
+  result <- data.frame(
+    algo = "XGBOOST_robust",
+    mean_threshold = thr,
+    sd_threshold = NA,
+    mean_RMSE = rmse_fun(y, p),
+    sd_RMSE = NA,
+    mean_Tjur = tjur_fun(y, p),
+    sd_Tjur = NA,
+    mean_AUC = auc_fun(y, p),
+    sd_AUC = NA,
+    mean_TSS = tss_fun(y, p, thr),
+    sd_TSS = NA
+  )
+  
+  return(result)
+}
+
 ###############################################################################
 # Temporal Forecasting (GBM uses the independent threshold)
 ###############################################################################
 run_temporal_forecast <- function(dat, pred_vars, config,
                                   biomod_thresholds,
-                                  gbm_threshold) {
+                                  gbm_threshold,
+                                  xgb_threshold = NULL) {
   
   data_pre2010 <- dat %>% filter(Year < 2010)
   data_post2012 <- dat %>% filter(Year > 2012)
   
-  if (nrow(data_pre2010) == 0 || nrow(data_post2012) == 0)
-    return(NULL)
+  if (nrow(data_pre2010) == 0 || nrow(data_post2012) == 0) return(NULL)
   
   models <- list()
   
-  # RF
+  # ---------------------------
+  # Fit models on pre-2010 data
+  # ---------------------------
+  
+  # Random Forest
   models$RF <- randomForest(
     x = data_pre2010[, pred_vars],
     y = as.factor(data_pre2010$presence),
@@ -871,25 +1173,29 @@ run_temporal_forecast <- function(dat, pred_vars, config,
     distribution = "bernoulli",
     data = data_pre2010[, c("presence", pred_vars)],
     n.trees = 5000,
-    interaction.depth = 3,
+    interaction.depth = 2,
     shrinkage = 0.005,
     verbose = FALSE
   )
   
-  # XGBOOST
+  # XGBoost
   xgb_matrix_pre <- model.matrix(~ . - 1, data = data_pre2010[, pred_vars])
   xgb_matrix_post <- model.matrix(~ . - 1, data = data_post2012[, pred_vars])
   dtrain <- xgb.DMatrix(data = xgb_matrix_pre, label = data_pre2010$presence)
+  
   models$XGBOOST <- xgb.train(
     params = list(
       objective = "binary:logistic",
       eval_metric = "auc",
-      max_depth = 6,
-      eta = 0.1,
-      nthread = 4
+      max_depth = 5,
+      eta = 0.05,
+      gamma = 1,
+      min_child_weight = 5,
+      subsample = 0.7,
+      colsample_bytree = 0.7
     ),
     data = dtrain,
-    nrounds = 200,
+    nrounds = 1500,
     verbose = 0
   )
   
@@ -897,12 +1203,11 @@ run_temporal_forecast <- function(dat, pred_vars, config,
   data_pre_num <- data_pre2010[, pred_vars] %>%
     mutate(across(everything(), as.numeric)) %>%
     replace(is.na(.), 0)
-  
   data_post_num <- data_post2012[, pred_vars] %>%
     mutate(across(everything(), as.numeric)) %>%
     replace(is.na(.), 0)
-  
   y_pre_1hot <- class.ind(as.factor(data_pre2010$presence))
+  
   models$ANN <- nnet(
     x = as.matrix(data_pre_num),
     y = y_pre_1hot,
@@ -921,7 +1226,9 @@ run_temporal_forecast <- function(dat, pred_vars, config,
     control = rpart.control(minsplit = 5, cp = 0.001)
   )
   
-  # Predictions
+  # ---------------------------
+  # Make predictions
+  # ---------------------------
   predictions <- list(
     RF = predict(models$RF, data_post2012[, pred_vars], type = "prob")[, 2],
     GBM = predict(models$GBM, data_post2012[, pred_vars], n.trees = 5000, type = "response"),
@@ -931,24 +1238,26 @@ run_temporal_forecast <- function(dat, pred_vars, config,
   )
   
   obs_fore <- data_post2012$presence
-  
   out <- list()
   
+  # ---------------------------
+  # Compute metrics and thresholds
+  # ---------------------------
   for (mod in names(predictions)) {
     pred <- predictions[[mod]]
     
-    # BIOMOD for non‑GBM models
-    if (mod != "GBM") {
-      threshold <- biomod_thresholds$threshold_mean[biomod_thresholds$algo == mod]
-      
-      # fallback threshold
-      if (length(threshold) == 0 || is.na(threshold)) {
-        threshold <- 0.5
-      }
-      
-    } else {
-      # GBM gets the correct independent threshold
+    if (mod == "GBM") {
       threshold <- gbm_threshold
+    } else if (mod == "XGBOOST") {
+      if (!is.null(xgb_threshold)) {
+        threshold <- xgb_threshold
+      } else {
+        threshold <- biomod_thresholds$threshold_mean[biomod_thresholds$algo == mod]
+        if (length(threshold) == 0 || is.na(threshold)) threshold <- 0.5
+      }
+    } else {
+      threshold <- biomod_thresholds$threshold_mean[biomod_thresholds$algo == mod]
+      if (length(threshold) == 0 || is.na(threshold)) threshold <- 0.5
     }
     
     out[[mod]] <- list(
@@ -963,4 +1272,79 @@ run_temporal_forecast <- function(dat, pred_vars, config,
   }
   
   return(out)
+}
+
+
+#### Independent Data Validation Function ####
+evaluate_independent_seagrass <- function(independent, model_names, cv_thresholds, raster_stack) {
+  results <- data.frame()
+  for (m in model_names) {
+    
+    pred <- independent[[m]]
+    obs  <- independent$obs  # should all be 1s
+    
+    # ---- Get threshold from CV table ----
+    thr <- cv_thresholds$mean_threshold[cv_thresholds$model == m]
+    
+    # ---- Presence-only metrics ----
+    #MPS=mean of predicted suitability values at observed presence locations, Higher MPS → model predicts eelgrass occurs in areas of high suitability.
+    #It’s a direct measure of how well the model aligns with known presences on a continuous scale, without requiring a threshold.
+    MPS  <- mean(pred, na.rm = TRUE)
+    # FPPS= number of presences ≥ threshold/ Total Number of presences with predicted suitability 
+    # The proportion of observed eelgrass locations that are classified as suitable by the model using a chosen threshold.
+    #FPPS close to 1 → nearly all eelgrass occurrences are correctly predicted as suitable.
+    FPPS <- mean(pred >= thr, na.rm = TRUE)
+    #FNR= number of presences < threshold / total Number of presences with predicted suitability = 1−FPPS
+    #The proportion of known eelgrass locations that the model fails to predict as suitable.
+    # Directly shows model omission error at the presence locations, which is crucial for conservation planning where missing real occurrences can have serious implications.
+    FNR  <- mean(pred < thr, na.rm = TRUE)
+    
+    # ---- Boyce Index ----
+    CBI <- NA
+    
+    pred_all <- terra::values(raster_stack[[m]])
+    
+    finite_preds <- pred_all[is.finite(pred_all)]
+    obs_presences <- pred[obs == 1]
+    
+    if (length(finite_preds) > 0 && length(obs_presences) > 0) {
+      
+      CBI <- tryCatch({
+        
+        boyce <- ecospat.boyce(
+          fit = finite_preds,
+          obs = obs_presences,
+          PEplot = FALSE
+        )
+        
+        # compatible with multiple ecospat versions
+        if ("Spearman.cor" %in% names(boyce)) {
+          boyce$Spearman.cor
+        } else if ("cor" %in% names(boyce)) {
+          boyce$cor
+        } else {
+          NA
+        }
+        
+      }, error = function(e) {
+        warning(paste("Boyce calculation failed for model:", m))
+        NA
+      })
+      
+    }
+    # ---- Combine results ----
+    results <- rbind(
+      results,
+      data.frame(
+        Model = m,
+        Threshold = thr,
+        MPS = MPS,
+        FPPS = FPPS,
+        FNR = FNR,
+        CBI = CBI,
+        stringsAsFactors = FALSE
+      )
+    )
+  }
+  return(results)
 }
