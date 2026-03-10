@@ -42,76 +42,75 @@ seagrass_data_long <- seagrass_data_long %>%
 
 #GBM and GXBOOST are the best models so need to tune to find best hyper parameters
 ## eelgrass
-sp = "ZO"
-numFolds <- length(unique(seagrass_data$fold_eelgrass))
-dat2 <- filter(seagrass_data_long, species == sp) %>% rename(fold = fold_eelgrass)
-
-pred_vars <- c(
-  "depth_stnd", "slope_stnd", "rei_stnd", "substrate",
-  "airtempmin_stnd", "rsdsmin_stnd", "prmin_stnd",
-  "saltcv_bccm_stnd", "NH4_bccm_stnd", "tempmin_bccm_stnd"
-)
-
-#surfgrass
-sp = "PH"
-numFolds <- length(unique(seagrass_data$fold_seagrass))
-dat2 <- filter(seagrass_data_long, species == sp) %>% rename(fold = fold_seagrass)
-
-pred_vars <- c("depth_stnd", "tidal_sqrt_stnd", "rei_sqrt_stnd", "substrate", "cul_eff_stnd", 
-                 "airtempcv_stnd", "prmean_stnd", "rsdsmin_stnd", "saltcv_bccm_stnd", 
-                 "NO3_bccm_stnd", "tempmin_bccm_stnd", "surftempcv_bccm_stnd") 
-
-gbm_grid <- expand.grid(
-  interaction.depth = c(2,3,4),
-  shrinkage = c(0.01, 0.005),
-  n.minobsinnode = c(5,10)
-)
-
-gbm_tuning <- tune_gbm(
-  dat = dat2,
-  predictors = pred_vars,
-  gbm_grid = gbm_grid
-)
-
-
-head(gbm_tuning)
-
-best_gbm <- gbm_tuning[1,]
-print (best_gbm)
-#eelgrass
-#    depth    lr minobs  trees       AUC     AUC_sd
-#    2 0.005     10 4696.2 0.9211391 0.01825039
-
-#surfgrass
-#  depth    lr minobs  trees       AUC     AUC_sd
-#     4 0.005      5 2418.9 0.9446731 0.03416803
-
-xgb_results <- tune_xgboost_spatial_parallel(
-  dat = dat2,                   # your full data frame with presence/absence
-  pred_vars = c(
-    "depth_stnd", "slope_stnd", "rei_stnd", "substrate",
-    "airtempmin_stnd", "rsdsmin_stnd", "prmin_stnd",
-    "saltcv_bccm_stnd", "NH4_bccm_stnd", "tempmin_bccm_stnd"),  # predictor columns
-  folds = dat2$fold,            # pre-defined fold column
-  eta_vals = c(0.01, 0.05, 0.1),   # learning rates to try
-  max_depth_vals = c(3, 5, 7),     # tree depths to try
-  subsample_vals = c(0.7, 1),      # row subsampling
-  colsample_bytree_vals = c(0.7, 1), # column subsampling
-  nrounds = 5000,                  # max trees
-  early_stop = 50,                 # early stopping rounds
-  n_cores = 4                      # number of parallel cores to use
-)
-
-
-#eelgrass
-# Because multiple parameter combinations produced nearly identical AUC values, we selected a slightly less complex model (max_depth = 5) to reduce overfitting and improve model generalization.
-#Chose these parameters
-#eta = 0.05
-#max_depth = 5
-#subsample = 0.7
-#colsample_bytree = 0.7
-
-#surfgrass
+# sp = "ZO"
+# numFolds <- length(unique(seagrass_data$fold_eelgrass))
+# dat2 <- filter(seagrass_data_long, species == sp) %>% rename(fold = fold_eelgrass)
+# 
+# pred_vars <- c(
+#   "depth_stnd", "slope_stnd", "rei_stnd", "substrate",
+#   "airtempmin_stnd", "rsdsmin_stnd", "prmin_stnd",
+#   "saltcv_bccm_stnd", "NH4_bccm_stnd", "tempmin_bccm_stnd"
+# )
+# 
+# #surfgrass
+# sp = "PH"
+# numFolds <- length(unique(seagrass_data$fold_seagrass))
+# dat2 <- filter(seagrass_data_long, species == sp) %>% rename(fold = fold_seagrass)
+# 
+# pred_vars <- c("depth_stnd", "tidal_sqrt_stnd", "rei_sqrt_stnd", "substrate", "cul_eff_stnd", 
+#                  "airtempcv_stnd", "prmean_stnd", "rsdsmin_stnd", "saltcv_bccm_stnd", 
+#                  "NO3_bccm_stnd", "tempmin_bccm_stnd", "surftempcv_bccm_stnd") 
+# 
+# gbm_grid <- expand.grid(
+#   interaction.depth = c(2,3,4),
+#   shrinkage = c(0.01, 0.005),
+#   n.minobsinnode = c(5,10)
+# )
+# 
+# gbm_tuning <- tune_gbm(
+#   dat = dat2,
+#   predictors = pred_vars,
+#   gbm_grid = gbm_grid
+# )
+# 
+# 
+# head(gbm_tuning)
+# 
+# best_gbm <- gbm_tuning[1,]
+# print (best_gbm)
+# #eelgrass
+# #    depth    lr minobs  trees       AUC     AUC_sd
+# #    2 0.005     10 4696.2 0.9211391 0.01825039
+# 
+# #surfgrass
+# #  depth    lr minobs  trees       AUC     AUC_sd
+# #     4 0.005      5 2418.9 0.9446731 0.03416803
+# 
+# xgb_results <- tune_xgboost_spatial_parallel(
+#   dat = dat2,                   # your full data frame with presence/absence
+#   pred_vars = c(
+#     "depth_stnd", "slope_stnd", "rei_stnd", "substrate",
+#     "airtempmin_stnd", "rsdsmin_stnd", "prmin_stnd",
+#     "saltcv_bccm_stnd", "NH4_bccm_stnd", "tempmin_bccm_stnd"),  # predictor columns
+#   folds = dat2$fold,            # pre-defined fold column
+#   eta_vals = c(0.01, 0.05, 0.1),   # learning rates to try
+#   max_depth_vals = c(3, 5, 7),     # tree depths to try
+#   subsample_vals = c(0.7, 1),      # row subsampling
+#   colsample_bytree_vals = c(0.7, 1), # column subsampling
+#   nrounds = 5000,                  # max trees
+#   early_stop = 50,                 # early stopping rounds
+#   n_cores = 4                      # number of parallel cores to use
+# )
+# 
+# 
+# #eelgrass and surgrass
+# # Because multiple parameter combinations produced nearly identical AUC values, we selected a slightly less complex model (max_depth = 5) to reduce overfitting and improve model generalization.
+# #Chose these parameters
+# #eta = 0.05
+# #max_depth = 5
+# #subsample = 0.7
+# #colsample_bytree = 0.7
+# 
 
 
 
@@ -168,34 +167,37 @@ model_configs <- list(
 )
 
 ml_models <- c("GBM", "RF", "XGBOOST", "ANN", "CTA")
+
 ###############################################################################
 # MAIN LOOP
 ###############################################################################
 all_results <- list()
+
 for (config_name in names(model_configs)) {
   
   message("\n========== Running: ", config_name, " ==========\n")
   config <- model_configs[[config_name]]
   
-  # Filter and prepare data
+  # Filter and Prepare Data
   data <- seagrass_data_long %>%
     filter(species == config$species) %>%
     rename(fold = !!sym(config$fold_col))
   
-  # 1. Run BIOMOD2 CV
+  # BIOMOD2 CV
   message("Running BIOMOD2 CV...")
   biomod_results <- run_biomod_cv(data, config, ml_models)
   
-  # 2. Independent GBM CV
+  # Independent GBM CV
   message("Running independent GBM CV...")
   gbm_cv_results <- run_gbm_cv(
     dat = biomod_results$data,
     predictors = config$pred_vars,
     fold_col = "fold"
   )
+  
   gbm_threshold <- gbm_cv_results$mean_threshold
   
-  # 2a. Independent XGBoost CV
+  # Independent XGBoost CV
   message("Running independent XGBoost CV...")
   xgb_cv_results <- run_xgb_cv(
     dat = biomod_results$data,
@@ -203,11 +205,9 @@ for (config_name in names(model_configs)) {
     response = "presence",
     fold_col = "fold"
   )
-  
   xgb_threshold <- xgb_cv_results$mean_threshold
   
-  # 3. Temporal forecast
-  message("Running temporal forecast...")
+  # Temporal Forecast
   forecast_results <- run_temporal_forecast(
     dat = biomod_results$data,
     pred_vars = config$pred_vars,
@@ -217,12 +217,13 @@ for (config_name in names(model_configs)) {
     xgb_threshold = xgb_threshold
   )
   
-  # Combine metrics
+  # Aggregate Metrics
   cv_metrics_combined <- biomod_results$auc_metrics %>%
     left_join(biomod_results$tss_thresholds, by = "algo") %>%
     bind_rows(gbm_cv_results) %>%
     bind_rows(xgb_cv_results)
   
+  # Final Results Storage
   all_results[[config_name]] <- list(
     config = config,
     cv_metrics = cv_metrics_combined,
@@ -232,15 +233,17 @@ for (config_name in names(model_configs)) {
     data = biomod_results$data
   )
   
-  save(
-    cv_metrics_combined,
-    forecast_results,
-    file = paste0("code/output_data/model_results/", config_name, "_all_metrics.RData")
-  )
+  # Save Metrics
+  save(cv_metrics_combined, forecast_results,
+       file = paste0("code/output_data/model_results/", config_name, "_all_metrics.RData"))
   
   message("Completed: ", config_name)
 }
+
+# Save all results combined
 save(all_results, file = "code/output_data/model_results/all_biomod_results_combined.RData")
+
+
 ###############################################################################
 # SUMMARY TABLES
 ###############################################################################

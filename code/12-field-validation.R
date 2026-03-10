@@ -10,7 +10,6 @@
 # compare sdm predictions to sdm validations to choose best model
 #
 ###############################################################################
-###TO DO SOME OF THE PERCENT COVERS FOR ZM AND PH ARE NULL AND NEED TO BE 0, NEED TO UPDATE IN DATABASE !! see below 
 
 #when looking at subtidal and intertidal data together nep spatial, nep no spatial, and bccm spatial are all comparable
 # when looking at subtidal nep spatial and bccm spatial are the best preforming and very similar

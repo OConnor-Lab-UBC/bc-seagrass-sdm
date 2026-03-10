@@ -528,9 +528,9 @@ forecast_predict_eelgrass_nep$model <- "NEP_no_spatial"
 # ---- NEP Spatial ----
 forecast_predict_eelgrass_nep_spatial <- evaluate_forecast(
   obs_train = obs_train,
-  pred_train = pre_2013,
+  pred_train = pre_2013_spatial,
   obs_test = obs_forecast,
-  pred_test = forecast,
+  pred_test = forecast_spatial,
   threshold = 0.037 # from cv model fit
 )
 
@@ -1158,9 +1158,9 @@ forecast_predict_surfgrass_nep$model <- "NEP_no_spatial"
 # ---- NEP Spatial ----
 forecast_predict_surfgrass_nep_spatial <- evaluate_forecast(
   obs_train = obs_train,
-  pred_train = pre_2013,
+  pred_train = pre_2013_spatial,
   obs_test = obs_forecast,
-  pred_test = forecast,
+  pred_test = forecast_spatial,
   threshold = 0.014 # from cv model fit
 )
 

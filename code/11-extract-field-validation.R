@@ -11,6 +11,7 @@
 #
 ###############################################################################
 
+
 #### load packages####
 library(DBI)
 library(odbc)
@@ -154,11 +155,11 @@ crs(substrate_all) <- "EPSG:3005"
 bathy_all <- terra::vrt(c("raw_data/envlayers-20m-hg/bathymetry.tif", "raw_data/envlayers-20m-ncc/bathymetry.tif", "raw_data/envlayers-20m-qcs/bathymetry.tif", "raw_data/envlayers-20m-wcvi/bathymetry.tif", "raw_data/envlayers-20m-shelfsalishsea/bathymetry.tif"), "bathy.vrt", overwrite=T)
 slope_all <- terra::vrt(c("raw_data/envlayers-20m-hg/slope.tif", "raw_data/envlayers-20m-ncc/slope.tif", "raw_data/envlayers-20m-qcs/slope.tif", "raw_data/envlayers-20m-wcvi/slope.tif", "raw_data/envlayers-20m-shelfsalishsea/slope.tif"), "slope.vrt", overwrite=T)
 
-# get predictions (tried loading from mosaics earlier and didn't work)
+# get predictions 
 parent_dir <- "raster/eelgrass"
 folders <- list.dirs(parent_dir, recursive = FALSE)
 
-# load and mosaic eelgrass SDM rasters from 4 different SDM predictions
+# load and mosaic eelgrass SDM rasters from 8 different SDM predictions
 mosaics <- list()
 
 for (f in folders) {
@@ -208,10 +209,68 @@ sdm_resampled <- lapply(mosaics_flat, function(p) {
 })
 
 
-rstack <- c(sdm_resampled[[1]], sdm_resampled[[2]], sdm_resampled[[3]], sdm_resampled[[4]], sdm_resampled[[5]], sdm_resampled[[6]], sdm_resampled[[7]], sdm_resampled[[8]])
-names(rstack) <- c("eelgrass_bccm_nospatial_pred", "eelgrass_bccm_nospatial_se", "eelgrass_bccm_spatial_pred", "eelgrass_bccm_spatial_se", "eelgrass_nep_nospatial_pred", "eelgrass_nep_nospatial_pred", "eelgrass_nep_spatial_pred", "eelgrass_nep_spatial_se")
+rstack <- c(sdm_resampled[[1]], sdm_resampled[[2]], sdm_resampled[[3]], sdm_resampled[[4]], sdm_resampled[[5]], sdm_resampled[[6]], sdm_resampled[[7]], sdm_resampled[[8]], sdm_resampled[[9]], sdm_resampled[[10]], sdm_resampled[[11]], sdm_resampled[[12]], sdm_resampled[[13]], sdm_resampled[[14]], sdm_resampled[[15]], sdm_resampled[[16]])
+names(rstack) <- c("zo_bccm_nospatial_pred", "zo_bccm_nospatial_se", "zo_bccm_spatial_pred", "zo_bccm_spatial_se","zo_GBM_bccm_pred", "zo_GBM_bccm_se","zo_GBM_nep_pred", "zo_GBM_nep_se","zo_nep_nospatial_pred", "zo_nep_nospatial_se", "zo_nep_spatial_pred", "zo_nep_spatial_se","zo_XGBOOST_bccm_pred", "zo_XGBOOST_bccm_se","zo_XGBOOST_nep_pred", "zo_XGBOOST_nep_se")
 
 rstack <- terra::rast(rstack)
+
+# get predictions 
+parent_dir <- "raster/surfgrass"
+folders <- list.dirs(parent_dir, recursive = FALSE)
+
+# load and mosaic eelgrass SDM rasters from 8 different SDM predictions
+mosaics <- list()
+
+for (f in folders) {
+  tif_files <- list.files(
+    f,
+    pattern = "\\.tif$",
+    full.names = TRUE
+  )
+  
+  # split files
+  se_files  <- tif_files[grepl("se", basename(tif_files), ignore.case = TRUE)]
+  pred_files <- tif_files[!grepl("se", basename(tif_files), ignore.case = TRUE)]
+  
+  folder_name <- basename(f)
+  mosaics[[folder_name]] <- list()
+  
+  # mosaic prediction files (no se)
+  if (length(pred_files) > 0) {
+    r_pred <- lapply(pred_files, rast)
+    mosaics[[folder_name]]$pred <- do.call(mosaic, r_pred)
+  }
+  
+  #mosaic SE files
+  if (length(se_files) > 0) {
+    r_se <- lapply(se_files, rast)
+    mosaics[[folder_name]]$se <- do.call(mosaic, r_se)
+  }
+}
+
+
+mosaics_flat <- unlist(mosaics, recursive = FALSE)
+sdm_resampled <- lapply(mosaics_flat, function(p) {
+  
+  lapply(p, function(r) {
+    
+    r <- terra::writeRaster(r, tempfile(fileext = ".tif"), overwrite = TRUE)
+    
+    if (!terra::compareGeom(r, bathy_all, crs = TRUE, stopOnError = FALSE)) {
+      r <- terra::project(r, bathy_all)
+    }
+    
+    terra::crop(
+      terra::resample(r, bathy_all, method = "bilinear"),
+      bathy_all
+    )
+  })
+})
+
+sstack <- c(sdm_resampled[[1]], sdm_resampled[[2]], sdm_resampled[[3]], sdm_resampled[[4]], sdm_resampled[[5]], sdm_resampled[[6]], sdm_resampled[[7]], sdm_resampled[[8]], sdm_resampled[[9]], sdm_resampled[[10]], sdm_resampled[[11]], sdm_resampled[[12]], sdm_resampled[[13]], sdm_resampled[[14]], sdm_resampled[[15]], sdm_resampled[[16]])
+names(sstack) <- c("ph_bccm_nospatial_pred", "ph_bccm_nospatial_se", "ph_bccm_spatial_pred", "ph_bccm_spatial_se","ph_GBM_bccm_pred", "ph_GBM_bccm_se","ph_GBM_nep_pred", "ph_GBM_nep_se","ph_nep_nospatial_pred", "ph_nep_nospatial_se", "ph_nep_spatial_pred", "ph_nep_spatial_se","ph_XGBOOST_bccm_pred", "ph_XGBOOST_bccm_se","ph_XGBOOST_nep_pred", "ph_XGBOOST_nep_se")
+
+sstack <- terra::rast(sstack)
 
 
 bathy_extract <- terra::extract(bathy_all, validation_sf)
@@ -228,21 +287,25 @@ slope_extract <- terra::extract(slope_all, validation_sf)
 summary(slope_extract$slope)
 validation_sf$slope_mod <- slope_extract$slope
 
-sdms_extract <- terra::extract(rstack, validation_sf)
-summary(sdms_extract)
-validation_sf <- cbind(validation_sf, sdms_extract)
+eelgrass_extract <- terra::extract(rstack, validation_sf)
+summary(eelgrass_extract)
+validation_sf <- cbind(validation_sf, eelgrass_extract)
+
+surfgrass_extract <- terra::extract(sstack, validation_sf)
+summary(surfgrass_extract)
+validation_sf <- cbind(validation_sf, surfgrass_extract)
 
 # remove NA in bathy
 validation_sf <- validation_sf %>% filter(!is.na(bathy_mod))
 
 # remove rows only when none of the sdms have predictions
 validation_sf <- validation_sf %>%
-  filter(!if_all(c(eelgrass_bccm_nospatial_pred,), is.na)) %>%
+  filter(!if_all(c(zo_bccm_nospatial_pred,), is.na)) %>%
   mutate(across(
     where(is.character),
     ~ if_else(.x == "None", "Absent", .x)
   ))
-# resulted in 38 sites removed. 
+# resulted in 27 sites removed. 
 
 
 #### extract belt information and join with site and predictions ####

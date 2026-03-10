@@ -887,9 +887,12 @@ tune_xgboost_spatial_parallel <- function(dat, pred_vars, folds,
 run_biomod_cv <- function(data, config, ml_models) {
   
   library(biomod2)
-  library(dplyr)
   library(doParallel)
+  library(dplyr)
   
+  #----------------------
+  # Prepare data
+  #----------------------
   dat <- data %>%
     dplyr::select(presence, X_m, Y_m, fold, Year, all_of(config$pred_vars)) %>%
     na.omit() %>%
@@ -912,65 +915,113 @@ run_biomod_cv <- function(data, config, ml_models) {
   for (k in seq_along(folds)) {
     cv_table[dat$fold == folds[k], k] <- FALSE
   }
+  colnames(cv_table) <- c(
+    paste0("_allData_RUN", seq_len(K)), 
+    "_allData_allRun"
+  )
   
-  colnames(cv_table) <- c(paste0("_allData_RUN", seq_len(K)), "_allData_allRun")
-  
-  #---------------------------------
-  # MODEL OPTIONS
-  #---------------------------------
-  
+  #----------------------
+  # Build BIOMOD2 options
+  #----------------------
   myOptions <- bm_ModelingOptions(
     data.type = "binary",
     models = ml_models,
     strategy = "bigboss"
   )
   
-  #---------------------------------
-  # MANUALLY MODIFY GBM
-  #---------------------------------
+  # Shortcut pointer to actual options (S4 list)
+  opt_list <- myOptions@options
   
+  #----------------------
+  # Inject custom params
+  #----------------------
+  
+  # GBM
   if ("GBM" %in% ml_models) {
-    
-    myOptions@options$GBM.binary.gbm.gbm <- list(
-      distribution = "bernoulli",
-      n.trees = 5000,
-      interaction.depth = 2,
-      shrinkage = 0.005,
-      n.minobsinnode = 10,
-      bag.fraction = 0.7,
-      train.fraction = 1
+    gbm_name <- grep("^GBM\\.", names(opt_list), value = TRUE)
+    opt_list[[gbm_name]]@args.values$`_allData_allRun` <- modifyList(
+      opt_list[[gbm_name]]@args.values$`_allData_allRun`,
+      list(
+        distribution = "bernoulli",
+        n.trees = 5000,
+        interaction.depth = 2,
+        shrinkage = 0.005,
+        n.minobsinnode = 10,
+        bag.fraction = 0.7,
+        train.fraction = 1
+      )
     )
   }
   
-  #---------------------------------
-  # MANUALLY MODIFY XGBOOST
-  #---------------------------------
+  # RF
+  if ("RF" %in% ml_models) {
+    rf_name <- grep("^RF\\.", names(opt_list), value = TRUE)
+    opt_list[[rf_name]]@args.values$`_allData_allRun` <- modifyList(
+      opt_list[[rf_name]]@args.values$`_allData_allRun`,
+      list(
+        mtry = 2,
+        ntree = 500,
+        nodesize = 5
+      )
+    )
+  }
   
+  # XGBOOST
   if ("XGBOOST" %in% ml_models) {
-    
-    myOptions@options$XGBOOST.binary.xgboost.xgboost <- list(
-      nrounds = 1500,
-      max_depth = 5,
-      eta = 0.05,
-      gamma = 1,
-      colsample_bytree = 0.7,
-      min_child_weight = 5,
-      subsample = 0.7
+    xgb_name <- grep("^XGBOOST\\.", names(opt_list), value = TRUE)
+    opt_list[[xgb_name]]@args.values$`_allData_allRun` <- modifyList(
+      opt_list[[xgb_name]]@args.values$`_allData_allRun`,
+      list(
+        nrounds = 1500,
+        max_depth = 5,
+        eta = 0.05,
+        gamma = 1,
+        colsample_bytree = 0.7,
+        min_child_weight = 5,
+        subsample = 0.7
+      )
     )
   }
   
-  #---------------------------------
-  # PARALLEL SETUP
-  #---------------------------------
+  # ANN
+  if ("ANN" %in% ml_models) {
+    ann_name <- grep("^ANN\\.", names(opt_list), value = TRUE)
+    opt_list[[ann_name]]@args.values$`_allData_allRun` <- modifyList(
+      opt_list[[ann_name]]@args.values$`_allData_allRun`,
+      list(
+        size = 5,
+        decay = 0.1,
+        maxit = 200
+      )
+    )
+  }
   
+  # CTA
+  if ("CTA" %in% ml_models) {
+    cta_name <- grep("^CTA\\.", names(opt_list), value = TRUE)
+    opt_list[[cta_name]]@args.values$`_allData_allRun` <- modifyList(
+      opt_list[[cta_name]]@args.values$`_allData_allRun`,
+      list(
+        cp = 0.001,
+        minsplit = 5,
+        maxdepth = 10
+      )
+    )
+  }
+  
+  # Write back modified options
+  myOptions@options <- opt_list
+  
+  #----------------------
+  # Parallel
+  #----------------------
   cores <- parallel::detectCores() - 1
   cl <- makeCluster(cores)
   registerDoParallel(cl)
   
-  #---------------------------------
-  # RUN MODELS
-  #---------------------------------
-  
+  #----------------------
+  # Fit BIOMOD models
+  #----------------------
   myBiomodModelOut <- BIOMOD_Modeling(
     bm.format = myBiomodData,
     models = ml_models,
@@ -986,10 +1037,9 @@ run_biomod_cv <- function(data, config, ml_models) {
   
   stopCluster(cl)
   
-  #---------------------------------
-  # EVALUATION
-  #---------------------------------
-  
+  #----------------------
+  # Evaluation extraction
+  #----------------------
   evals <- get_evaluations(myBiomodModelOut)
   
   tss_thresholds <- evals %>%
@@ -1020,6 +1070,10 @@ run_biomod_cv <- function(data, config, ml_models) {
     var_importance = var_imp
   ))
 }
+
+
+
+
 ###############################################################################
 # Independent GBM Cross-Validation (correct threshold)
 ###############################################################################
@@ -1086,60 +1140,99 @@ run_gbm_cv <- function(dat, predictors, response = "presence", fold_col = "fold"
 run_xgb_cv <- function(dat, predictors, response = "presence", fold_col = "fold") {
   
   library(xgboost)
+  library(ModelMetrics)
   library(dplyr)
   
-  # Build design matrix once
-  X <- model.matrix(~ . - 1, data = dat[, predictors])
-  y <- dat[[response]]
+  folds <- sort(unique(dat[[fold_col]]))
+  out <- vector("list", length(folds))
   
-  dtrain <- xgb.DMatrix(data = X, label = y)
-  
-  # Build fold list for xgb.cv
-  folds <- split(seq_len(nrow(dat)), dat[[fold_col]])
-  
-  # Run cross-validation
-  xgb_cv <- xgb.cv(
-    params = list(
+  for (i in seq_along(folds)) {
+    f <- folds[i]
+    
+    train <- dat[dat[[fold_col]] != f, ]
+    test  <- dat[dat[[fold_col]] == f, ]
+    
+    # Model matrices
+    X_train <- model.matrix(~ . - 1, data = train[, predictors])
+    X_test  <- model.matrix(~ . - 1, data = test[, predictors])
+    
+    y_train <- train[[response]]
+    y_test  <- test[[response]]
+    
+    # Build DMatrix
+    dtrain <- xgb.DMatrix(data = X_train, label = y_train)
+    
+    params <- list(
       objective = "binary:logistic",
-      eval_metric = "auc",
+      eval_metric = "logloss",
       max_depth = 5,
       eta = 0.05,
       gamma = 1,
+      colsample_bytree = 0.7,
       min_child_weight = 5,
       subsample = 0.7,
-      colsample_bytree = 0.7
-    ),
-    data = dtrain,
-    folds = folds,
-    nrounds = 1500,
-    early_stopping_rounds = 50,
-    prediction = TRUE,
-    verbose = 0
-  )
+      nthread = 2
+    )
+    
+    # Fit model
+    xgb_mod <- xgb.train(
+      params = params,
+      data = dtrain,
+      nrounds = 300,
+      verbose = 0
+    )
+    
+    # Predict
+    pred <- as.numeric(predict(xgb_mod, X_test))
+    
+    # Replace invalid values
+    if (any(!is.finite(pred))) pred[!is.finite(pred)] <- mean(pred, na.rm=TRUE)
+    
+    # Handle constant predictions safely
+    if (length(unique(pred)) == 1) {
+      AUC_fold <- NA
+      thr <- NA
+      TSS_fold <- NA
+    } else {
+      AUC_fold <- tryCatch(auc_fun(y_test, pred), error = function(e) NA)
+      thr <- tryCatch(get_tss_threshold(y_test, pred), error = function(e) NA)
+      TSS_fold <- tryCatch(tss_fun(y_test, pred, thr), error = function(e) NA)
+    }
+    
+    out[[i]] <- data.frame(
+      algo = "XGBOOST_robust",
+      fold = f,
+      threshold = thr,
+      RMSE = rmse_fun(y_test, pred),
+      Tjur = tjur_fun(y_test, pred),
+      AUC  = AUC_fold,
+      TSS  = TSS_fold
+    )
+  }
   
-  # Predictions from CV
-  p <- xgb_cv$pred
-  y <- dat[[response]]
+  out <- bind_rows(out)
   
-  # Metrics
-  thr <- get_tss_threshold(y, p)
+  # Summary
+  summary <- out %>%
+    summarise(
+      algo = "XGBOOST_robust",
+      mean_threshold = mean(threshold, na.rm = TRUE),
+      sd_threshold   = sd(threshold, na.rm = TRUE),
+      mean_RMSE = mean(RMSE, na.rm = TRUE),
+      sd_RMSE   = sd(RMSE, na.rm = TRUE),
+      mean_Tjur = mean(Tjur, na.rm = TRUE),
+      sd_Tjur   = sd(Tjur, na.rm = TRUE),
+      mean_AUC  = mean(AUC, na.rm = TRUE),
+      sd_AUC    = sd(AUC, na.rm = TRUE),
+      mean_TSS  = mean(TSS, na.rm = TRUE),
+      sd_TSS    = sd(TSS, na.rm = TRUE)
+    )
   
-  result <- data.frame(
-    algo = "XGBOOST_robust",
-    mean_threshold = thr,
-    sd_threshold = NA,
-    mean_RMSE = rmse_fun(y, p),
-    sd_RMSE = NA,
-    mean_Tjur = tjur_fun(y, p),
-    sd_Tjur = NA,
-    mean_AUC = auc_fun(y, p),
-    sd_AUC = NA,
-    mean_TSS = tss_fun(y, p, thr),
-    sd_TSS = NA
-  )
-  
-  return(result)
+  return(summary)
 }
+
+
+
 
 ###############################################################################
 # Temporal Forecasting (GBM uses the independent threshold)
