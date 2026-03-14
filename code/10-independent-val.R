@@ -206,6 +206,7 @@ surfgrass_threshold_df <- combined_metrics_surfgrass %>% select(model, threshold
 model_names <- c("bccm_nospatial", "bccm_spatial", 
                  "nep_nospatial", "nep_spatial", "GBM_bccm", "GBM_nep", "XGBOOST_bccm", "XGBOOST_nep")
 
+
 #### Eelgrass ####
 #load netforce eelgrass  data 2013-2023
 eelgrass_indep <- rast(c("code/output_data/independent_validation/BCeelgrass_netforce_2013_2023.tif"))
@@ -349,17 +350,39 @@ surfgrass_sdm_resampled <- lapply(mosaics_flat, function(r) {
 observed_cells <- which(values(surfgrass_indep) > 0)
 coords <- xyFromCell(surfgrass_indep, observed_cells)
 
-surfgrass_stack <- c(surfgrass_sdm_resampled[[1]], surfgrass_sdm_resampled[[2]], surfgrass_sdm_resampled[[3]], surfgrass_sdm_resampled[[4]])
-names(surfgrass_stack) <- c("bccm_nospatial", "bccm_spatial", "nep_nospatial", "nep_spatial")
+surfgrass_stack <- c(surfgrass_sdm_resampled[[1]], surfgrass_sdm_resampled[[2]], surfgrass_sdm_resampled[[3]], surfgrass_sdm_resampled[[4]], surfgrass_sdm_resampled[[5]], surfgrass_sdm_resampled[[6]], surfgrass_sdm_resampled[[7]], surfgrass_sdm_resampled[[8]])
+names(surfgrass_stack) <- c("bccm_nospatial", "bccm_spatial", "GBM_bccm", "GBM_nep", "nep_nospatial", "nep_spatial", "XGBOOST_bccm", "XGBOOST_nep")
 
 r_points <- as.points(surfgrass_indep, na.rm = TRUE)
-surfgrass_sf<- r_points %>% st_as_sf(coords = c("X", "Y"), crs = "EPSG:3005") 
+surfgrass_sf<- r_points %>% sf::st_as_sf(coords = c("X", "Y"), crs = "EPSG:3005") 
 
 prediction_extract <- terra::extract(surfgrass_stack, surfgrass_sf)
 surfgrass_sf <- surfgrass_sf %>% bind_cols(prediction_extract)
 
 surfgrass_sf <- surfgrass_sf %>%
   filter(if_all(everything(), ~ !is.na(.)))
+
+#load substrate layer
+substrate_all <- terra::vrt(c("raw_data/substrate_20m/updated/hg_20m.tif", "raw_data/substrate_20m/updated/ncc_20m.tif", "raw_data/substrate_20m/updated/qcs_20m.tif", "raw_data/substrate_20m/updated/sog_20m.tif", "raw_data/substrate_20m/updated/wcvi_20m.tif"), "substrate.vrt", overwrite=T)
+names(substrate_all)<-"substrate"
+crs(substrate_all) <- "EPSG:3005"
+
+#extract substrate data to see if that is causing mismatch
+substrate_extract <- terra::extract(substrate_all, surfgrass_sf)
+surfgrass_sf$substrate <- substrate_extract$substrate
+surfgrass_sf$substrate <- c("Rock", "Mixed", "Sand", "Mud")[surfgrass_sf$substrate]
+
+surfgrass_sf$rock_group <- ifelse(surfgrass_sf$substrate == "Rock", "Rock", "Not Rock")
+
+# load bathy
+bathy_all <- terra::vrt(c("raw_data/envlayers-20m-hg/bathymetry.tif", "raw_data/envlayers-20m-ncc/bathymetry.tif", "raw_data/envlayers-20m-qcs/bathymetry.tif", "raw_data/envlayers-20m-wcvi/bathymetry.tif", "raw_data/envlayers-20m-shelfsalishsea/bathymetry.tif"), "bathy.vrt", overwrite=T)
+bathy_extract <- terra::extract(bathy_all, surfgrass_sf)
+surfgrass_sf$bathy <- bathy_extract$bathy
+
+# Looksed at distirbution of dataset of observations from dive datasets and majoriity of presences of PH were above 5 m CD.
+# to better align the "mapped" PH we will only retain cells that have bathy above 5 m. 
+
+surfgrass_sf <- surfgrass_sf %>% filter(bathy <= 5)
 
 surfgrass_df <- sf::st_drop_geometry(surfgrass_sf)
 
@@ -371,11 +394,20 @@ surfgrass_independent_results <- evaluate_independent_seagrass(
   raster_stack = surfgrass_stack
 )
 
-#The best surfgrass model is 
 
 save(surfgrass_independent_results, file = "code/output_data/model_results/surfgrass_independent_eval.RData")
 
 
+surfgrass_independent_clean <- surfgrass_independent_results %>%
+  rename(model = Model) %>%
+  rename_with(~ paste0(tolower(.x), "_independent"),
+              c(MPS, FPPS, FNR, CBI)) %>%
+  select(-Threshold)
+
+combined_metrics_surfgrass <- combined_metrics_surfgrass %>%
+  left_join(surfgrass_independent_clean, by = "model")
+
+save(combined_metrics_surfgrass, file = "code/output_data/model_results/combined_metrics_surfgrass.RData")
 
 
 
