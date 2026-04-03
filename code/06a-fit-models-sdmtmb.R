@@ -706,6 +706,8 @@ barrier_mesh <- add_barrier_mesh(mesh, barrier_sf = coastline, proj_scaling = 10
 #fit model
 plan(multisession)
 
+#CONSIDER REMOVING NO3 BECASUE IT DOESN'T HAVE GOOD BORDERS BETWEEN SSC AND BCCM 
+
 # bccm model indicated by looking at ffs and at variable relative importance and also considering what is important for future change, and also what resulted in highest AUC, Tjur and sum loglikelihood
 # no spatial 
 # AUC = 0.968, tjur = 0.248, loglike -3706 

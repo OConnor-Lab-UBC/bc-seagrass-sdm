@@ -28,6 +28,7 @@ library(pROC)
 library(forcats)
 library(caret)
 library(purrr)
+library(tibble)
 
 #themes for figures
 boxed_theme <- theme_minimal(base_size = 13) +
@@ -524,9 +525,6 @@ confusion_results_no_intertidal$zo_bccm_spatial_pred
 
 
 
-library(pROC)
-library(dplyr)
-
 # vector of prediction columns
 pred_cols <- c(
   "zo_bccm_nospatial_pred", "zo_bccm_spatial_pred",
@@ -535,37 +533,6 @@ pred_cols <- c(
   "zo_GBM_bccm_pred", "zo_GBM_nep_pred"
 )
 
-# make a tibble with auc, threshold, sensitivity, specificity, TSS
-roc_metrics <- map_dfr(pred_cols, function(p) {
-  
-  roc_obj <- roc(df_nointertidal$Presence, df_nointertidal[[p]], quiet = TRUE)
-  
-  coords_df <- coords(
-    roc_obj,
-    x = "all",
-    ret = c("threshold", "sensitivity", "specificity"),
-    transpose = FALSE
-  ) %>%
-    mutate(TSS = sensitivity + specificity - 1)
-  
-  best <- coords_df %>% slice_max(TSS, n = 1)
-  
-  tibble(
-    model        = p,
-    auc          = as.numeric(pROC::auc(roc_obj)),
-    threshold    = best$threshold,
-    sensitivity  = best$sensitivity,
-    specificity  = best$specificity,
-    TSS          = best$TSS
-  )
-})
-
-roc_metrics
-
-library(dplyr)
-library(purrr)
-library(pROC)
-library(tibble)
 roc_metrics <- map_dfr(pred_cols, function(p) {
   
   # match field-validation prediction column to CV model name
@@ -1077,11 +1044,139 @@ ph_plot
 
 
 
+# not worth seperating out intertidal and subtidal in a plot
+
+# Update Tidal_zone to be a single category
+validation_sf <- validation_sf %>%
+  mutate(
+    Tidal_zone = "Combined"
+  )
+
+presence_df <- validation_sf %>%
+  mutate(
+    Presence = factor(ifelse(PH == 0, "Absent", "Present"),
+                      levels = c("Absent", "Present"))
+  )
+
+abundance_df <- validation_sf %>%
+  filter(PC_PH %in% c("1-25", "26-50", "51-75", "76-100")) %>% 
+  mutate(
+    PC_PH = factor(PC_PH, levels = c("1-25", "26-50", "51-75", "76-100"))
+  )
+
+presence_counts <- presence_df %>%
+  group_by(Presence) %>%
+  summarise(n = n(), .groups = "drop")
+
+abundance_counts <- abundance_df %>%
+  group_by(PC_PH) %>%
+  summarise(n = n(), .groups = "drop")
+
+p_presence <- ggplot(
+  presence_df,
+  aes(
+    x = Presence,
+    y = ph_XGBOOST_nep_pred
+  )
+) +
+  geom_boxplot(
+    position = position_dodge(width = 0.75),
+    outlier.alpha = 0.5,
+    fill = "#6A9A3B"  # Example hex code for seagrass green
+  ) +
+  geom_hline(
+    data = threshold_df,
+    aes(yintercept = threshold, linetype = type),
+    colour = "black",
+    linewidth = 0.8,
+    inherit.aes = FALSE
+  ) +
+  geom_text(
+    data = presence_counts,
+    aes(
+      x = Presence,
+      y = y_max * 1.05,
+      label = paste0("n=", n)
+    ),
+    position = position_dodge2(width = 0.75, padding = 0.1),
+    angle = 90,
+    size = 3,
+    vjust = 0,
+    inherit.aes = FALSE
+  ) +
+  labs(
+    x = "Presence",
+    y = "Relative probability of occurrence", # Keep y-axis labeled
+    fill = NULL # No fill label
+  ) +
+  boxed_theme +
+  coord_cartesian(ylim = c(y_min, y_max * 1.12)) +
+  scale_linetype_manual(
+    name = "Threshold",   # Legend title for threshold
+    values = c(
+      "Model threshold" = "dashed",
+      "Field validated threshold" = "solid"
+    )
+  )
 
 
 
-library(pROC)
-library(dplyr)
+
+p_abundance <- ggplot(
+  abundance_df,
+  aes(x = PC_PH, y = ph_XGBOOST_nep_pred)
+) +
+  geom_boxplot(
+    position = position_dodge2(width = 0.75), 
+    outlier.alpha = 0.5,
+    fill = "#6A9A3B"  # Use the same hex code for the seagrass color
+  ) +
+  geom_text(
+    data = abundance_counts,
+    aes(
+      x = PC_PH,
+      y = y_max * 1.05,
+      label = paste0("n=", n)
+    ),
+    position = position_dodge2(width = 0.75, padding = 0.1),
+    angle = 90,
+    size = 3,
+    vjust = 0,
+    inherit.aes = FALSE
+  ) +
+  labs(
+    x = "Percent cover",
+    y = NULL, # Keep y-axis unlabeled
+    fill = NULL # No fill label
+  ) +
+  boxed_theme +
+  coord_cartesian(ylim = c(y_min, y_max * 1.12))
+
+
+
+ph_plot <- (p_presence + p_abundance) +
+  plot_layout(
+    widths = c(1, 2),
+    guides = "collect"
+  ) &
+  theme(
+    legend.position = "right"
+  )
+
+ph_plot <- ph_plot +
+  plot_annotation(
+    title = "Surfgrass",
+    theme = theme(
+      plot.title = element_text(
+        hjust = 0,
+        face = "bold",
+        size = 14,
+        margin = margin(b = 5, l = 5)
+      )
+    )
+  )
+ph_plot
+
 
 # vector of prediction columns
 pred_cols <- c(
@@ -1091,37 +1186,6 @@ pred_cols <- c(
   "ph_GBM_bccm_pred", "ph_GBM_nep_pred"
 )
 
-# make a tibble with auc, threshold, sensitivity, specificity, TSS
-roc_metrics <- map_dfr(pred_cols, function(p) {
-  
-  roc_obj <- roc(df$Presence, df[[p]], quiet = TRUE)
-  
-  coords_df <- coords(
-    roc_obj,
-    x = "all",
-    ret = c("threshold", "sensitivity", "specificity"),
-    transpose = FALSE
-  ) %>%
-    mutate(TSS = sensitivity + specificity - 1)
-  
-  best <- coords_df %>% slice_max(TSS, n = 1)
-  
-  tibble(
-    model        = p,
-    auc          = as.numeric(pROC::auc(roc_obj)),
-    threshold    = best$threshold,
-    sensitivity  = best$sensitivity,
-    specificity  = best$specificity,
-    TSS          = best$TSS
-  )
-})
-
-roc_metrics
-
-library(dplyr)
-library(purrr)
-library(pROC)
-library(tibble)
 roc_metrics <- map_dfr(pred_cols, function(p) {
   
   # match field-validation prediction column to CV model name

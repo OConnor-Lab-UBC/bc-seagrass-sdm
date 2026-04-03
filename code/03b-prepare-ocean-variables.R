@@ -151,7 +151,8 @@ bccm_temp_5_cv_rast <- terra::rasterize(temp_points, terra::rast(crs ="EPSG:3573
 #subset the year data by these start and end year, and just surface values
 Year_surf_sub <- SSC_year_data %>% 
   dplyr::filter(year >= start & year <= end,
-                deptht < 2)
+                deptht < 2) %>% dplyr::filter(PARmax>0) %>% dplyr::filter(DOmean > 0)
+
 #Summarise the predictor into the desired climatologies for the entire time period
 year_surf_summary <- Year_surf_sub %>% dplyr::group_by(x, y) %>% 
   dplyr::summarise(PAR_mean_sur = mean(PARmean, na.rm = TRUE), PAR_max_sur = mean(PARmax, na.rm = TRUE), PAR_min_sur = mean(PARmin, na.rm = TRUE),
@@ -159,7 +160,7 @@ year_surf_summary <- Year_surf_sub %>% dplyr::group_by(x, y) %>%
                    DO_mean_sur = mean(DOmean, na.rm = TRUE), DO_min_sur = mean(DOmin, na.rm = TRUE))
 
 #Combine the above dataframe with the NH4 grid and filter out erroneous entries
-year_surf_summary_grid <- dplyr::full_join(year_surf_summary, dfo_grid, by=c("x","y")) %>% na.omit() %>% dplyr::filter(DO_mean_sur > 0)
+year_surf_summary_grid <- dplyr::full_join(year_surf_summary, dfo_grid, by=c("x","y")) %>% na.omit() 
 #Convert to spatial points and transform to grid crs
 year_surf_points <- sf::st_as_sf(year_surf_summary_grid, coords=(c("longitude", "latitude")), crs = sf::st_crs(4326)) %>% sf::st_transform(crs = sf::st_crs(3573))
 #Rasterize all  predictors of interest onto the 500m equal area grid (size of salishseacast pixels) with mean = akin to project, merge with surface values because loose very shallow areas
@@ -174,7 +175,9 @@ ssc_DO_sur_min_rast <- terra::rasterize(year_surf_points, terra::rast(crs ="EPSG
 #subset the year data by these start and end year, and just 5m values
 Year_5_sub <- SSC_year_data %>% 
   dplyr::filter(year >= start & year <= end,
-                deptht > 2)
+                deptht > 2) %>% dplyr::filter(PARmax>0) %>% dplyr::filter(DOmean > 0)
+
+
 #Summarise the predictor into the desired climatologies for the entire time period
 year_5_summary <- Year_5_sub %>% dplyr::group_by(x, y) %>% 
   dplyr::summarise(PAR_mean_5 = mean(PARmean, na.rm = TRUE), PAR_max_5 = mean(PARmax, na.rm = TRUE), PAR_min_5 = mean(PARmin, na.rm = TRUE),
@@ -182,7 +185,7 @@ year_5_summary <- Year_5_sub %>% dplyr::group_by(x, y) %>%
                    DO_mean_5 = mean(DOmean, na.rm = TRUE), DO_min_5 = mean(DOmin, na.rm = TRUE))
 
 #Combine the above dataframe with the grid and filter out erroneous entries
-year_5_summary_grid <- dplyr::full_join(year_5_summary, dfo_grid, by=c("x","y")) %>% na.omit() %>% dplyr::filter(DO_mean_5 > 0)
+year_5_summary_grid <- dplyr::full_join(year_5_summary, dfo_grid, by=c("x","y")) %>% na.omit() 
 #Convert to spatial points and transform to grid crs
 year_5_points <- sf::st_as_sf(year_5_summary_grid, coords=(c("longitude", "latitude")), crs = sf::st_crs(4326)) %>% sf::st_transform(crs = sf::st_crs(3573))
 #Rasterize all  predictors of intrerest onto the 500m equal area grid (size of salishseacast pixels) with mean = akin to project, merge with surface values because loose very shallow areas
@@ -206,7 +209,9 @@ ssc_DO_5_min_rast <- terra::rasterize(year_5_points, terra::rast(crs ="EPSG:3573
 #subset the year data by these start and end year, and just surface values
 Month_surf_sub <- SSC_month_data %>% 
   dplyr::filter(year >= start & year <= end,
-                deptht < 2)
+                deptht < 2)%>% dplyr::filter(saltmean > 0)
+
+
 #Summarise the predictor by year
 month_surf_summary_year <- Month_surf_sub %>% dplyr::group_by(x, y, year) %>% 
   dplyr::summarise(salt_mean_sur_year = mean(saltmean, na.rm = TRUE), salt_min_sur_year = min(saltmean, na.rm = TRUE), salt_sd_sur_year = sd(saltmean, na.rm = TRUE),
@@ -222,7 +227,7 @@ month_surf_summary <- month_surf_summary_year %>% dplyr::group_by(x, y) %>%
                    temp_diff_sur = mean(temp_diff_sur_year, na.rm = TRUE), temp_cv_sur = mean(temp_cv_sur_year, na.rm = TRUE))
 
 #Combine the above dataframe with the grid and filter out erroneous entries
-month_surf_summary_grid <- dplyr::full_join(month_surf_summary, dfo_mgrid, by=c("x","y")) %>% na.omit() %>% dplyr::filter(salt_mean_sur > 0)
+month_surf_summary_grid <- dplyr::full_join(month_surf_summary, dfo_mgrid, by=c("x","y")) %>% na.omit() 
 #Convert to spatial points and transform to grid crs
 month_surf_points <- sf::st_as_sf(month_surf_summary_grid, coords=(c("longitude", "latitude")), crs = sf::st_crs(4326)) %>% sf::st_transform(crs = sf::st_crs(3573))
 #Rasterize all  predictors of intrerest onto the 500m equal area grid (size of salishseacast pixels) with mean = akin to project, merge with surface values because loose very shallow areas
@@ -238,7 +243,7 @@ ssc_salt_sur_cv_rast <- terra::rasterize(month_surf_points, terra::rast(crs ="EP
 #subset the year data by these start and end year, and just 5m values
 Month_5_sub <- SSC_month_data %>% 
   dplyr::filter(year >= start & year <= end,
-                deptht > 2)
+                deptht > 2) %>% dplyr::filter(saltmean > 0)
 
 #Summarise the predictor by year
 month_5_summary_year <- Month_5_sub %>% dplyr::group_by(x, y, year) %>% 
@@ -254,7 +259,7 @@ month_5_summary <- month_5_summary_year %>% dplyr::group_by(x, y) %>%
                    temp_diff_5 = mean(temp_diff_5_year, na.rm = TRUE), temp_cv_5 = mean(temp_cv_5_year, na.rm = TRUE))
 
 #Combine the above dataframe with the NH4 grid and filter out erroneous entries
-month_5_summary_grid <- dplyr::full_join(month_5_summary, dfo_mgrid, by=c("x","y")) %>% na.omit() %>% dplyr::filter(salt_mean_5 > 0)
+month_5_summary_grid <- dplyr::full_join(month_5_summary, dfo_mgrid, by=c("x","y")) %>% na.omit() 
 #Convert to spatial points and transform to grid crs
 month_5_points <- sf::st_as_sf(month_5_summary_grid, coords=(c("longitude", "latitude")), crs = sf::st_crs(4326)) %>% sf::st_transform(crs = sf::st_crs(3573))
 #Rasterize all  predictors of intrerest onto the 500m equal area grid (size of salishseacast pixels) with mean = akin to project, merge with surface values because loose very shallow areas
@@ -286,7 +291,8 @@ ssc_salt_5_cv_rast <- terra::rasterize(month_5_points, terra::rast(crs ="EPSG:35
 #subset the year data by these start and end year, and just surface values
 Year_surf_sub <- NEP36_year_data %>% 
   dplyr::filter(year >= start & year <= end,
-                deptht < 2)
+                deptht < 2) %>%  dplyr::filter(PARmax>0) %>%dplyr::filter(DOmean > 0)
+
 #Summarise the predictor into the desired climatologies for the entire time period
 year_surf_summary <- Year_surf_sub %>% dplyr::group_by(x, y) %>% 
   dplyr::summarise(PAR_mean_sur = mean(PARmean, na.rm = TRUE), PAR_max_sur = mean(PARmax, na.rm = TRUE), PAR_min_sur = mean(PARmin, na.rm = TRUE),
@@ -294,7 +300,7 @@ year_surf_summary <- Year_surf_sub %>% dplyr::group_by(x, y) %>%
                    DO_mean_sur = mean(DOmean, na.rm = TRUE), DO_min_sur = mean(DOmin, na.rm = TRUE))
 
 #Combine the above dataframe with the NH4 grid and filter out erroneous entries
-year_surf_summary_grid <- dplyr::full_join(year_surf_summary, NEP36_year_grid, by=c("x","y")) %>% na.omit() %>% dplyr::filter(DO_mean_sur > 0)
+year_surf_summary_grid <- dplyr::full_join(year_surf_summary, NEP36_year_grid, by=c("x","y")) %>% na.omit() 
 #Convert to spatial points and transform to grid crs
 year_surf_points <- sf::st_as_sf(year_surf_summary_grid, coords=(c("nav_lon", "nav_lat")), crs = sf::st_crs(4326)) %>% sf::st_transform(crs = sf::st_crs(3573))
 #Rasterize all  predictors of interest onto the 2000m equal area grid with mean = akin to project, merge with surface values because loose very shallow areas
@@ -309,7 +315,8 @@ NEP36_DO_sur_min_rast <- terra::rasterize(year_surf_points, terra::rast(crs ="EP
 #subset the year data by these start and end year, and just 5m values
 Year_5_sub <- NEP36_year_data %>% 
   dplyr::filter(year >= start & year <= end,
-                deptht > 2)
+                deptht > 2) %>%  dplyr::filter(PARmax>0) %>% dplyr::filter(DOmean > 0)
+
 #Summarise the predictor into the desired climatologies for the entire time period
 year_5_summary <- Year_5_sub %>% dplyr::group_by(x, y) %>% 
   dplyr::summarise(PAR_mean_5 = mean(PARmean, na.rm = TRUE), PAR_max_5 = mean(PARmax, na.rm = TRUE), PAR_min_5 = mean(PARmin, na.rm = TRUE),
@@ -317,7 +324,7 @@ year_5_summary <- Year_5_sub %>% dplyr::group_by(x, y) %>%
                    DO_mean_5 = mean(DOmean, na.rm = TRUE), DO_min_5 = mean(DOmin, na.rm = TRUE))
 
 #Combine the above dataframe with the grid and filter out erroneous entries
-year_5_summary_grid <- dplyr::full_join(year_5_summary, NEP36_year_grid, by=c("x","y")) %>% na.omit() %>% dplyr::filter(DO_mean_5 > 0)
+year_5_summary_grid <- dplyr::full_join(year_5_summary, NEP36_year_grid, by=c("x","y")) %>% na.omit() 
 #Convert to spatial points and transform to grid crs
 year_5_points <- sf::st_as_sf(year_5_summary_grid, coords=(c("nav_lon", "nav_lat")), crs = sf::st_crs(4326)) %>% sf::st_transform(crs = sf::st_crs(3573))
 #Rasterize all  predictors of intrerest onto the 2000m equal area grid with mean = akin to project, merge with surface values because loose very shallow areas
@@ -341,7 +348,8 @@ NEP36_DO_5_min_rast <- terra::rasterize(year_5_points, terra::rast(crs ="EPSG:35
 #subset the year data by these start and end year, and just surface values
 Month_surf_sub <- NEP36_month_data %>% 
   dplyr::filter(year >= start & year <= end,
-                deptht < 2)
+                deptht < 2) %>%  dplyr::filter(saltmean > 0)
+
 #Summarise the predictor by year
 month_surf_summary_year <- Month_surf_sub %>% dplyr::group_by(x, y, year) %>% 
   dplyr::summarise(salt_mean_sur_year = mean(saltmean, na.rm = TRUE), salt_min_sur_year = min(saltmean, na.rm = TRUE), salt_sd_sur_year = sd(saltmean, na.rm = TRUE),
@@ -357,7 +365,7 @@ month_surf_summary <- month_surf_summary_year %>% dplyr::group_by(x, y) %>%
                    temp_diff_sur = mean(temp_diff_sur_year, na.rm = TRUE), temp_cv_sur = mean(temp_cv_sur_year, na.rm = TRUE))
 
 #Combine the above dataframe with the grid and filter out erroneous entries
-month_surf_summary_grid <- dplyr::full_join(month_surf_summary, NEP36_month_grid, by=c("x","y")) %>% na.omit() %>% dplyr::filter(salt_mean_sur > 0)
+month_surf_summary_grid <- dplyr::full_join(month_surf_summary, NEP36_month_grid, by=c("x","y")) %>% na.omit() 
 #Convert to spatial points and transform to grid crs
 month_surf_points <- sf::st_as_sf(month_surf_summary_grid, coords=(c("nav_lon", "nav_lat")), crs = sf::st_crs(4326)) %>% sf::st_transform(crs = sf::st_crs(3573))
 #Rasterize all  predictors of intrerest onto the 2000m equal area grid with mean = akin to project, merge with surface values because loose very shallow areas
@@ -373,7 +381,7 @@ NEP36_salt_sur_cv_rast <- terra::rasterize(month_surf_points, terra::rast(crs ="
 #subset the year data by these start and end year, and just 5m values
 Month_5_sub <- NEP36_month_data %>% 
   dplyr::filter(year >= start & year <= end,
-                deptht > 2)
+                deptht > 2) %>%  dplyr::filter(saltmean > 0)
 
 #Summarise the predictor by year
 month_5_summary_year <- Month_5_sub %>% dplyr::group_by(x, y, year) %>% 
@@ -389,7 +397,7 @@ month_5_summary <- month_5_summary_year %>% dplyr::group_by(x, y) %>%
                    temp_diff_5 = mean(temp_diff_5_year, na.rm = TRUE), temp_cv_5 = mean(temp_cv_5_year, na.rm = TRUE))
 
 #Combine the above dataframe with the NH4 grid and filter out erroneous entries
-month_5_summary_grid <- dplyr::full_join(month_5_summary, NEP36_month_grid, by=c("x","y")) %>% na.omit() %>% dplyr::filter(salt_mean_5 > 0)
+month_5_summary_grid <- dplyr::full_join(month_5_summary, NEP36_month_grid, by=c("x","y")) %>% na.omit() 
 #Convert to spatial points and transform to grid crs
 month_5_points <- sf::st_as_sf(month_5_summary_grid, coords=(c("nav_lon", "nav_lat")), crs = sf::st_crs(4326)) %>% sf::st_transform(crs = sf::st_crs(3573))
 #Rasterize all  predictors of intrerest onto the 2000m equal area grid with mean = akin to project, merge with surface values because loose very shallow areas
@@ -591,7 +599,7 @@ Predictor_Hindcast_Climatologies <- c(NH4_5_mean_rast_bccm, NO3_5_mean_rast_bccm
                                       temp_s_cv_rast_nep36, temp_s_diff_rast_nep36,
                                       temp_air_mean_rast, temp_air_meanmax_rast, temp_air_meanmin_rast, temp_air_cv_rast,
                                       precip_mean_rast, precip_max_rast, precip_min_rast, precip_cv_rast, 
-                                      rsds_mean_rast, rsds_max_rast, rsds_min_rast, rsds_cv_rast, temp_air_max_rast, temp_air_min_rast,)
+                                      rsds_mean_rast, rsds_max_rast, rsds_min_rast, rsds_cv_rast, temp_air_max_rast, temp_air_min_rast)
 
 names(Predictor_Hindcast_Climatologies) <- c("NH4_5m_mean_bccm", "NO3_5m_mean_bccm", "salt_5m_mean_bccm", "salt_5m_min_bccm", "PAR_5m_mean_bccm", "PAR_5m_min_bccm", 
                                              "PAR_5m_max_bccm", "temp_s_mean_bccm", "temp_s_max_bccm", "temp_s_min_bccm", "temp_5m_mean_bccm", "temp_5m_max_bccm", 
@@ -635,8 +643,8 @@ terra::tmpFiles(remove = TRUE)
 
 
 #### Culmulative effects layer from Murray, change from polygon to 20 m raster
-cul_eff <- vect(st_read(dsn = "raw_data/anthropogenic/Cumulative_Impacts_Pacfic_Canada.gdb", layer = "Cumulative_Impacts_Pacific_Canada")) # impact score representing impacts from all activities and all habitats in each PU grid cell.
-cul_eff_rast20 <- rasterize(cul_eff, bathy20m, field = "Cumul_Impact_ALL", fun = max) %>% 
-  terra::focal(w=21, fun = "mean", na.policy = "only", na.rm = TRUE) %>%  # only change cells that are NA to fill in holes and up to coastline
-  terra::mask(bathy20m) %>% terra::crop(bathy20m) 
-writeRaster(cul_eff_rast20, file.path("code/output_data/processed_ocean_variables/culmulative_effects_all_20m.tif"), overwrite=TRUE)
+# cul_eff <- vect(st_read(dsn = "raw_data/anthropogenic/Cumulative_Impacts_Pacfic_Canada.gdb", layer = "Cumulative_Impacts_Pacific_Canada")) # impact score representing impacts from all activities and all habitats in each PU grid cell.
+# cul_eff_rast20 <- rasterize(cul_eff, bathy20m, field = "Cumul_Impact_ALL", fun = max) %>% 
+#   terra::focal(w=21, fun = "mean", na.policy = "only", na.rm = TRUE) %>%  # only change cells that are NA to fill in holes and up to coastline
+#   terra::mask(bathy20m) %>% terra::crop(bathy20m) 
+# writeRaster(cul_eff_rast20, file.path("code/output_data/processed_ocean_variables/culmulative_effects_all_20m.tif"), overwrite=TRUE)
