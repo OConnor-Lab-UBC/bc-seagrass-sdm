@@ -147,7 +147,7 @@ model_configs <- list(
       "depth_stnd", "rei_sqrt_stnd", "tidal_sqrt_stnd",
       "substrate", "cul_eff_stnd", "airtempcv_stnd",
       "rsdsmin_stnd", "prmean_stnd", "saltcv_bccm_stnd",
-      "NO3_bccm_stnd", "tempmin_bccm_stnd", "surftempcv_bccm_stnd"
+      "tempmin_bccm_stnd", "surftempcv_bccm_stnd"
     ),
     resp_name = "surfgrass",
     ocean_model = "bccm"

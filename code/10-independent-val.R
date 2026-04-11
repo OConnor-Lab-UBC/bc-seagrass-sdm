@@ -386,7 +386,7 @@ surfgrass_sf <- surfgrass_sf %>% filter(bathy <= 5)
 
 surfgrass_df <- sf::st_drop_geometry(surfgrass_sf)
 
-# this is not working!!!!
+
 surfgrass_independent_results <- evaluate_independent_seagrass(
   independent = surfgrass_df,
   model_names = model_names,

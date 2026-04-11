@@ -29,8 +29,9 @@ coastline <- coastline_full %>%
   st_transform(crs = "EPSG:3005")
 
 #load_data####
-#load("code/output_data/seagrass_data_spatialized.RData")
-# 400,597 quadrats
+#load("code/output_data/processed_observations/seagrass_data_spatialized.RData")
+#spatialised <- spatialised %>% filter(Survey!="Remote")
+# 398,794  quadrats
 
 load("code/output_data/processed_observations/seagrass_data_spatialized_aggregated.RData")
 spat <- spat %>%

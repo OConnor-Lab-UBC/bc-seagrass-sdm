@@ -30,7 +30,6 @@ unique(data$Survey)
 survey_type <- c("ABL", "BHM", "Cuk", "GDK", "GSU", "MSE", "Mul", "RSU")
 model_name<- "nep_spatial"
 species <- "surfgrass"
-
 #model <- get(paste0("fmodel_e_", model_name))
 model <- get(paste0("fmodel_s_", model_name))
 
@@ -174,60 +173,60 @@ writeRaster(raster_qcs_se, file.path(outdir, paste0(species, "_predictions_qcs_s
 #NEED TO WORK ON THIS STUFF BELOW!
 
 #Percent cover eelgrass predictions
-
-eelgrass_predictions <- env_20m_all
-
-e_bin <- predict(fmodel_e_bccm_spatial, newdata = env_20m_all)
-e_per <- predict(m_e_per_bccm_final, newdata = env_20m_all)
-e_bin_prob <- fmodel_e_bccm_spatial$family$linkinv(e_bin$est)
-e_per_exp <- m_e_per_bccm_final$family$linkinv(e_per$est)
-eelgrass_predictions$est_exp <- e_bin_prob * e_per_exp
-
-set.seed(28239)
-p_bin_sim <- predict(fmodel_e_bccm_spatial, newdata = env_20m_all, nsim = 100)
-p_per_sim <- predict(m_e_per_bccm_final, newdata = env_20m_all, nsim = 100)
-p_bin_prob_sim <- fmodel_e_bccm_spatial$family$linkinv(p_bin_sim)
-p_per_exp_sim <- m_e_per_bccm_final$family$linkinv(p_per_sim)
-p_combined_sim <- p_bin_prob_sim * p_per_exp_sim
-
-eelgrass_predictions$median <- apply(p_combined_sim, 1, median)
-eelgrass_predictions$median_binary <- apply(p_bin_prob_sim, 1, median)
-#hold_all$SE <- apply(sims, 1, sd)
-eelgrass_predictions$cv <- apply(p_combined_sim, 1, function(x) sd(x) / mean(x))
-eelgrass_predictions$cv_binary <- apply(p_bin_prob_sim, 1, function(x) sd(x) / mean(x))
-
-plot(eelgrass_predictions$est_exp, eelgrass_predictions$median)
-
-eelgrass_plot_percent <- ggplot(eelgrass_predictions)+
-  geom_sf(data = coastline, linewidth = 0.1)+
-  geom_tile(aes(x = X_m, y = Y_m, colour=median, width=20,height=20))+
-  scale_colour_gradient(low = "#f7fcb9", high = "#006837")+
-  theme(panel.grid.major = element_blank(),
-        panel.grid.minor = element_blank(),
-        # Remove panel background
-        panel.background = element_blank(),
-        axis.text.x = element_blank(),
-        axis.text.y = element_blank(),
-        axis.ticks = element_blank())+
-  coord_sf(expand = FALSE)+
-  ylab("")+
-  xlab("") 
-eelgrass_plot_percent
-ggsave("./figures/eelgrass_percent.png", height = 6, width = 6)
-
-eelgrass_se_plot_percent <- ggplot(eelgrass_predictions)+
-  geom_sf(data = coastline, linewidth = 0.1)+
-  geom_tile(aes(x = X_m, y = Y_m, colour=cv, width=20,height=20))+
-  scale_colour_viridis_b()+
-  theme(panel.grid.major = element_blank(),
-        panel.grid.minor = element_blank(),
-        # Remove panel background
-        panel.background = element_blank(),
-        axis.text.x = element_blank(),
-        axis.text.y = element_blank(),
-        axis.ticks = element_blank())+
-  coord_sf(expand = FALSE)+
-  ylab("")+
-  xlab("") 
-eelgrass_se_plot_percent
-ggsave("./figures/eelgrass_se_percent.png", height = 6, width = 6)
+# 
+# eelgrass_predictions <- env_20m_all
+# 
+# e_bin <- predict(fmodel_e_bccm_spatial, newdata = env_20m_all)
+# e_per <- predict(m_e_per_bccm_final, newdata = env_20m_all)
+# e_bin_prob <- fmodel_e_bccm_spatial$family$linkinv(e_bin$est)
+# e_per_exp <- m_e_per_bccm_final$family$linkinv(e_per$est)
+# eelgrass_predictions$est_exp <- e_bin_prob * e_per_exp
+# 
+# set.seed(28239)
+# p_bin_sim <- predict(fmodel_e_bccm_spatial, newdata = env_20m_all, nsim = 100)
+# p_per_sim <- predict(m_e_per_bccm_final, newdata = env_20m_all, nsim = 100)
+# p_bin_prob_sim <- fmodel_e_bccm_spatial$family$linkinv(p_bin_sim)
+# p_per_exp_sim <- m_e_per_bccm_final$family$linkinv(p_per_sim)
+# p_combined_sim <- p_bin_prob_sim * p_per_exp_sim
+# 
+# eelgrass_predictions$median <- apply(p_combined_sim, 1, median)
+# eelgrass_predictions$median_binary <- apply(p_bin_prob_sim, 1, median)
+# #hold_all$SE <- apply(sims, 1, sd)
+# eelgrass_predictions$cv <- apply(p_combined_sim, 1, function(x) sd(x) / mean(x))
+# eelgrass_predictions$cv_binary <- apply(p_bin_prob_sim, 1, function(x) sd(x) / mean(x))
+# 
+# plot(eelgrass_predictions$est_exp, eelgrass_predictions$median)
+# 
+# eelgrass_plot_percent <- ggplot(eelgrass_predictions)+
+#   geom_sf(data = coastline, linewidth = 0.1)+
+#   geom_tile(aes(x = X_m, y = Y_m, colour=median, width=20,height=20))+
+#   scale_colour_gradient(low = "#f7fcb9", high = "#006837")+
+#   theme(panel.grid.major = element_blank(),
+#         panel.grid.minor = element_blank(),
+#         # Remove panel background
+#         panel.background = element_blank(),
+#         axis.text.x = element_blank(),
+#         axis.text.y = element_blank(),
+#         axis.ticks = element_blank())+
+#   coord_sf(expand = FALSE)+
+#   ylab("")+
+#   xlab("") 
+# eelgrass_plot_percent
+# ggsave("./figures/eelgrass_percent.png", height = 6, width = 6)
+# 
+# eelgrass_se_plot_percent <- ggplot(eelgrass_predictions)+
+#   geom_sf(data = coastline, linewidth = 0.1)+
+#   geom_tile(aes(x = X_m, y = Y_m, colour=cv, width=20,height=20))+
+#   scale_colour_viridis_b()+
+#   theme(panel.grid.major = element_blank(),
+#         panel.grid.minor = element_blank(),
+#         # Remove panel background
+#         panel.background = element_blank(),
+#         axis.text.x = element_blank(),
+#         axis.text.y = element_blank(),
+#         axis.ticks = element_blank())+
+#   coord_sf(expand = FALSE)+
+#   ylab("")+
+#   xlab("") 
+# eelgrass_se_plot_percent
+# ggsave("./figures/eelgrass_se_percent.png", height = 6, width = 6)

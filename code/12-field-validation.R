@@ -156,7 +156,7 @@ cor_results <- map_dfr(pred_cols, function(p) {
 
 cor_results
 #model nep xgboost shows the strongest monotonic relationship . below is rho and pval for nep xgboost
-rho <- 0.265
+rho <- 0.257
 pval <- 0.0000001
 
 roc_results <- map_dfr(pred_cols, function(p) {
@@ -184,11 +184,11 @@ roc_results <- map_dfr(pred_cols, function(p) {
 roc_results
 
 #threshold for nep xgboost from field valiudation
-tss_threshold <- 0.202
+tss_threshold <- 0.157
 
 
 # xgboost models preform best, followed by gbm
-# very little difference between all sdmtmb 4 models. nep spatial has and oddly low tss threshold
+# very little difference between all sdmtmb 4 models. 
 
 confusion_results <- map(pred_cols, function(p) {
   
@@ -259,7 +259,7 @@ cor_nointertidal <- map_dfr(pred_cols, function(p) {
 cor_nointertidal
 # xgboost ones do best, followed by spatial sdm tmb models, non spatial sdm tmb models then gbm mdoels
 
-rho_nointertidal <- 0.476 # this is for xgboost nep
+rho_nointertidal <- 0.471 # this is for xgboost nep
 pval_nointertidal <- 0.0000001 
 
 
@@ -287,10 +287,10 @@ roc_nointertidal <- map_dfr(pred_cols, function(p) {
 
 
 roc_nointertidal
-#  xgboost nep does best, followed by xgboost bccm then sdmtmb spatials. nep spatial threshold is too low
+#  xgboost bccm does best, followed by xgboost nep then sdmtmb spatials. 
 # bccm spatial auc = 0.855, TSS= 0.645
 
-tss_threshold_nointertidal <- 0.024 # this is for xgboost nep
+tss_threshold_nointertidal <- 0.022 # this is for xgboost nep MAY WANT TO CONSIDER CHANGING TO BCCM XGBOOST??
 
 
 
@@ -715,7 +715,7 @@ cor_results <- map_dfr(pred_cols, function(p) {
 })
 
 cor_results
-#model nep spatial shows the strongest monotonic relationship . below is rho and pval for nep spatial
+#model nep spatial or bccm no spatial shows the strongest monotonic relationship . below is rho and pval for nep spatial
 rho <- 0.488
 pval <- 0.0000001
 

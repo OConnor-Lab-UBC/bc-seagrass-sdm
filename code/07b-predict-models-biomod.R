@@ -74,6 +74,7 @@ gbm_varimp <- summary(
   n.trees = 5000,
   plotit = FALSE
 )
+save(gbm_varimp, file = "code/output_data/model_results/relimp_e_bccm_gbm.RData")
 
 gbm_prob <- predict(
   gbm_fit,
@@ -203,6 +204,9 @@ xgb_fit <- xgb.train(
 # 3. Variable importance
 xgb_varimp <- xgb.importance(model = xgb_fit)
 
+save(xgb_varimp, file = "code/output_data/model_results/relimp_e_bccm_xgb.RData")
+
+
 # 4. Predict onto your environmental dataframe
 X_pred <- model.matrix(~ . - 1, data = env)
 dtest <- xgb.DMatrix(X_pred)
@@ -307,7 +311,7 @@ raster_wcvi <- env_20m_all %>%
   filter(region == "West Coast Vancouver Island") %>%
   dplyr::select(X_m, Y_m, xgb_bccm_se)
 raster_wcvi <- rast(x = raster_wcvi %>% as.matrix, type = "xyz", crs = "EPSG:3005")
-writeRaster(raster_wcvi, file.path(outdir, paste0("eelgrass_predictions_wcvi_xgb_gbm_bccm.tif")), overwrite = TRUE)
+writeRaster(raster_wcvi, file.path(outdir, paste0("eelgrass_predictions_wcvi_se_xgb_bccm.tif")), overwrite = TRUE)
 
 raster_ncc <- env_20m_all %>%
   filter(region == "North Central Coast") %>%
@@ -353,6 +357,8 @@ gbm_varimp <- summary(
   n.trees = 5000,
   plotit = FALSE
 )
+
+save(gbm_varimp, file = "code/output_data/model_results/relimp_e_nep_gbm.RData")
 
 gbm_prob <- predict(
   gbm_fit,
@@ -481,6 +487,7 @@ xgb_fit <- xgb.train(
 
 # 3. Variable importance
 xgb_varimp <- xgb.importance(model = xgb_fit)
+save(xgb_varimp, file = "code/output_data/model_results/relimp_e_nep_xgb.RData")
 
 # 4. Predict onto your environmental dataframe
 X_pred <- model.matrix(~ . - 1, data = env)
@@ -641,6 +648,10 @@ gbm_varimp <- summary(
   plotit = FALSE
 )
 
+save(gbm_varimp, file = "code/output_data/model_results/relimp_s_bccm_gbm.RData")
+
+
+
 gbm_prob <- predict(
   gbm_fit,
   newdata = env,
@@ -768,6 +779,7 @@ xgb_fit <- xgb.train(
 
 # 3. Variable importance
 xgb_varimp <- xgb.importance(model = xgb_fit)
+save(xgb_varimp, file = "code/output_data/model_results/relimp_s_bccm_xgb.RData")
 
 # 4. Predict onto your environmental dataframe
 X_pred <- model.matrix(~ . - 1, data = env)
@@ -923,6 +935,8 @@ gbm_varimp <- summary(
   plotit = FALSE
 )
 
+save(gbm_varimp, file = "code/output_data/model_results/relimp_s_nep_gbm.RData")
+
 gbm_prob <- predict(
   gbm_fit,
   newdata = env,
@@ -1050,6 +1064,7 @@ xgb_fit <- xgb.train(
 
 # 3. Variable importance
 xgb_varimp <- xgb.importance(model = xgb_fit)
+save(xgb_varimp, file = "code/output_data/model_results/relimp_s_nep_xgb.RData")
 
 # 4. Predict onto your environmental dataframe
 X_pred <- model.matrix(~ . - 1, data = env)

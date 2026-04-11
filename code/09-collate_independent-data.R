@@ -138,6 +138,11 @@ poly_sg<- vect("raw_data/shorezone/phyllospadix2014_2024_shorezone_BOP_depthribb
 points_sg1<- vect("raw_data/Baum/ROV_Phyllospadix_obs.shp")
 #load gbif data
 points_sg2<- vect("raw_data/gbif/phyllospadix_gbif.shp")
+#since we are including 2024 data I will include the dive obs from 2024
+points_sg3<-vect("code/output_data/processed_observations/SpatializedQuadrats_aggregated_2024only.shp")
+points_sg3 <- points_sg3[points_sg3$PH == 1, ]
+
+
 
 # template raster
 template_rast <- rast(c("raw_data/current_20m/Nearshore_CurrentSpeedIndex.tif"))
@@ -146,9 +151,12 @@ template_rast <- rast(c("raw_data/current_20m/Nearshore_CurrentSpeedIndex.tif"))
 r_poly  <- rasterize(poly_sg, template_rast, field = 1, background = NA, touches = TRUE)
 r_pts1  <- rasterize(points_sg1, template_rast, field = 1, background = NA, touches = TRUE)
 r_pts2  <- rasterize(points_sg2, template_rast, field = 1, background = NA, touches = TRUE)
+r_pts3  <- rasterize(points_sg3, template_rast, field = 1, background = NA, touches = TRUE)
+
 
 # Combine them using cover()
 surfgrass_combined <- cover(r_pts1, r_poly)
 surfgrass_combined <- cover(r_pts2, surfgrass_combined)
+surfgrass_combined <- cover(r_pts3, surfgrass_combined)
 
 writeRaster(surfgrass_combined, "code/output_data/independent_validation/surfgrass_validation_raster_2013_2024.tif", overwrite = TRUE)

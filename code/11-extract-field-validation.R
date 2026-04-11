@@ -170,7 +170,7 @@ for (f in folders) {
   )
   
   # split files
-  se_files  <- tif_files[grepl("se", basename(tif_files), ignore.case = TRUE)]
+  #se_files  <- tif_files[grepl("se", basename(tif_files), ignore.case = TRUE)]
   pred_files <- tif_files[!grepl("se", basename(tif_files), ignore.case = TRUE)]
   
   folder_name <- basename(f)
@@ -182,11 +182,11 @@ for (f in folders) {
     mosaics[[folder_name]]$pred <- do.call(mosaic, r_pred)
   }
   
-  #mosaic SE files
-  if (length(se_files) > 0) {
-    r_se <- lapply(se_files, rast)
-    mosaics[[folder_name]]$se <- do.call(mosaic, r_se)
-  }
+  # #mosaic SE files
+  # if (length(se_files) > 0) {
+  #   r_se <- lapply(se_files, rast)
+  #   mosaics[[folder_name]]$se <- do.call(mosaic, r_se)
+  # }
 }
 
 
@@ -208,9 +208,11 @@ sdm_resampled <- lapply(mosaics_flat, function(p) {
   })
 })
 
+rstack <- c(sdm_resampled[[1]], sdm_resampled[[2]], sdm_resampled[[3]], sdm_resampled[[4]], sdm_resampled[[5]], sdm_resampled[[6]], sdm_resampled[[7]], sdm_resampled[[8]])
+names(rstack) <- c("zo_bccm_nospatial_pred", "zo_bccm_spatial_pred", "zo_GBM_bccm_pred", "zo_GBM_nep_pred", "zo_nep_nospatial_pred", "zo_nep_spatial_pred", "zo_XGBOOST_bccm_pred", "zo_XGBOOST_nep_pred")
 
-rstack <- c(sdm_resampled[[1]], sdm_resampled[[2]], sdm_resampled[[3]], sdm_resampled[[4]], sdm_resampled[[5]], sdm_resampled[[6]], sdm_resampled[[7]], sdm_resampled[[8]], sdm_resampled[[9]], sdm_resampled[[10]], sdm_resampled[[11]], sdm_resampled[[12]], sdm_resampled[[13]], sdm_resampled[[14]], sdm_resampled[[15]], sdm_resampled[[16]])
-names(rstack) <- c("zo_bccm_nospatial_pred", "zo_bccm_nospatial_se", "zo_bccm_spatial_pred", "zo_bccm_spatial_se","zo_GBM_bccm_pred", "zo_GBM_bccm_se","zo_GBM_nep_pred", "zo_GBM_nep_se","zo_nep_nospatial_pred", "zo_nep_nospatial_se", "zo_nep_spatial_pred", "zo_nep_spatial_se","zo_XGBOOST_bccm_pred", "zo_XGBOOST_bccm_se","zo_XGBOOST_nep_pred", "zo_XGBOOST_nep_se")
+#rstack <- c(sdm_resampled[[1]], sdm_resampled[[2]], sdm_resampled[[3]], sdm_resampled[[4]], sdm_resampled[[5]], sdm_resampled[[6]], sdm_resampled[[7]], sdm_resampled[[8]], sdm_resampled[[9]], sdm_resampled[[10]], sdm_resampled[[11]], sdm_resampled[[12]], sdm_resampled[[13]], sdm_resampled[[14]], sdm_resampled[[15]], sdm_resampled[[16]])
+#names(rstack) <- c("zo_bccm_nospatial_pred", "zo_bccm_nospatial_se", "zo_bccm_spatial_pred", "zo_bccm_spatial_se","zo_GBM_bccm_pred", "zo_GBM_bccm_se","zo_GBM_nep_pred", "zo_GBM_nep_se","zo_nep_nospatial_pred", "zo_nep_nospatial_se", "zo_nep_spatial_pred", "zo_nep_spatial_se","zo_XGBOOST_bccm_pred", "zo_XGBOOST_bccm_se","zo_XGBOOST_nep_pred", "zo_XGBOOST_nep_se")
 
 rstack <- terra::rast(rstack)
 
@@ -229,7 +231,7 @@ for (f in folders) {
   )
   
   # split files
-  se_files  <- tif_files[grepl("se", basename(tif_files), ignore.case = TRUE)]
+  #se_files  <- tif_files[grepl("se", basename(tif_files), ignore.case = TRUE)]
   pred_files <- tif_files[!grepl("se", basename(tif_files), ignore.case = TRUE)]
   
   folder_name <- basename(f)
@@ -241,11 +243,11 @@ for (f in folders) {
     mosaics[[folder_name]]$pred <- do.call(mosaic, r_pred)
   }
   
-  #mosaic SE files
-  if (length(se_files) > 0) {
-    r_se <- lapply(se_files, rast)
-    mosaics[[folder_name]]$se <- do.call(mosaic, r_se)
-  }
+  # #mosaic SE files
+  # if (length(se_files) > 0) {
+  #   r_se <- lapply(se_files, rast)
+  #   mosaics[[folder_name]]$se <- do.call(mosaic, r_se)
+  # }
 }
 
 
@@ -267,8 +269,11 @@ sdm_resampled <- lapply(mosaics_flat, function(p) {
   })
 })
 
-sstack <- c(sdm_resampled[[1]], sdm_resampled[[2]], sdm_resampled[[3]], sdm_resampled[[4]], sdm_resampled[[5]], sdm_resampled[[6]], sdm_resampled[[7]], sdm_resampled[[8]], sdm_resampled[[9]], sdm_resampled[[10]], sdm_resampled[[11]], sdm_resampled[[12]], sdm_resampled[[13]], sdm_resampled[[14]], sdm_resampled[[15]], sdm_resampled[[16]])
-names(sstack) <- c("ph_bccm_nospatial_pred", "ph_bccm_nospatial_se", "ph_bccm_spatial_pred", "ph_bccm_spatial_se","ph_GBM_bccm_pred", "ph_GBM_bccm_se","ph_GBM_nep_pred", "ph_GBM_nep_se","ph_nep_nospatial_pred", "ph_nep_nospatial_se", "ph_nep_spatial_pred", "ph_nep_spatial_se","ph_XGBOOST_bccm_pred", "ph_XGBOOST_bccm_se","ph_XGBOOST_nep_pred", "ph_XGBOOST_nep_se")
+sstack <- c(sdm_resampled[[1]], sdm_resampled[[2]], sdm_resampled[[3]], sdm_resampled[[4]], sdm_resampled[[5]], sdm_resampled[[6]], sdm_resampled[[7]], sdm_resampled[[8]])
+names(sstack) <- c("ph_bccm_nospatial_pred", "ph_bccm_spatial_pred", "ph_GBM_bccm_pred", "ph_GBM_nep_pred", "ph_nep_nospatial_pred", "ph_nep_spatial_pred", "ph_XGBOOST_bccm_pred", "ph_XGBOOST_nep_pred")
+
+# sstack <- c(sdm_resampled[[1]], sdm_resampled[[2]], sdm_resampled[[3]], sdm_resampled[[4]], sdm_resampled[[5]], sdm_resampled[[6]], sdm_resampled[[7]], sdm_resampled[[8]], sdm_resampled[[9]], sdm_resampled[[10]], sdm_resampled[[11]], sdm_resampled[[12]], sdm_resampled[[13]], sdm_resampled[[14]], sdm_resampled[[15]], sdm_resampled[[16]])
+# names(sstack) <- c("ph_bccm_nospatial_pred", "ph_bccm_nospatial_se", "ph_bccm_spatial_pred", "ph_bccm_spatial_se","ph_GBM_bccm_pred", "ph_GBM_bccm_se","ph_GBM_nep_pred", "ph_GBM_nep_se","ph_nep_nospatial_pred", "ph_nep_nospatial_se", "ph_nep_spatial_pred", "ph_nep_spatial_se","ph_XGBOOST_bccm_pred", "ph_XGBOOST_bccm_se","ph_XGBOOST_nep_pred", "ph_XGBOOST_nep_se")
 
 sstack <- terra::rast(sstack)
 
@@ -297,6 +302,7 @@ validation_sf <- cbind(validation_sf, surfgrass_extract)
 
 # remove NA in bathy
 validation_sf <- validation_sf %>% filter(!is.na(bathy_mod))
+#removed 25 sites
 
 # remove rows only when none of the sdms have predictions
 validation_sf <- validation_sf %>%

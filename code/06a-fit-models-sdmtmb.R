@@ -140,7 +140,6 @@ save(eval_cv_list, file = "code/output_data/model_results/eelgrass_eval_cv.RData
 
 ####SDMtmb full model####
 # fit full model bccm 
-#remove year for testing
 fmodel_e_bccm_nospatial <- sdmTMB(formula = presence ~ s(depth_stnd, k = 3) + substrate + slope_stnd + rei_stnd +  
                                     s(airtempmin_stnd, k = 3) + rsdsmin_stnd + #chelsa variables
                                     saltcv_bccm_stnd + NH4_bccm_stnd + tempmin_bccm_stnd + #bccm variables
@@ -706,14 +705,15 @@ barrier_mesh <- add_barrier_mesh(mesh, barrier_sf = coastline, proj_scaling = 10
 #fit model
 plan(multisession)
 
-#CONSIDER REMOVING NO3 BECASUE IT DOESN'T HAVE GOOD BORDERS BETWEEN SSC AND BCCM 
 
 # bccm model indicated by looking at ffs and at variable relative importance and also considering what is important for future change, and also what resulted in highest AUC, Tjur and sum loglikelihood
+# NO3 was significant but after reviewing variable between SSC and BCCM there was no good distribution between borders
+
 # no spatial 
 # AUC = 0.968, tjur = 0.248, loglike -3706 
 m_s_1 <- sdmTMB_cv(formula = presence ~ s(depth_stnd) + tidal_sqrt_stnd  + s(rei_sqrt_stnd, k = 3) + substrate + cul_eff_stnd + 
                       airtempcv_stnd + prmean_stnd + rsdsmin_stnd + #chelsa variables
-                      saltcv_bccm_stnd + NO3_bccm_stnd + tempmin_bccm_stnd + surftempcv_bccm_stnd + #bccm variables
+                      saltcv_bccm_stnd + tempmin_bccm_stnd + surftempcv_bccm_stnd + #bccm variables
                       (1|Survey),  #random effect
                     mesh = barrier_mesh, family = binomial(link = "logit"), spatial = FALSE, data = data, fold_ids = "fold")
 eval_cv_bccm_nospatial <- evalStats( folds=1:numFolds,m=m_s_1,CV=cv_list_seagrass$cv,  response_col = "presence")
@@ -765,7 +765,7 @@ save(eval_cv_list_surfgrass, file = "code/output_data/model_results/eval_cv_surf
 
 fmodel_s_bccm_nospatial <- sdmTMB(formula = presence ~ s(depth_stnd) + tidal_sqrt_stnd  + s(rei_sqrt_stnd, k = 3) + substrate + cul_eff_stnd + 
                                     airtempcv_stnd + prmean_stnd + rsdsmin_stnd + #chelsa variables
-                                    saltcv_bccm_stnd + NO3_bccm_stnd + tempmin_bccm_stnd + surftempcv_bccm_stnd + #bccm variables
+                                    saltcv_bccm_stnd + tempmin_bccm_stnd + surftempcv_bccm_stnd + #bccm variables
                                     (1|Survey),  #random effect
                                 mesh = barrier_mesh, #random effect
                                 family = binomial(link = "logit"), 
@@ -907,12 +907,12 @@ save(eval_results, file = "code/output_data/model_results/surfgrass_eval_final_m
 plan(sequential) # the spatial models don't run well on multisession
 
 prednames_bccm_nospatial <- c("depth_stnd", "tidal_sqrt_stnd", "substrate", "rei_sqrt_stnd", "cul_eff_stnd", 
-                              "Survey", "rsdsmin_stnd", "airtempcv_stnd", "prmean_stnd", "saltcv_bccm_stnd", "NO3_bccm_stnd", 
+                              "Survey", "rsdsmin_stnd", "airtempcv_stnd", "prmean_stnd", "saltcv_bccm_stnd", 
                               "tempmin_bccm_stnd", "surftempcv_bccm_stnd")
 groups <- list(
   Geomorphic = c("depth_stnd", "tidal_sqrt_stnd", "substrate", "rei_sqrt_stnd", "cul_eff_stnd"),
   Atmospheric = c("rsdsmin_stnd", "airtempcv_stnd", "prmean_stnd"),
-  Oceanographic = c("saltcv_bccm_stnd", "NO3_bccm_stnd", "tempmin_bccm_stnd", "surftempcv_bccm_stnd"),
+  Oceanographic = c("saltcv_bccm_stnd",  "tempmin_bccm_stnd", "surftempcv_bccm_stnd"),
   Random = c("Survey")
 )
 
@@ -1068,7 +1068,7 @@ barrier_mesh_pre2013 <- add_barrier_mesh(mesh_pre2013, barrier_sf = coastline, p
 #BCCM
 m_surfgrass_forecast_bccm <- sdmTMB(formula = presence ~ s(depth_stnd) + tidal_sqrt_stnd  + s(rei_sqrt_stnd, k = 3) + substrate + cul_eff_stnd + 
                                       airtempcv_stnd + prmean_stnd + rsdsmin_stnd + #chelsa variables
-                                      saltcv_bccm_stnd + NO3_bccm_stnd + tempmin_bccm_stnd + surftempcv_bccm_stnd, #bccm variables
+                                      saltcv_bccm_stnd + tempmin_bccm_stnd + surftempcv_bccm_stnd, #bccm variables
                                     mesh = barrier_mesh_pre2013, 
                                     family = binomial(link = "logit"), 
                                     spatial = FALSE, 
@@ -1080,7 +1080,7 @@ m_surfgrass_forecast_spatial_bccm <- sdmTMB(formula = presence ~ s(depth_stnd) +
                                            family = binomial(link = "logit"), 
                                            spatial = TRUE, 
                                            data = data_pre2013) 
-data.df <- data %>% select(presence, X, Y, depth_stnd, tidal_sqrt_stnd, rei_sqrt_stnd, substrate, cul_eff_stnd, saltcv_bccm_stnd, NO3_bccm_stnd, airtempcv_stnd, prmean_stnd, rsdsmin_stnd, tempmin_bccm_stnd, surftempcv_bccm_stnd, Survey, Year)
+data.df <- data %>% select(presence, X, Y, depth_stnd, tidal_sqrt_stnd, rei_sqrt_stnd, substrate, cul_eff_stnd, saltcv_bccm_stnd, airtempcv_stnd, prmean_stnd, rsdsmin_stnd, tempmin_bccm_stnd, surftempcv_bccm_stnd, Survey, Year)
 
 forecast <- plogis(predict(m_surfgrass_forecast_bccm, newdata = data.df %>% filter(Year > 2012))$est)
 forecast_spatial <- plogis(predict(m_surfgrass_forecast_spatial_bccm, newdata = data.df %>% filter(Year > 2012))$est)
