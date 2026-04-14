@@ -44,6 +44,8 @@ marsh_bin_20m <- rast("raw_data/XiuchengMaps/marsh_mask_20m.tif")
 rei_all <- terra::vrt(c("raw_data/REI/rei_hg.tif", "raw_data/REI/rei_ncc.tif", "raw_data/REI/rei_qcs.tif", "raw_data/REI/rei_sog.tif", "raw_data/REI/rei_wcvi.tif"), "rei.vrt", overwrite=T)
 zero_vec <- vect("raw_data/substrate_20m/exposed_shorezone_bottompatches_sand_class16_17_27_28_30_plusextra.shp")
 toodeep_vec <- vect("raw_data/substrate_20m/bathy_updated_toodeep_mask.shp")
+zero_vec_surfgrass <- vect("raw_data/substrate_20m/exposed_shorezone_bottompatches_sand_class16_17_27_28_30_plusextra.shp")
+
 
 #load substrate layer
 substrate_all <- terra::vrt(c("raw_data/substrate_20m/updated/hg_20m.tif", "raw_data/substrate_20m/updated/ncc_20m.tif", "raw_data/substrate_20m/updated/qcs_20m.tif", "raw_data/substrate_20m/updated/sog_20m.tif", "raw_data/substrate_20m/updated/wcvi_20m.tif"), "substrate.vrt", overwrite=T)
@@ -109,15 +111,15 @@ n1
 
 area_m2 <- n1 * 400
 area_m2
-# 585256400 m2
+# 583987600 m2
 
 area_km2 <- area_m2 / 1e6
 area_km2
-# 585.2564 km2
+# 583.9876 km2
 
 area_ha <- area_m2 / 10000
 area_ha
-# 58525.64 hectares
+# 58398.76 hectares
 
 writeRaster(eel_final_plus_mapped, file.path("raster/eelgrass/eelgrass_predictions.tif"), overwrite = TRUE)
 
@@ -146,11 +148,11 @@ substrate_aligned <- project(substrate_all, surf_final, method="near")
 #surf_final <- ifelse(!is.na(substrate_aligned) & substrate_aligned %in% c(3, 4), 0, surf_final)
 surf_final[!is.na(substrate_aligned) & (substrate_aligned %in% c(3, 4))] <- 0
 
-# # remove areas with high exposure sand
-# zero_vec <- project(zero_vec, surf_final)
-# zero_ras <- rasterize(zero_vec, surf_final, field = 1, background = NA)
-# 
-# surf_final <- ifel(!is.na(zero_ras), 0, surf_final)
+# remove areas with high exposure sand
+zero_vec_surfgrass <- project(zero_vec_surfgrass, surf_final)
+zero_ras_surfgrass <- rasterize(zero_vec_surfgrass, surf_final, field = 1, background = NA)
+
+surf_final <- ifel(!is.na(zero_ras_surfgrass), 0, surf_final)
 
 #remove areas with incorrect bathy based on updated CHS products
 toodeep_vec <- project(toodeep_vec, surf_final)
@@ -163,15 +165,15 @@ n1
 
 area_m2 <- n1 * 400
 area_m2
-# 904494800 m2
+# 1047827600 m2
 
 area_km2 <- area_m2 / 1e6
 area_km2
-# 904.4948 km2
+# 1047.828 km2
 
 area_ha <- area_m2 / 10000
 area_ha
-# 90449.48
+# 104782.8
 
 writeRaster(surf_final, file.path("raster/surfgrass/surfgrass_predictions.tif"), overwrite = TRUE)
 

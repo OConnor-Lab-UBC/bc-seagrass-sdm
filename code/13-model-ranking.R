@@ -114,6 +114,115 @@ legend("topright",
        cex = 0.8)  # Font size
 
 
+#updated radar map
+library(dplyr)
+library(fmsb)
+library(RColorBrewer)
+
+# ---- Build grouped dataset with spacers ----
+radar_df <- rank_table_scaled %>%
+  select(Model,
+         CV_AUC, CV_Tjur, CV_RMSE, CV_TSS,
+         TEMP_AUC, TEMP_Tjur, TEMP_RMSE, TEMP_TSS,
+         INDEP_MPS, INDEP_FPPS, INDEP_FNR, INDEP_CBI,
+         FIELD_AUC, FIELD_SenCV, FIELD_SpeCV,
+         FIELD_TSSCV, FIELD_CliffsD) %>%
+  mutate(
+    spacer1 = NA,
+    spacer2 = NA,
+    spacer3 = NA,
+    spacer4 = NA
+  ) %>%
+  select(Model,
+         CV_AUC, CV_Tjur, CV_RMSE, CV_TSS, spacer1,
+         TEMP_AUC, TEMP_Tjur, TEMP_RMSE, TEMP_TSS, spacer2,
+         INDEP_MPS, INDEP_FPPS, INDEP_FNR, INDEP_CBI, spacer3,
+         FIELD_AUC, FIELD_SenCV, FIELD_SpeCV,
+         FIELD_TSSCV, FIELD_CliffsD, spacer4)
+
+# Replace spacers with 0
+radar_df[is.na(radar_df)] <- 0
+
+# ---- Labels ----
+colnames(radar_df) <- c(
+  "Model",
+  "AUC", "Tjur", "RMSE", "TSS", " ",
+  "AUC ", "Tjur ", "RMSE ", "TSS ", "  ",
+  "MPS", "FPPS", "FNR", "CBI", "   ",
+  "AUC  ", "Sensitivity", "Specificity",
+  "TSS  ", "CliffsDelta", "    "
+)
+
+# ---- Radar format ----
+radar_ready <- rbind(
+  rep(1, ncol(radar_df) - 1),
+  rep(0, ncol(radar_df) - 1),
+  radar_df[, -1]
+)
+
+rownames(radar_ready) <- c("max", "min", radar_df$Model)
+
+# ---- Colors ----
+cols <- brewer.pal(n = nrow(radar_df), name = "Set2")
+
+# ---- Plot ----
+par(mar = c(2, 2, 3, 2))
+
+radarchart(
+  radar_ready,
+  axistype = 0,           # no radial labels
+  caxislabels = NULL,     # removes 0.1, 0.2, etc.
+  pcol = cols,
+  plwd = 2,
+  plty = 1,
+  
+  cglcol = "grey85",
+  cglty = 1,
+  cglwd = 0.8,
+  
+  vlcex = 0.7
+)
+
+# ---- Legend ----
+legend("topright",
+       legend = radar_df$Model,
+       col = cols,
+       lty = 1,
+       lwd = 2,
+       bty = "n",
+       cex = 0.8)
+
+n_axes <- ncol(radar_ready) - 1
+angles <- seq(pi/2, 2*pi + pi/2, length.out = n_axes + 1)[- (n_axes + 1)]
+
+group_pos <- list(
+  Spatial = mean(angles[1:4]),
+  Temporal = mean(angles[6:9]),
+  Independent = mean(angles[11:14]),
+  Field = mean(angles[16:20])
+)
+
+r <- 1.5
+
+text(r * cos(group_pos$Spatial),
+     r * sin(group_pos$Spatial),
+     "Spatial", cex = 1.2, font = 2)
+
+text(r * cos(group_pos$Temporal),
+     r * sin(group_pos$Temporal),
+     "Temporal", cex = 1.2, font = 2)
+
+text(r * cos(group_pos$Independent),
+     r * sin(group_pos$Independent),
+     "Independent", cex = 1.2, font = 2)
+
+text(r * cos(group_pos$Field),
+     r * sin(group_pos$Field),
+     "Field", cex = 1.2, font = 2)
+
+
+
+
 # Heat map
 heat_df <- rank_table_scaled %>%
   select(Model, CV_AUC, CV_Tjur, CV_RMSE, CV_TSS,
@@ -289,6 +398,117 @@ heat_df <- rank_table_scaled %>%
          bty = "n",  # No box around the legend
          pt.cex = 2,  # Point size
          cex = 0.8)  # Font size
+  
+  
+  
+  #updated radar map
+  library(dplyr)
+  library(fmsb)
+  library(RColorBrewer)
+  
+  # ---- Build grouped dataset with spacers ----
+  radar_df_surf <- rank_table_scaled_surf %>%
+    select(Model,
+           CV_AUC, CV_Tjur, CV_RMSE, CV_TSS,
+           TEMP_AUC, TEMP_Tjur, TEMP_RMSE, TEMP_TSS,
+           INDEP_MPS, INDEP_FPPS, INDEP_FNR, INDEP_CBI,
+           FIELD_AUC, FIELD_SenCV, FIELD_SpeCV,
+           FIELD_TSSCV, FIELD_CliffsD) %>%
+    mutate(
+      spacer1 = NA,
+      spacer2 = NA,
+      spacer3 = NA,
+      spacer4 = NA
+    ) %>%
+    select(Model,
+           CV_AUC, CV_Tjur, CV_RMSE, CV_TSS, spacer1,
+           TEMP_AUC, TEMP_Tjur, TEMP_RMSE, TEMP_TSS, spacer2,
+           INDEP_MPS, INDEP_FPPS, INDEP_FNR, INDEP_CBI, spacer3,
+           FIELD_AUC, FIELD_SenCV, FIELD_SpeCV,
+           FIELD_TSSCV, FIELD_CliffsD, spacer4)
+  
+  # Replace spacers with 0
+  radar_df_surf[is.na(radar_df_surf)] <- 0
+  
+  # ---- Labels ----
+  colnames(radar_df_surf) <- c(
+    "Model",
+    "AUC", "Tjur", "RMSE", "TSS", " ",
+    "AUC ", "Tjur ", "RMSE ", "TSS ", "  ",
+    "MPS", "FPPS", "FNR", "CBI", "   ",
+    "AUC  ", "Sensitivity", "Specificity",
+    "TSS  ", "CliffsDelta", "    "
+  )
+  
+  # ---- Radar format ----
+  radar_ready_surf <- rbind(
+    rep(1, ncol(radar_df_surf) - 1),
+    rep(0, ncol(radar_df_surf) - 1),
+    radar_df_surf[, -1]
+  )
+  
+  rownames(radar_ready_surf) <- c("max", "min", radar_df_surf$Model)
+  
+  # ---- Colors ----
+  cols <- brewer.pal(n = nrow(radar_df_surf), name = "Set2")
+  
+  # ---- Plot ----
+  par(mar = c(2, 2, 3, 2))
+  
+  radarchart(
+    radar_ready_surf,
+    axistype = 0,           # no radial labels
+    caxislabels = NULL,     # removes 0.1, 0.2, etc.
+    pcol = cols,
+    plwd = 2,
+    plty = 1,
+    
+    cglcol = "grey85",
+    cglty = 1,
+    cglwd = 0.8,
+    
+    vlcex = 0.7
+  )
+  
+  # ---- Legend ----
+  legend("topright",
+         legend = radar_df_surf$Model,
+         col = cols,
+         lty = 1,
+         lwd = 2,
+         bty = "n",
+         cex = 0.8)
+  
+  n_axes <- ncol(radar_ready_surf) - 1
+  angles <- seq(pi/2, 2*pi + pi/2, length.out = n_axes + 1)[- (n_axes + 1)]
+  
+  group_pos <- list(
+    Spatial = mean(angles[1:4]),
+    Temporal = mean(angles[6:9]),
+    Independent = mean(angles[11:14]),
+    Field = mean(angles[16:20])
+  )
+  
+  r <- 1.5
+  
+  text(r * cos(group_pos$Spatial),
+       r * sin(group_pos$Spatial),
+       "Spatial", cex = 1.2, font = 2)
+  
+  text(r * cos(group_pos$Temporal),
+       r * sin(group_pos$Temporal),
+       "Temporal", cex = 1.2, font = 2)
+  
+  text(r * cos(group_pos$Independent),
+       r * sin(group_pos$Independent),
+       "Independent", cex = 1.2, font = 2)
+  
+  text(r * cos(group_pos$Field),
+       r * sin(group_pos$Field),
+       "Field", cex = 1.2, font = 2)
+  
+  
+  
   
   
   # Heat map
