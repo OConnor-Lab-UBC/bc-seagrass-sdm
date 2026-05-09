@@ -290,6 +290,7 @@ eelgrass_independent_results <- evaluate_independent_seagrass(
 
 
 save(eelgrass_independent_results, file = "code/output_data/model_results/eelgrass_independent_eval.RData")
+save(eelgrass_df, file = "code/output_data/model_results/eelgrass_independent_dataframe.RData")
 
 eelgrass_independent_clean <- eelgrass_independent_results %>%
   rename(model = Model) %>%
@@ -396,7 +397,7 @@ surfgrass_independent_results <- evaluate_independent_seagrass(
 
 
 save(surfgrass_independent_results, file = "code/output_data/model_results/surfgrass_independent_eval.RData")
-
+save(surfgrass_df, file = "code/output_data/model_results/surfgrass_independent_dataframe.RData")
 
 surfgrass_independent_clean <- surfgrass_independent_results %>%
   rename(model = Model) %>%

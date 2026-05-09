@@ -1367,6 +1367,37 @@ run_temporal_forecast <- function(dat, pred_vars, config,
   return(out)
 }
 
+#relative importance for xgboost methods
+perm_importance_xgb <- function(model, X, y, nrep = 10) {
+  
+  # baseline AUC
+  baseline_pred <- predict(model, X)
+  baseline_auc  <- as.numeric(pROC::auc(y, baseline_pred))
+  
+  p <- ncol(X)
+  imp <- numeric(p)
+  
+  for (j in seq_len(p)) {
+    aucs <- replicate(nrep, {
+      X_perm <- X
+      X_perm[, j] <- sample(X_perm[, j])  # permute column j
+      pred <- predict(model, X_perm)
+      as.numeric(pROC::auc(y, pred))
+    })
+    
+    imp[j] <- baseline_auc - mean(aucs)
+  }
+  
+  # clean up
+  imp[imp < 0] <- 0
+  rel_imp <- 100 * imp / sum(imp)
+  
+  data.frame(
+    Feature = colnames(X),
+    Importance = imp,
+    RelImportance = rel_imp
+  )
+}
 
 #### Independent Data Validation Function ####
 evaluate_independent_seagrass <- function(independent, model_names, cv_thresholds, raster_stack) {

@@ -44,7 +44,7 @@ marsh_bin_20m <- rast("raw_data/XiuchengMaps/marsh_mask_20m.tif")
 rei_all <- terra::vrt(c("raw_data/REI/rei_hg.tif", "raw_data/REI/rei_ncc.tif", "raw_data/REI/rei_qcs.tif", "raw_data/REI/rei_sog.tif", "raw_data/REI/rei_wcvi.tif"), "rei.vrt", overwrite=T)
 zero_vec <- vect("raw_data/substrate_20m/exposed_shorezone_bottompatches_sand_class16_17_27_28_30_plusextra.shp")
 toodeep_vec <- vect("raw_data/substrate_20m/bathy_updated_toodeep_mask.shp")
-zero_vec_surfgrass <- vect("raw_data/substrate_20m/exposed_shorezone_bottompatches_sand_class16_17_27_28_30_plusextra.shp")
+zero_vec_surfgrass <- vect("raw_data/substrate_20m/exposed_shorezone_bottompatches_sand_class16_17_27_28_30_plusextra_surfgrass.shp")
 
 
 #load substrate layer
@@ -59,14 +59,20 @@ load("./code/output_data/model_results/combined_metrics_eelgrass_4_validations.R
 
 # --- Load rasters ---
 eelgrass_20m <- terra::vrt(c("raster/eelgrass/xgb_nep/eelgrass_predictions_hg_xgb_nep.tif", "raster/eelgrass/xgb_nep/eelgrass_predictions_ncc_xgb_nep.tif", "raster/eelgrass/xgb_nep/eelgrass_predictions_qcs_xgb_nep.tif", "raster/eelgrass/xgb_nep/eelgrass_predictions_ss_xgb_nep.tif", "raster/eelgrass/xgb_nep/eelgrass_predictions_wcvi_xgb_nep.tif"), "eelgrass_xgb_nep.vrt", overwrite=T)   # values 0–1
+eelgrass_20m_glmm_spatial_nep <- terra::vrt(c("raster/eelgrass/nep_spatial/eelgrass_predictions_hg_nep_spatial.tif", "raster/eelgrass/nep_spatial/eelgrass_predictions_ncc_nep_spatial.tif", "raster/eelgrass/nep_spatial/eelgrass_predictions_qcs_nep_spatial.tif", "raster/eelgrass/nep_spatial/eelgrass_predictions_ss_nep_spatial.tif", "raster/eelgrass/nep_spatial/eelgrass_predictions_wcvi_nep_spatial.tif"), "eelgrass_nep_spatial.vrt", overwrite=T)   # values 0–1
 
 
 
 # --- 1. Threshold eelgrass raster to binary (presence / absence) ---
 # define threshold (adjust as needed)
 thr <- 0.031
+thr1 <- 0.037
 
 eel_bin <- ifel(eelgrass_20m >= thr, 1, 0)
+eel_bin_nepspatial <- ifel(eelgrass_20m_glmm_spatial_nep >= thr1, 1, 0)
+writeRaster(eel_bin, file.path("raster/eelgrass/eelgrass_predictions_xgb_nep_binary_notmasked.tif"), overwrite = TRUE)
+writeRaster(eel_bin_nepspatial, file.path("raster/eelgrass/eelgrass_predictions_nepspatial_binary_notmasked.tif"), overwrite = TRUE)
+
 
 # --- 4. Remove eelgrass presence where marsh, tidal flats, upland and beach is present ---
 eel_final <- ifel(marsh_bin_20m == 1, 0, eel_bin)
@@ -365,3 +371,7 @@ ggplot(prev_plot_df, aes(x = type, y = rate)) +
   ylab("Proportion presence") +
   xlab("") +
   theme_minimal()
+
+
+
+

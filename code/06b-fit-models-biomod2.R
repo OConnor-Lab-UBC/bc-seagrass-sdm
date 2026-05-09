@@ -59,7 +59,7 @@ seagrass_data_long <- seagrass_data_long %>%
 # 
 # pred_vars <- c("depth_stnd", "tidal_sqrt_stnd", "rei_sqrt_stnd", "substrate", "cul_eff_stnd", 
 #                  "airtempcv_stnd", "prmean_stnd", "rsdsmin_stnd", "saltcv_bccm_stnd", 
-#                  "NO3_bccm_stnd", "tempmin_bccm_stnd", "surftempcv_bccm_stnd") 
+#                  "tempmin_bccm_stnd", "surftempcv_bccm_stnd") 
 # 
 # gbm_grid <- expand.grid(
 #   interaction.depth = c(2,3,4),

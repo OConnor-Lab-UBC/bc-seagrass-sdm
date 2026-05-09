@@ -289,6 +289,9 @@ spatialised_sf$fold_seagrass <- sp_blocks_seagrass$folds_ids
 table(spatialised_sf$fold_eelgrass)
 table(spatialised_sf$fold_seagrass)
 
+save(spatialised_sf, file = "code/output_data/seagrass_sf_file.RData")
+
+
 #check that there are presences in each fold
 ph <- spatialised_sf %>% filter(PH ==1) 
 unique(ph$fold_seagrass)

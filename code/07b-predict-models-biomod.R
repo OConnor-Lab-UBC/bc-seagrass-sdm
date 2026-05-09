@@ -69,12 +69,14 @@ gbm_fit <- gbm(
   verbose = FALSE
 )
 
-gbm_varimp <- summary(
+gbm_varimp_bccm_eelgrass <- summary(
   gbm_fit,
   n.trees = 5000,
+  method = permutation.test.gbm,
   plotit = FALSE
 )
-save(gbm_varimp, file = "code/output_data/model_results/relimp_e_bccm_gbm.RData")
+
+save(gbm_varimp_bccm_eelgrass, file = "code/output_data/model_results/relimp_e_bccm_gbm.RData")
 
 gbm_prob <- predict(
   gbm_fit,
@@ -201,10 +203,37 @@ xgb_fit <- xgb.train(
   verbose = 0
 )
 
-# 3. Variable importance
+# 3. Variable importance using gain method
 xgb_varimp <- xgb.importance(model = xgb_fit)
 
-save(xgb_varimp, file = "code/output_data/model_results/relimp_e_bccm_xgb.RData")
+# 3. Variable importance using permutation method
+xgb_perm_imp <- perm_importance_xgb(model = xgb_fit, X = X, y = y, nrep = 10)
+
+# identify substrate-related rows
+substrate_rows <- grepl("substrate", xgb_perm_imp$Feature)
+
+# aggregate substrate gain
+substrate_gain <- sum(xgb_perm_imp$RelImportance[substrate_rows])
+
+# keep non-substrate variables
+xgb_varimp_collapsed <- xgb_perm_imp[!substrate_rows, ]
+
+# add aggregated substrate row
+xgb_varimp_collapsed <- rbind(
+  xgb_varimp_collapsed,
+  data.frame(
+    Feature = "substrate",
+    RelImportance = substrate_gain,
+    Importance = NA
+  )
+)
+
+xgb_varimp_bccm_eelgrass <- xgb_varimp_collapsed[
+  order(-xgb_varimp_collapsed$RelImportance), ]
+
+save(xgb_varimp_bccm_eelgrass,
+     file = "code/output_data/model_results/relimp_e_bccm_xgb.RData")
+
 
 
 # 4. Predict onto your environmental dataframe
@@ -352,13 +381,14 @@ gbm_fit <- gbm(
   verbose = FALSE
 )
 
-gbm_varimp <- summary(
+gbm_varimp_nep_eelgrass <- summary(
   gbm_fit,
   n.trees = 5000,
+  method = permutation.test.gbm,
   plotit = FALSE
 )
 
-save(gbm_varimp, file = "code/output_data/model_results/relimp_e_nep_gbm.RData")
+save(gbm_varimp_nep_eelgrass, file = "code/output_data/model_results/relimp_e_nep_gbm.RData")
 
 gbm_prob <- predict(
   gbm_fit,
@@ -485,9 +515,35 @@ xgb_fit <- xgb.train(
   verbose = 0
 )
 
-# 3. Variable importance
+# 3. Variable importance using gain method
 xgb_varimp <- xgb.importance(model = xgb_fit)
-save(xgb_varimp, file = "code/output_data/model_results/relimp_e_nep_xgb.RData")
+
+# 3. Variable importance using permutation method
+xgb_perm_imp <- perm_importance_xgb(model = xgb_fit, X = X, y = y, nrep = 10)
+
+# identify substrate-related rows
+substrate_rows <- grepl("substrate", xgb_perm_imp$Feature)
+
+# aggregate substrate gain
+substrate_gain <- sum(xgb_perm_imp$RelImportance[substrate_rows])
+
+# keep non-substrate variables
+xgb_varimp_collapsed <- xgb_perm_imp[!substrate_rows, ]
+
+# add aggregated substrate row
+xgb_varimp_collapsed <- rbind(
+  xgb_varimp_collapsed,
+  data.frame(
+    Feature = "substrate",
+    RelImportance = substrate_gain,
+    Importance = NA
+  )
+)
+
+xgb_varimp_nep_eelgrass <- xgb_varimp_collapsed[
+  order(-xgb_varimp_collapsed$RelImportance), ]
+
+save(xgb_varimp_nep_eelgrass, file = "code/output_data/model_results/relimp_e_nep_xgb.RData")
 
 # 4. Predict onto your environmental dataframe
 X_pred <- model.matrix(~ . - 1, data = env)
@@ -618,12 +674,12 @@ dat2 <- filter(seagrass_data_long, species == sp) %>% rename(fold = fold_seagras
 pred_vars = c("depth_stnd", "rei_sqrt_stnd", "tidal_sqrt_stnd",
   "substrate", "cul_eff_stnd", "airtempcv_stnd",
   "rsdsmin_stnd", "prmean_stnd", "saltcv_bccm_stnd",
-  "NO3_bccm_stnd", "tempmin_bccm_stnd", "surftempcv_bccm_stnd")
+  "tempmin_bccm_stnd", "surftempcv_bccm_stnd")
 
 #BCCM model
 env<- env_20m_all %>% dplyr::select(depth_stnd,  rei_sqrt_stnd, tidal_sqrt_stnd, substrate, cul_eff_stnd, 
                                     airtempcv_stnd, rsdsmin_stnd, prmean_stnd, saltcv_bccm_stnd,
-                                    NO3_bccm_stnd, tempmin_bccm_stnd, surftempcv_bccm_stnd)
+                                    tempmin_bccm_stnd, surftempcv_bccm_stnd)
 env$substrate <- as.factor(env$substrate)
 
 
@@ -642,13 +698,14 @@ gbm_fit <- gbm(
   verbose = FALSE
 )
 
-gbm_varimp <- summary(
+gbm_varimp_bccm_surfgrass <- summary(
   gbm_fit,
   n.trees = 5000,
+  method = permutation.test.gbm,
   plotit = FALSE
 )
 
-save(gbm_varimp, file = "code/output_data/model_results/relimp_s_bccm_gbm.RData")
+save(gbm_varimp_bccm_surfgrass, file = "code/output_data/model_results/relimp_s_bccm_gbm.RData")
 
 
 
@@ -777,9 +834,35 @@ xgb_fit <- xgb.train(
   verbose = 0
 )
 
-# 3. Variable importance
+# 3. Variable importance using gain method
 xgb_varimp <- xgb.importance(model = xgb_fit)
-save(xgb_varimp, file = "code/output_data/model_results/relimp_s_bccm_xgb.RData")
+
+# 3. Variable importance using permutation method
+xgb_perm_imp <- perm_importance_xgb(model = xgb_fit, X = X, y = y, nrep = 10)
+
+# identify substrate-related rows
+substrate_rows <- grepl("substrate", xgb_perm_imp$Feature)
+
+# aggregate substrate gain
+substrate_gain <- sum(xgb_perm_imp$RelImportance[substrate_rows])
+
+# keep non-substrate variables
+xgb_varimp_collapsed <- xgb_perm_imp[!substrate_rows, ]
+
+# add aggregated substrate row
+xgb_varimp_collapsed <- rbind(
+  xgb_varimp_collapsed,
+  data.frame(
+    Feature = "substrate",
+    RelImportance = substrate_gain,
+    Importance = NA
+  )
+)
+
+xgb_varimp_bccm_surfgrass <- xgb_varimp_collapsed[
+  order(-xgb_varimp_collapsed$RelImportance), ]
+
+save(xgb_varimp_bccm_surfgrass, file = "code/output_data/model_results/relimp_s_bccm_xgb.RData")
 
 # 4. Predict onto your environmental dataframe
 X_pred <- model.matrix(~ . - 1, data = env)
@@ -929,13 +1012,14 @@ gbm_fit <- gbm(
   verbose = FALSE
 )
 
-gbm_varimp <- summary(
+gbm_varimp_nep_surfgrass <- summary(
   gbm_fit,
   n.trees = 5000,
+  method = permutation.test.gbm,
   plotit = FALSE
 )
 
-save(gbm_varimp, file = "code/output_data/model_results/relimp_s_nep_gbm.RData")
+save(gbm_varimp_nep_surfgrass, file = "code/output_data/model_results/relimp_s_nep_gbm.RData")
 
 gbm_prob <- predict(
   gbm_fit,
@@ -1062,9 +1146,35 @@ xgb_fit <- xgb.train(
   verbose = 0
 )
 
-# 3. Variable importance
+# 3. Variable importance using gain method
 xgb_varimp <- xgb.importance(model = xgb_fit)
-save(xgb_varimp, file = "code/output_data/model_results/relimp_s_nep_xgb.RData")
+
+# 3. Variable importance using permutation method
+xgb_perm_imp <- perm_importance_xgb(model = xgb_fit, X = X, y = y, nrep = 10)
+
+# identify substrate-related rows
+substrate_rows <- grepl("substrate", xgb_perm_imp$Feature)
+
+# aggregate substrate gain
+substrate_gain <- sum(xgb_perm_imp$RelImportance[substrate_rows])
+
+# keep non-substrate variables
+xgb_varimp_collapsed <- xgb_perm_imp[!substrate_rows, ]
+
+# add aggregated substrate row
+xgb_varimp_collapsed <- rbind(
+  xgb_varimp_collapsed,
+  data.frame(
+    Feature = "substrate",
+    RelImportance = substrate_gain,
+    Importance = NA
+  )
+)
+
+xgb_varimp_nep_surfgrass <- xgb_varimp_collapsed[
+  order(-xgb_varimp_collapsed$RelImportance), ]
+
+save(xgb_varimp_nep_surfgrass, file = "code/output_data/model_results/relimp_s_nep_xgb.RData")
 
 # 4. Predict onto your environmental dataframe
 X_pred <- model.matrix(~ . - 1, data = env)
