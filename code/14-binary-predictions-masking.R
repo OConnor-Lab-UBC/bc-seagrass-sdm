@@ -19,6 +19,10 @@ library(dplyr)
 library(purrr)
 library(tibble)
 library(caret)
+library(sf)
+library(tidyr)
+library(tibble)
+library(ggplot2)
 
 #marsh_10m    <- rast("raw_data/XiuchengMaps/Pacific_cover_2024_Sentinel2.tif")      # classes 1–5
 # 1-5: tidal marsh, tidal flats, open water, water-land interface, low-elevation uplands
@@ -138,12 +142,18 @@ load("./code/output_data/model_results/combined_metrics_surfgrass_4_validations.
 
 # --- Load rasters ---
 surfgrass_20m <- terra::vrt(c("raster/surfgrass/bccm_spatial/surfgrass_predictions_hg_bccm_spatial.tif", "raster/surfgrass/bccm_spatial/surfgrass_predictions_ncc_bccm_spatial.tif", "raster/surfgrass/bccm_spatial/surfgrass_predictions_qcs_bccm_spatial.tif", "raster/surfgrass/bccm_spatial/surfgrass_predictions_ss_bccm_spatial.tif", "raster/surfgrass/bccm_spatial/surfgrass_predictions_wcvi_bccm_spatial.tif"), "surfgrass_bccm_spatial.vrt", overwrite=T)   # values 0–1
+surfgrass_20m_glmm_nospatial_nep <- terra::vrt(c("raster/surfgrass/nep_nospatial/surfgrass_predictions_hg_nep_nospatial.tif", "raster/surfgrass/nep_nospatial/surfgrass_predictions_ncc_nep_nospatial.tif", "raster/surfgrass/nep_nospatial/surfgrass_predictions_qcs_nep_nospatial.tif", "raster/surfgrass/nep_nospatial/surfgrass_predictions_ss_nep_nospatial.tif", "raster/surfgrass/nep_nospatial/surfgrass_predictions_wcvi_nep_nospatial.tif"), "surfgrass_nep_nospatial.vrt", overwrite=T)   # values 0–1
 
 # --- 1. Threshold surfgrass raster to binary (presence / absence) ---
 # define threshold (adjust as needed)
 thr <- 0.014
+thr1 <- 0.014
 
 surf_bin <- ifel(surfgrass_20m >= thr, 1, 0)
+surf_bin_nepnospatial <- ifel(surfgrass_20m_glmm_nospatial_nep >= thr1, 1, 0)
+writeRaster(surf_bin, file.path("raster/surfgrass/surfgrass_predictions_bccmspatial_binary_notmasked.tif"), overwrite = TRUE)
+writeRaster(surf_bin_nepnospatial, file.path("raster/surfgrass/surfgrass_predictions_nepnospatial_binary_notmasked.tif"), overwrite = TRUE)
+
 
 # --- 4. Remove surfgrass presence where marsh, tidal flats, upland and beach is present ---
 surf_final <- ifel(marsh_bin_20m == 1, 0, surf_bin)
@@ -194,22 +204,24 @@ writeRaster(surf_final, file.path("raster/surfgrass/surfgrass_predictions.tif"),
 
 
 
-
+eel_masked<- rast("raster/eelgrass/eelgrass_predictions.tif")
+eel_unmasked <-rast("raster/eelgrass/eelgrass_predictions_xgb_nep_binary_notmasked.tif")
 
 
 # compare predictions to field validation dataset to see if overprediction into intertidal areas and exposed sandy areas has been adequately dealt with
 load("code/output_data/field_validation/validation_dataset.RData")
 
-preds_extract <- terra::extract(eel_final_plus_mapped, validation_sf)
-summary(preds_extract$eelgrass_xgb_nep)
-validation_sf$final_eelgrass_preds <- preds_extract$eelgrass_xgb_nep
+masked_extract <- terra::extract(eel_masked, validation_sf)
+unmasked_extract <- terra::extract(eel_unmasked, validation_sf)
+
+validation_sf$pred_masked_binary <- masked_extract[[2]]
+validation_sf$pred_unmasked_binary <- unmasked_extract[[2]]
+
+validation_sf <- validation_sf %>%
+  filter(!HKey %in% c(74, 84, 85, 161))
 
 validation_sf <- validation_sf %>%
   relocate(PH_freq, PH, ZM_freq, ZM, .after = PC_PH)
-
-# need to also drop sites that after reviewing the database should not have been included as they were aborted or vis was too bad to see species
-validation_sf <- validation_sf %>%
-  filter(!HKey %in% c(74, 84, 85, 161))
 
 # noticed error in database that have alerted to Sandie so remove this once it is changed
 validation_sf$PC_ZM[validation_sf$HKey == "125"] <- "51-75"
@@ -238,139 +250,327 @@ validation_sf <- validation_sf %>%
              substrate_mod == "Mixed" | substrate_mode_obs == "Mixed", TRUE,
              substrate_mod == substrate_mode_obs))
 
-validation_sf <- validation_sf %>% select (HKey, Region, Survey, Visibility, High.vegetation, avgCorDepth_obs, bathy_mod,
-                                           Depth_diff, slope_obs, slope_mod, Slope_diff, substrate_mode_obs, 
-                                           substrate_mod, Substrate_diff, 
-                                           ZM, ZM_freq, PC_ZM, final_eelgrass_preds, 
-                                           PH, PH_freq, PC_PH, geometry)
-summary(validation_sf)
-
-pred_col <- "final_eelgrass_preds"
-obs_pa   <- "ZM"     # 0/1 observed
-obs_pc   <- "PC_ZM"  # percent cover bins
+# validation_sf <- validation_sf %>% select (HKey, Region, Survey, Visibility, High.vegetation, avgCorDepth_obs, bathy_mod,
+#                                            Depth_diff, slope_obs, slope_mod, Slope_diff, substrate_mode_obs, 
+#                                            substrate_mod, Substrate_diff, 
+#                                            ZM, ZM_freq, PC_ZM, final_eelgrass_preds, 
+#                                            PH, PH_freq, PC_PH, geometry)
 
 # ---- Prep df ----
 df <- validation_sf %>%
   mutate(
-    PC_mid = case_when(
-      PC_ZM == "0" ~ 0,
-      PC_ZM == "1-25" ~ 12.5,
-      PC_ZM == "26-50" ~ 38,
-      PC_ZM == "51-75" ~ 63,
-      PC_ZM == "76-100" ~ 88
-    ),
-    Presence = if_else(PC_ZM == "0", 0, 1)
+    Presence = as.integer(ZM),
+    pred_masked_binary = as.integer(pred_masked_binary),
+    pred_unmasked_binary = as.integer(pred_unmasked_binary)
   )
 
-# ---- Correlations (binary preds vs ordinal cover midpoint) ----
-spearman <- cor.test(df[[pred_col]], df$PC_mid, method = "spearman")
-kendall  <- cor.test(df[[pred_col]], df$PC_mid, method = "kendall")
-
-cor_results <- tibble(
-  model        = pred_col,
-  spearman_rho = unname(spearman$estimate),
-  spearman_p   = spearman$p.value,
-  kendall_tau  = unname(kendall$estimate),
-  kendall_p    = kendall$p.value
-)
-
-cor_results
 
 
-# ---- Confusion matrix (NO thresholding needed) ----
-cm <- confusionMatrix(
-  factor(df[[pred_col]], levels = c(0, 1)),
-  factor(df[[obs_pa]], levels = c(0, 1)),
-  positive = "1"
-)
 
-cm
-
-
-# ---- Summary metrics ----
-sens <- cm$byClass["Sensitivity"]
-spec <- cm$byClass["Specificity"]
-
-metrics <- tibble(
-  model = pred_col,
-  accuracy = cm$overall["Accuracy"],
-  kappa    = cm$overall["Kappa"],
-  sensitivity = sens,
-  specificity = spec,
-  bal_accuracy = cm$byClass["Balanced Accuracy"],
-  precision = cm$byClass["Pos Pred Value"],
-  npv       = cm$byClass["Neg Pred Value"],
-  F1        = cm$byClass["F1"],
-  TSS       = sens + spec - 1
-)
-
-metrics
-
-
-# observed presence rate
-obs_prev <- mean(df$ZM == 1, na.rm = TRUE)
-
-# predicted presence rate
-pred_prev <- mean(df$final_eelgrass_preds == 1, na.rm = TRUE)
-
-obs_prev
-pred_prev
-
-prev_table <- tibble(
-  n_total = sum(!is.na(df$ZM) & !is.na(df$final_eelgrass_preds)),
-  obs_presence_n = sum(df$ZM == 1, na.rm = TRUE),
-  obs_presence_rate = mean(df$ZM == 1, na.rm = TRUE),
-  pred_presence_n = sum(df$final_eelgrass_preds == 1, na.rm = TRUE),
-  pred_presence_rate = mean(df$final_eelgrass_preds == 1, na.rm = TRUE)
-)
-
-prev_table
-cm$table
-
-#Strong at ruling out eelgrass (NPV 0.94, spec 0.89)
-#Moderately good at detecting eelgrass (sens 0.64)
-#tends to overpredict presence
-
-TN <- 374
-FP <- 48
-FN <- 22
-TP <- 39
-
-metrics_extra <- tibble(
-  n_total = TN + FP + FN + TP,
+binary_validation_metrics <- function(data, obs_col, pred_col, model_name = pred_col) {
   
-  obs_prev = (TP + FN) / (TN + FP + FN + TP),
-  pred_prev = (TP + FP) / (TN + FP + FN + TP),
+  obs <- data[[obs_col]]
+  pred <- data[[pred_col]]
   
-  sensitivity = TP / (TP + FN),
-  specificity = TN / (TN + FP),
+  keep <- !is.na(obs) & !is.na(pred)
+  obs <- obs[keep]
+  pred <- pred[keep]
   
-  FPR = FP / (FP + TN),
-  FNR = FN / (FN + TP),
+  tp <- sum(pred == 1 & obs == 1)
+  tn <- sum(pred == 0 & obs == 0)
+  fp <- sum(pred == 1 & obs == 0)
+  fn <- sum(pred == 0 & obs == 1)
   
-  precision = TP / (TP + FP),
-  NPV = TN / (TN + FN),
+  sensitivity <- if ((tp + fn) == 0) NA_real_ else tp / (tp + fn)
+  specificity <- if ((tn + fp) == 0) NA_real_ else tn / (tn + fp)
+  precision <- if ((tp + fp) == 0) NA_real_ else tp / (tp + fp)
+  npv <- if ((tn + fn) == 0) NA_real_ else tn / (tn + fn)
   
-  accuracy = (TP + TN) / (TN + FP + FN + TP),
-  TSS = (TP / (TP + FN)) + (TN / (TN + FP)) - 1
+  tibble(
+    model = model_name,
+    n = tp + tn + fp + fn,
+    TP = tp,
+    TN = tn,
+    FP = fp,
+    FN = fn,
+    observed_prevalence = mean(obs == 1),
+    predicted_prevalence = mean(pred == 1),
+    sensitivity = sensitivity,
+    specificity = specificity,
+    TSS = sensitivity + specificity - 1,
+    balanced_accuracy = mean(c(sensitivity, specificity), na.rm = TRUE),
+    false_positive_rate = if ((fp + tn) == 0) NA_real_ else fp / (fp + tn),
+    false_negative_rate = if ((fn + tp) == 0) NA_real_ else fn / (fn + tp),
+    precision = precision,
+    npv = npv,
+    F1 = if (
+      is.na(precision) | is.na(sensitivity) |
+      (precision + sensitivity) == 0
+    ) {
+      NA_real_
+    } else {
+      2 * precision * sensitivity / (precision + sensitivity)
+    }
+  )
+}
+
+
+binary_pred_cols <- c(
+  "pred_unmasked_binary",
+  "pred_masked_binary"
 )
 
-metrics_extra
+binary_metrics <- map_dfr(binary_pred_cols, function(p) {
+  binary_validation_metrics(
+    data = df,
+    obs_col = "Presence",
+    pred_col = p,
+    model_name = p
+  )
+})
 
-prev_plot_df <- tibble(
-  type = c("Observed presence rate", "Predicted presence rate"),
-  rate = c(obs_prev, pred_prev)
-)
+binary_metrics
 
-prev_plot_df
 
-library(ggplot2)
+binary_metrics_clean <- binary_metrics %>%
+  select(
+    model,
+    n,
+    observed_prevalence,
+    predicted_prevalence,
+    sensitivity,
+    specificity,
+    TSS,
+    balanced_accuracy,
+    false_positive_rate,
+    false_negative_rate,
+    precision,
+    npv,
+    F1,
+    TP, TN, FP, FN
+  )
 
-ggplot(prev_plot_df, aes(x = type, y = rate)) +
+binary_metrics_clean
+
+metric_change <- binary_metrics_clean %>%
+  select(
+    model,
+    predicted_prevalence,
+    sensitivity,
+    specificity,
+    TSS,
+    balanced_accuracy,
+    false_positive_rate,
+    false_negative_rate,
+    precision,
+    npv,
+    F1
+  ) %>%
+  pivot_longer(
+    cols = -model,
+    names_to = "metric",
+    values_to = "value"
+  ) %>%
+  pivot_wider(
+    names_from = model,
+    values_from = value
+  ) %>%
+  mutate(
+    change_masked_minus_unmasked =
+      pred_masked_binary - pred_unmasked_binary
+  )
+
+metric_change
+
+
+
+df_outcomes <- df %>%
+  mutate(site_id = row_number()) %>%
+  pivot_longer(
+    cols = all_of(binary_pred_cols),
+    names_to = "model",
+    values_to = "prediction"
+  ) %>%
+  mutate(
+    outcome = case_when(
+      Presence == 1 & prediction == 1 ~ "True presence",
+      Presence == 1 & prediction == 0 ~ "False absence",
+      Presence == 0 & prediction == 1 ~ "False presence",
+      Presence == 0 & prediction == 0 ~ "True absence",
+      TRUE ~ NA_character_
+    ),
+    outcome = factor(
+      outcome,
+      levels = c(
+        "True presence",
+        "False absence",
+        "False presence",
+        "True absence"
+      )
+    )
+  )
+
+
+df_outcomes %>%
+  count(model, outcome)
+
+# have to do with with bathy_mod because so many of the intertidal sites could not observe depth
+
+df_outcomes <- df_outcomes %>%
+  mutate(
+    depth_zone = case_when(
+      bathy_mod < 0 ~ "Intertidal / exposed",
+      bathy_mod >= 0 & bathy_mod < 2 ~ "Very shallow subtidal",
+      bathy_mod >= 2 & bathy_mod < 5 ~ "Shallow subtidal",
+      bathy_mod >= 5 ~ "Deeper subtidal",
+      TRUE ~ NA_character_
+    ),
+    depth_zone = factor(
+      depth_zone,
+      levels = c(
+        "Intertidal / exposed",
+        "Very shallow subtidal",
+        "Shallow subtidal",
+        "Deeper subtidal"
+      )
+    )
+  )
+
+
+df_outcomes2 <- df_outcomes %>%
+  mutate(
+    depth_zone = case_when(
+      bathy_mod < 0 ~ "Intertidal / exposed",
+      bathy_mod >= 0 & bathy_mod < 2 ~ "Very shallow subtidal",
+      bathy_mod >= 2 & bathy_mod < 5 ~ "Shallow subtidal",
+      bathy_mod >= 5 ~ "Deeper subtidal",
+      TRUE ~ NA_character_
+    ),
+    depth_zone = factor(
+      depth_zone,
+      levels = c(
+        "Intertidal / exposed",
+        "Very shallow subtidal",
+        "Shallow subtidal",
+        "Deeper subtidal"
+      )
+    ),
+    substrate_depth = interaction(depth_zone, substrate_mode_obs, sep = " – ")
+  )
+df_outcomes2 <- sf::st_drop_geometry(df_outcomes2)
+
+counts_cross <- df_outcomes2 %>%
+  filter(!is.na(substrate_mode_obs), !is.na(depth_zone)) %>%
+  count(substrate_depth) %>%
+  rename(n_sites = n)
+
+outcomes_cross <- df_outcomes2 %>%
+  filter(!is.na(substrate_mode_obs), !is.na(depth_zone)) %>%
+  count(model, substrate_depth, outcome) %>%
+  group_by(model, substrate_depth) %>%
+  mutate(prop = n / sum(n)) %>%
+  ungroup() %>%
+  left_join(counts_cross, by = "substrate_depth")
+
+outcomes_cross <- outcomes_cross %>%
+  mutate(substrate_depth_lab = paste0(substrate_depth, "\n(n = ", n_sites, ")"))
+
+ggplot(outcomes_cross, aes(x = substrate_depth_lab, y = prop, fill = outcome)) +
   geom_col() +
-  ylab("Proportion presence") +
-  xlab("") +
+  facet_wrap(~ model) +
+  coord_flip() +
+  labs(
+    x = "Depth zone × substrate type",
+    y = "Proportion of validation sites",
+    fill = "Prediction outcome",
+    title = "Prediction outcomes by depth and substrate"
+  ) +
   theme_minimal()
+
+
+stress_test <- df_outcomes %>%
+  mutate(
+    sandy_site = substrate_mode_obs %in% c("Sand"),
+    intertidal_or_exposed = avgCorDepth_obs < 0,
+    stress_zone = case_when(
+      intertidal_or_exposed & sandy_site ~ "Intertidal/exposed sand",
+      intertidal_or_exposed & !sandy_site ~ "Intertidal/exposed non-sand",
+      !intertidal_or_exposed & sandy_site ~ "Subtidal sand",
+      TRUE ~ "Other"
+    )
+  ) %>%
+  group_by(model, stress_zone) %>%
+  summarise(
+    n = n(),
+    observed_absences = sum(Presence == 0, na.rm = TRUE),
+    false_positives = sum(Presence == 0 & prediction == 1, na.rm = TRUE),
+    false_positive_rate = if_else(
+      observed_absences == 0,
+      NA_real_,
+      false_positives / observed_absences
+    ),
+    predicted_prevalence = mean(prediction == 1, na.rm = TRUE),
+    observed_prevalence = mean(Presence == 1, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+stress_test
+
+
+
+binary_metrics_clean %>%
+  select(model, sensitivity, specificity, TSS, false_positive_rate, false_negative_rate) %>%
+  pivot_longer(
+    cols = -model,
+    names_to = "metric",
+    values_to = "value"
+  ) %>%
+  ggplot(aes(x = model, y = value, fill = metric)) +
+  geom_col(position = "dodge") +
+  coord_flip() +
+  labs(
+    x = "",
+    y = "Metric value",
+    title = "Validation metrics for unmasked and masked binary eelgrass maps"
+  ) +
+  theme_minimal()
+
+
+ggplot(binary_metrics_clean, aes(x = model, y = TSS, fill = model)) +
+  geom_col() +
+  coord_flip() +
+  labs(
+    x = "",
+    y = "TSS",
+    title = "TSS comparison between unmasked and masked binary eelgrass maps"
+  ) +
+  theme_minimal() +
+  theme(legend.position = "none")
+
+
+binary_metrics_clean %>%
+  select(
+    model,
+    n,
+    predicted_prevalence,
+    sensitivity,
+    specificity,
+    TSS,
+    false_positive_rate,
+    false_negative_rate,
+    precision,
+    npv,
+    TP, TN, FP, FN
+  )
+
+stress_test
+
+
+
+
+
+
+
 
 
 

@@ -51,6 +51,10 @@ validation_sf <- validation_sf %>%
 validation_sf <- validation_sf %>%
   filter(!HKey %in% c(74, 84, 85, 161))
 
+print(paste("zm present in ", round((sum(validation_sf$ZM)/nrow(validation_sf))*100,2), "% of observations", sep = ""))
+print(paste("ph present in ", round((sum(validation_sf$PH)/nrow(validation_sf))*100,2), "% of observations", sep = ""))
+
+
 # determine difference between observed and modelled environmental layers
 # if either observed or modelled layers were mixed these were always retained as we are just looking at predominant substrate and most sites are actually mixed in reality
 validation_sf <- validation_sf %>%

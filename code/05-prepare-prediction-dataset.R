@@ -544,7 +544,7 @@ env_20m_all <- env_20m_all %>%
   filter(#freshwater < quantile(seagrass_data$freshwater, probs = 0.99),  # we have no surveys in freshwater areas, so better to exclude
          salt_5m_mean_bccm > quantile(seagrass_data$saltmean_bccm, probs = 0.001), # same as above
          !is.na(cul_eff),
-         !is.na(NH4_5m_mean_nep36), #temperature > quantile(seagrass_data$temperature, probs = 0.001), # want to allow extrapolation into higher temperatures
+         !is.na(NH4_5m_mean_nep36), #temperature > quantile(seagrass_data$temperature, probs = 0.001), 
          #temperature < quantile(seagrass_data$temperature, probs = 0.999),
          tidal < quantile(seagrass_data$tidal, probs = 0.9999), # remove high current areas where we can't sample, neither species observed in high values in quadrats 
          rei < quantile(seagrass_data$rei, probs = 0.99999))   # remove high exposure areas where we can't sample? PH found in moderately high but not

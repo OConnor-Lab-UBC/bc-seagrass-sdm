@@ -17,6 +17,15 @@ library(patchwork)
 library(sf)
 library(terra)
 library(tidyterra)
+library(GGally)
+library(reproducible)
+library(factoextra)
+library(viridis)
+library(gridExtra)
+library(grid)
+library(purrr)
+library(tibble)
+library(stringr)
 
 coastline_full <- st_read("raw_data/CHS_HWL2015_Coastline.gdb", layer = "Polygon_CHS_Pacific_HWL_2015_5028437_simple")
 coastline <- coastline_full %>%
@@ -408,6 +417,9 @@ ggsave("figures/figure_relimp.png", plot = relimp, width = 8, height = 6, dpi = 
 
 
 
+
+
+
 ##### Independent validation figures
 load("code/output_data/model_results/eelgrass_independent_dataframe.RData")
 load("code/output_data/model_results/surfgrass_independent_dataframe.RData")
@@ -453,73 +465,77 @@ surfgrass_long <- surfgrass_long %>%
   mutate(model = recode(as.character(model), !!!model_labels),
          model = factor(model, levels = model_labels))
 
-plot_df <- bind_rows(eelgrass_long, surfgrass_long) %>%
-  mutate(
-    model = factor(model, levels = model_labels)
-  )
+# plot_df <- bind_rows(eelgrass_long, surfgrass_long) %>%
+#   mutate(
+#     model = factor(model, levels = model_labels)
+#   )
 
-independent <- ggplot(plot_df, aes(x = model, y = predicted_suitability, fill = species)) +
-  geom_boxplot(
-    outlier.alpha = 0.15,
-    width = 0.7,
-    colour = "black",
-    linewidth = 0.3
-  ) +
-  stat_summary(
-    fun = median,
-    geom = "point",
-    size = 1.8,
-    colour = "black"
-  ) +
-  facet_wrap(~ species, ncol = 1, scales = "fixed") +
-  
-  scale_fill_manual(values = c(
-    "Eelgrass" = "grey",
-    "Surfgrass" = "grey"
-  )) +
-  
-  scale_y_continuous(limits = c(0,1), expand = c(0, 0)) +
-  
-  labs(
-    x = NULL,
-    y = "Relative probability of occurrence"
-  ) +
-  geom_hline(yintercept = 0, linewidth = 0.4) +
-  theme_classic(base_size = 12) +
-  theme(
-    # --- facet labels (move left, remove box) ---
-    strip.background = element_blank(),
-    strip.placement = "outside",
-    strip.text = element_text(
-      face = "bold",
-      hjust = 0   # left-align text
-    ),
-    
-    # --- axes styling ---
-    axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1),
-    axis.title.y = element_text(margin = margin(r = 10)),
-    
-    # --- remove legend ---
-    legend.position = "none",
-    
-    # --- spacing ---
-    panel.spacing = unit(0.8, "lines")
-  )
-
-ggsave(
-  filename = "figures/independent_validation.png",
-  plot = independent,
-  width = 6,
-  height = 6,
-  dpi = 300,
-  bg = "white"
-)
+# independent <- ggplot(plot_df, aes(x = model, y = predicted_suitability, fill = species)) +
+#   geom_boxplot(
+#     outlier.alpha = 0.15,
+#     width = 0.7,
+#     colour = "black",
+#     linewidth = 0.3
+#   ) +
+#   stat_summary(
+#     fun = median,
+#     geom = "point",
+#     size = 1.8,
+#     colour = "black"
+#   ) +
+#   facet_wrap(~ species, ncol = 1, scales = "fixed") +
+#   
+#   scale_fill_manual(values = c(
+#     "Eelgrass" = "grey",
+#     "Surfgrass" = "grey"
+#   )) +
+#   
+#   scale_y_continuous(limits = c(0,1), expand = c(0, 0)) +
+#   
+#   labs(
+#     x = NULL,
+#     y = "Relative probability of occurrence"
+#   ) +
+#   geom_hline(yintercept = 0, linewidth = 0.4) +
+#   theme_classic(base_size = 12) +
+#   theme(
+#     # --- facet labels (move left, remove box) ---
+#     strip.background = element_blank(),
+#     strip.placement = "outside",
+#     strip.text = element_text(
+#       face = "bold",
+#       hjust = 0   # left-align text
+#     ),
+#     
+#     # --- axes styling ---
+#     axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1),
+#     axis.title.y = element_text(margin = margin(r = 10)),
+#     
+#     # --- remove legend ---
+#     legend.position = "none",
+#     
+#     # --- spacing ---
+#     panel.spacing = unit(0.8, "lines")
+#   )
+# 
+# ggsave(
+#   filename = "figures/independent_validation.png",
+#   plot = independent,
+#   width = 6,
+#   height = 6,
+#   dpi = 300,
+#   bg = "white"
+# )
 
 
 eelgrass_subset <- eelgrass_long %>% filter (model == "XGB_nep" | model == "GLMM_spatial_nep")
 
 model_levels <- c("Lowest-performing model", "Highest-performing model")
 
+thresholds <- tibble(
+  model = c("GLMM_spatial_nep", "XGB_nep"),
+  threshold = c(0.037, 0.031)   
+)
 
 summary_df <- eelgrass_subset %>%
   left_join(thresholds, by = "model") %>%
@@ -555,10 +571,7 @@ mps_df <- eelgrass_subset %>%
   ) %>%
   select(model_label, value)
 
-thresholds <- tibble(
-  model = c("GLMM_spatial_nep", "XGB_nep"),
-  threshold = c(0.037, 0.031)   
-)
+
 
 
 p1 <- ggplot(
@@ -601,7 +614,6 @@ p1 <- ggplot(
     plot.background = element_rect(fill = "white", colour = NA)
   )
 
-# PANEL B ------------------------------------------------------------
 
 p2 <- ggplot(
   summary_df,
@@ -639,25 +651,177 @@ p2 <- ggplot(
   ) +
   
   guides(
-    colour = "none",   
-    shape = guide_legend(order = 1)
+    colour = "none",
+    shape = guide_legend(
+      order = 1,
+      nrow = 1
+    )
   ) +
   
   theme_classic(base_size = 12) +
   theme(
     axis.text.x = element_text(),
-    legend.position = c(0.15, 1),
-    legend.justification = c(1, 1),
+    
+    legend.position = "bottom",
+    legend.direction = "horizontal",
+    
     legend.background = element_rect(
       fill = scales::alpha("white", 0.85),
-      colour = NA),
+      colour = NA
+    ),
+    
     plot.margin = margin(3, 3, 3, 3),
     axis.ticks.length = unit(2, "pt"),
     plot.background = element_rect(fill = "white", colour = NA)
   )
 
 
+
+
+surfgrass_subset <- surfgrass_long %>% filter (model == "GLMM_spatial_bccm" | model == "GLMM_nep")
+
+model_levels <- c("Lowest-performing model", "Highest-performing model")
+
+thresholds <- tibble(
+  model = c("GLMM_nep", "GLMM_spatial_bccm"),
+  threshold = c(0.014, 0.014)   
+)
+
+summary_df_surf <- surfgrass_subset %>%
+  left_join(thresholds, by = "model") %>%
+  group_by(model) %>%
+  summarise(
+    FPPS = mean(predicted_suitability >= threshold, na.rm = TRUE),
+    FNR  = mean(predicted_suitability < threshold, na.rm = TRUE),
+    .groups = "drop"
+  ) %>%
+  mutate(
+    model_label = recode(
+      model,
+      "GLMM_nep" = "Lowest-performing model",
+      "GLMM_spatial_bccm" = "Highest-performing model"
+    ),
+    model_label = factor(model_label, levels = model_levels)
+  ) %>%
+  pivot_longer(
+    cols = c(FPPS, FNR),
+    names_to = "metric",
+    values_to = "value"
+  )
+
+mps_df_surf <- surfgrass_subset %>%
+  mutate(
+    model_label = recode(
+      model,
+      "GLMM_nep" = "Lowest-performing model",
+      "GLMM_spatial_bccm" = "Highest-performing model"
+    ),
+    model_label = factor(model_label, levels = model_levels),
+    value = predicted_suitability
+  ) %>%
+  select(model_label, value)
+
+
+p4 <- ggplot(
+  mps_df_surf,
+  aes(x = model_label, y = value, fill = model_label)
+) +
+  geom_violin(
+    alpha = 0.5,
+    colour = NA,
+    width = 0.9
+  ) +
+  geom_boxplot(
+    width = 0.15,
+    outlier.alpha = 0.1,
+    colour = "black"
+  ) +
+  stat_summary(
+    fun = median,
+    geom = "point",
+    size = 2,
+    colour = "black"
+  ) +
+  scale_fill_manual(values = c(
+    "Highest-performing model" = "#8C6BB1",
+    "Lowest-performing model" = "#4D4D4D"
+  )) +
+  scale_x_discrete(limits = model_levels) +
+  labs(
+    y = "Relative probability of occurrence",
+    x = NULL
+  ) +
+  scale_y_continuous(expand = expansion(mult = c(0.02, 0.02))) +
+  theme_classic(base_size = 12) +
+  theme(
+    legend.position = "none",
+    axis.text.x = element_blank(),
+    axis.ticks.x = element_blank(),
+    plot.margin = margin(3, 3, 3, 3),
+    axis.ticks.length = unit(2, "pt"),
+    plot.background = element_rect(fill = "white", colour = NA)
+  )
+
+
+p5 <- ggplot(
+  summary_df_surf,
+  aes(
+    x = model_label,
+    y = value,
+    shape = metric
+  )
+) +
+  geom_point(
+    aes(colour = model_label),
+    size = 3.5,
+    position = position_dodge(width = 0.1)
+  ) +
+  
+  scale_colour_manual(values = c(
+    "Highest-performing model" = "#8C6BB1",
+    "Lowest-performing model" = "#4D4D4D"
+  )) +
+  
+  scale_shape_manual(values = c(
+    "FPPS" = 17,
+    "FNR" = 15
+  )) +
+  
+  scale_y_continuous(
+    limits = c(0, 1),
+    expand = expansion(mult = c(0.02, 0.02))
+  ) +
+  
+  labs(
+    y = "Proportion",
+    x = NULL,
+    shape = "Metric"
+  ) +
+  
+  guides(
+    colour = "none",
+    shape = "none"
+  ) +
+  
+  theme_classic(base_size = 12) +
+  theme(
+    axis.text.x = element_text(),
+    
+    legend.position = "none",
+    
+    plot.margin = margin(3, 3, 3, 3),
+    axis.ticks.length = unit(2, "pt"),
+    plot.background = element_rect(fill = "white", colour = NA)
+  )
+
+
+
+
+
+
+
 #make map of individuals
+#eelgrass
 eelgrass_indep <- rast(c("code/output_data/independent_validation/BCeelgrass_netforce_2013_2023.tif"))
 eel_bin_xgb_nep <-rast("raster/eelgrass/eelgrass_predictions_xgb_nep_binary_notmasked.tif")
 eel_bin_nepspatial<-rast("raster/eelgrass/eelgrass_predictions_nepspatial_binary_notmasked.tif")
@@ -686,16 +850,116 @@ levels(eelgrass_cat) <- data.frame(
   value = c(1, 2, 3, 4),
   category = c(
     "Observed only",
-    "Observed + lowest-performing model",
-    "Observed + highest-performing model",
+    "Observed + lowest-performing \nmodel",
+    "Observed + highest-performing \nmodel",
     "Observed + both models"
   )
 )
 
 r_ext <- terra::ext(eelgrass_cat)
 
-p3 <-ggplot() +
+p3 <- ggplot() +
   geom_spatraster(data = eelgrass_cat) +
+  geom_sf(data = coastline, fill = "grey85", color = "black", linewidth = 0.2) +
+  
+  scale_fill_manual(
+    name = "Agreement category",
+    values = c(
+      "Observed only" = "#D73027",
+      "Observed + lowest-performing \nmodel" = "#FC8D59",
+      "Observed + highest-performing \nmodel" = "#91BFDB",
+      "Observed + both models" = "#1A9850"
+    ),
+    na.value = "white",
+    na.translate = FALSE,
+    drop = FALSE,
+    guide = guide_legend(ncol = 2)
+  ) +
+  
+  coord_sf(
+    xlim = c(r_ext$xmin, r_ext$xmax),
+    ylim = c(r_ext$ymin, r_ext$ymax),
+    expand = FALSE
+  ) +
+  
+  theme_minimal() +
+  
+  theme(
+    panel.background = element_rect(fill = "white", color = NA),
+    plot.background  = element_rect(fill = "white", color = NA),
+    panel.border = element_rect(color = "black", fill = NA, linewidth = 0.6),
+    
+    legend.position = "bottom",
+    legend.direction = "horizontal",
+    legend.box = "horizontal",
+    
+    legend.background = element_rect(
+      fill = scales::alpha("white", 0.8),
+      color = NA
+    ),
+    
+    legend.key = element_rect(fill = NA, color = NA),
+    
+    plot.margin = margin(3, 3, 3, 3)
+  )
+p3
+
+surfgrass_indep <- rast(c("code/output_data/independent_validation/surfgrass_validation_raster_2013_2024.tif"))
+surf_bin_bccmspatial <-rast("raster/surfgrass/surfgrass_predictions_bccmspatial_binary_notmasked.tif")
+surf_bin_nepnospatial<-rast("raster/surfgrass/surfgrass_predictions_nepnospatial_binary_notmasked.tif")
+values(surfgrass_indep)[values(surfgrass_indep) >= 1] <- 1
+
+surfgrass_indep <- resample(surfgrass_indep, surf_bin_bccmspatial, method = "near")
+
+# make sure rasters align
+stopifnot(compareGeom(surfgrass_indep, surf_bin_bccmspatial, surf_bin_nepnospatial))
+
+# create output raster
+out <- ifel(surfgrass_indep == 1 & surf_bin_bccmspatial == 1 & surf_bin_nepnospatial == 1, 4,
+            ifel(surfgrass_indep == 1 & surf_bin_bccmspatial == 1 & surf_bin_nepnospatial == 0, 3,
+                 ifel(surfgrass_indep == 1 & surf_bin_bccmspatial == 0 & surf_bin_nepnospatial == 1, 2,
+                      ifel(surfgrass_indep == 1 & surf_bin_bccmspatial == 0 & surf_bin_nepnospatial == 0, 1, NA))))
+
+# write result
+writeRaster(out, "raster/surfgrass/surfgrass_good&badmodel_overlayindependent.tif", overwrite = TRUE)
+# looked in arc for best example areas to showcase and clipped it
+
+surfgrass_indep_val_clipped <- rast(c("raster/independent_figue_surfgrass.tif"))
+
+surfgrass_cat <- as.factor(surfgrass_indep_val_clipped)
+levels(surfgrass_cat) <- data.frame(
+  value = c(1, 2, 3, 4),
+  category = c(
+    "Observed only",
+    "Observed + lowest-performing model",
+    "Observed + highest-performing model",
+    "Observed + both models"
+  )
+)
+
+r_ext_surf <- terra::ext(surfgrass_cat)
+
+levels(surfgrass_cat) <- data.frame(
+  value = 1:4,
+  category = c(
+    "Observed only",
+    "Observed + lowest-performing model",
+    "Observed + highest-performing model",
+    "Observed + both models"
+  )
+)
+
+#surfgrass_cat <- as.factor(surfgrass_cat)
+
+legend_levels <- c(
+  "Observed only",
+  "Observed + lowest-performing model",
+  "Observed + highest-performing model",
+  "Observed + both models"
+)
+
+p6 <-ggplot() +
+  geom_spatraster(data = surfgrass_cat) +
   geom_sf(data = coastline, fill = "grey85", color = "black", linewidth = 0.2) +
   scale_fill_manual(
     name = "Agreement category",
@@ -705,13 +969,14 @@ p3 <-ggplot() +
       "Observed + highest-performing model" = "#91BFDB",
       "Observed + both models" = "#1A9850"
     ),
+    limits = legend_levels,  
     na.value = "white",
     na.translate = FALSE,
     drop = FALSE
   ) +
   coord_sf(
-    xlim = c(r_ext$xmin, r_ext$xmax),
-    ylim = c(r_ext$ymin, r_ext$ymax),
+    xlim = c(r_ext_surf$xmin, r_ext_surf$xmax),
+    ylim = c(r_ext_surf$ymin, r_ext_surf$ymax),
     expand = FALSE
   ) +
   theme_minimal() +
@@ -719,15 +984,15 @@ p3 <-ggplot() +
     panel.background = element_rect(fill = "white", color = NA),
     plot.background  = element_rect(fill = "white", color = NA),
     panel.border = element_rect(color = "black", fill = NA, linewidth = 0.6),
-    legend.position = c(0.99, 0.99),
-    legend.justification = c(1, 1),
-    legend.background = element_rect(
-      fill = scales::alpha("white", 0.8),
-      color = NA
-    ),
-    legend.key = element_rect(fill = NA, color = NA),
+    legend.position = "none",
     plot.margin = margin(3, 3, 3, 3)
-  )
+  )  
+
+p6
+
+
+
+
 
 
 # COMBINE ------------------------------------------------------------
@@ -735,14 +1000,35 @@ p3 <-ggplot() +
 # p2 <- p2 + theme(plot.margin = margin(5,5,5,5))
 # p3 <- p3 + theme(plot.margin = margin(5,5,5,5))
 
+p1 <- p1 +
+  annotate(
+    "text",
+    x = -Inf, y = Inf,
+    label = "Eelgrass",
+    hjust = -0.1, vjust = 1.2,
+    fontface = "bold"
+  )
 
-indep_plot <- (p1 / p2) | p3
+p4 <- p4 +
+  annotate(
+    "text",
+    x = -Inf, y = Inf,
+    label = "Surfgrass",
+    hjust = -0.1, vjust = 1.2,
+    fontface = "bold"
+  )
 
+
+indep_plot_eel <- (p1 / p2) | p3
+indep_plot_surf <- (p4 / p5) | p6
+
+indep_plot = indep_plot_eel/indep_plot_surf
+ 
 ggsave(
   filename = "figures/independent_validation.png",
   plot = indep_plot,
-  width = 13,
-  height = 7,
+  width = 12,
+  height = 11,
   dpi = 300,
   bg = "white"
 )
@@ -1045,6 +1331,1530 @@ surfgrass_field <- ggplot(surfgrass_pa_long,
    plot = field_val,
    width = 13,
    height = 12,
+   dpi = 300,
+   bg = "white"
+ )
+
+ 
+ 
+ 
+ #make figures of environmental characteristics
+
+ 
+ #load seagrass data
+ load("code/output_data/seagrass_model_inputs.RData")
+ 
+ bathy_hg <- rast("raw_data/envlayers-20m-hg//bathymetry.tif")
+ bathy_ncc <- rast("raw_data/envlayers-20m-ncc/bathymetry.tif")
+ bathy_qcs <- rast("raw_data/envlayers-20m-qcs/bathymetry.tif")
+ bathy_wcvi <- rast("raw_data/envlayers-20m-wcvi/bathymetry.tif")
+ bathy_ss <- rast("raw_data/envlayers-20m-shelfsalishsea/bathymetry.tif")
+ 
+ tidal_all <- vrt(c("raw_data/current_20m/Nearshore_CurrentSpeedIndex.tif"))
+ names(tidal_all)<-"tidal"
+ #change to index 0-1 scale
+ tidal_index_all <- tidal_all/(maxFn(tidal_all))
+ crs(tidal_index_all) <- "EPSG:3005"
+ 
+ rei_hg <- rast("raw_data/REI/rei_hg.tif")
+ rei_ncc <- rast("raw_data/REI/rei_ncc.tif")
+ rei_qcs <- rast("raw_data/REI/rei_qcs.tif")
+ rei_wcvi <- rast("raw_data/REI/rei_wcvi.tif")
+ rei_ss <- rast("raw_data/REI/rei_sog.tif")
+ 
+ folder_2013_2023 <- "code/output_data/processed_ocean_variables/years_2013-2023"
+ files_2013_2023 <- list.files(folder_2013_2023, pattern = "\\.tif$", full.names = TRUE)
+ selected_files_2013_2023 <- files_2013_2023[c(5, 6, 17, 18, 22, 23, 24, 25, 26, 29, 30, 35, 36, 37, 38, 39, 44, 45, 46)]
+ hindcast2013_2023 <- terra::rast(selected_files_2013_2023)
+ 
+ folder_1993_2002 <- "code/output_data/processed_ocean_variables/years_1993-2002"
+ files_1993_2002 <- list.files(folder_1993_2002, pattern = "\\.tif$", full.names = TRUE)
+ selected_files_1993_2002 <- files_1993_2002[c(5, 6, 17, 18, 22, 23, 24, 25, 26, 29, 30, 35, 36, 37, 38, 39, 44, 45, 46)]
+ hindcast1993_2002 <- terra::rast(selected_files_1993_2002)
+ 
+ folder_2003_2012 <- "code/output_data/processed_ocean_variables/years_2003-2012"
+ files_2003_2012 <- list.files(folder_2003_2012, pattern = "\\.tif$", full.names = TRUE)
+ selected_files_2003_2012 <- files_2003_2012[c(5, 6, 17, 18, 22, 23, 24, 25, 26, 29, 30, 35, 36, 37, 38, 39, 44, 45, 46)]
+ hindcast2003_2012 <- terra::rast(selected_files_2003_2012)
+ 
+ 
+max_depth <- quantile(seagrass_data$depth, probs = c(0.99))
+ min_depth <- quantile(seagrass_data$depth, probs = c(0.001))
+ max_rei <- quantile(seagrass_data$rei, probs = c(0.9999))
+ max_tidal <- quantile(seagrass_data$tidal, probs = c(0.9999))
+
+ #haida gwaii
+ env_20m_hg <- as.data.frame(bathy_hg, xy=TRUE)
+ names(env_20m_hg) <- c("X_m", "Y_m", "depth")
+ env_20m_hg <- env_20m_hg %>% filter(depth <= max_depth, depth >= min_depth)
+ env_20m_hg_sf <- st_as_sf(env_20m_hg, coords = c("X_m","Y_m"), crs = "EPSG:3005")
+ hold <- terra::extract(x = rei_hg, y = env_20m_hg_sf)
+ env_20m_hg$rei <- hold$rei 
+ env_20m_hg <- env_20m_hg %>% filter(rei <= max_rei)
+ env_20m_hg_sf <- st_as_sf(env_20m_hg, coords = c("X_m","Y_m"), crs = "EPSG:3005")
+hold <- terra::extract(x = tidal_index_all, y = env_20m_hg_sf)
+ env_20m_hg$tidal <- hold$tidal 
+ env_20m_hg <- env_20m_hg %>% filter(tidal <= max_tidal)
+ env_20m_hg_sf <- st_as_sf(env_20m_hg, coords = c("X_m","Y_m"), crs = "EPSG:3005")
+ hold <- terra::extract(x = hindcast2013_2023, y = env_20m_hg_sf, fun = "mean", touches = TRUE, bind = TRUE) %>% terra::as.data.frame() 
+ env_20m_hg$precip_mean2013_2023 <- hold$precip_mean
+ env_20m_hg$precip_min2013_2023 <- hold$precip_min
+ env_20m_hg$salt_5m_cv_bccm2013_2023 <- hold$salt_5m_cv_bccm
+ env_20m_hg$salt_5m_cv_nep362013_2023 <- hold$salt_5m_cv_nep36
+ env_20m_hg$salt_5m_mean_bccm2013_2023 <- hold$salt_5m_mean_bccm
+ env_20m_hg$salt_5m_mean_nep362013_2023 <- hold$salt_5m_mean_nep36
+ env_20m_hg$temp_air_min2013_2023 <- hold$temp_air_min
+ env_20m_hg$rsds_min2013_2023 <- hold$rsds_min
+ env_20m_hg$temp_5m_cv_bccm2013_2023 <- hold$temp_5m_cv_bccm
+ env_20m_hg$temp_5m_cv_nep362013_2023 <- hold$temp_5m_cv_nep36
+ env_20m_hg$temp_5m_min_bccm2013_2023 <- hold$temp_5m_min_bccm
+ env_20m_hg$temp_5m_min_nep362013_2023 <- hold$temp_5m_min_nep36
+ env_20m_hg$temp_5m_mean_bccm2013_2023 <- hold$temp_5m_mean_bccm
+ env_20m_hg$temp_5m_mean_nep362013_2023 <- hold$temp_5m_mean_nep36
+ env_20m_hg$NH4_5m_mean_bccm2013_2023 <- hold$NH4_5m_mean_bccm
+ env_20m_hg$NH4_5m_mean_nep362013_2023 <- hold$NH4_5m_mean_nep36
+ env_20m_hg$temp_air_cv2013_2023 <- hold$temp_air_cv
+ env_20m_hg$temp_s_cv_bccm2013_2023 <- hold$temp_s_cv_bccm
+ env_20m_hg$temp_s_cv_nep362013_2023 <- hold$temp_s_cv_nep36
+ 
+ hold <- terra::extract(x = hindcast1993_2002, y = env_20m_hg_sf, fun = "mean", touches = TRUE, bind = TRUE) %>% terra::as.data.frame() 
+ env_20m_hg$precip_mean1993_2002 <- hold$precip_mean
+ env_20m_hg$precip_min1993_2002 <- hold$precip_min
+ env_20m_hg$salt_5m_cv_bccm1993_2002 <- hold$salt_5m_cv_bccm
+ env_20m_hg$salt_5m_cv_nep361993_2002 <- hold$salt_5m_cv_nep36
+ env_20m_hg$salt_5m_mean_bccm1993_2002 <- hold$salt_5m_mean_bccm
+ env_20m_hg$salt_5m_mean_nep361993_2002 <- hold$salt_5m_mean_nep36
+ env_20m_hg$temp_air_min1993_2002 <- hold$temp_air_min
+ env_20m_hg$rsds_min1993_2002 <- hold$rsds_min
+ env_20m_hg$temp_5m_cv_bccm1993_2002 <- hold$temp_5m_cv_bccm
+ env_20m_hg$temp_5m_cv_nep361993_2002 <- hold$temp_5m_cv_nep36
+ env_20m_hg$temp_5m_min_bccm1993_2002 <- hold$temp_5m_min_bccm
+ env_20m_hg$temp_5m_min_nep361993_2002 <- hold$temp_5m_min_nep36
+ env_20m_hg$temp_5m_mean_bccm1993_2002 <- hold$temp_5m_mean_bccm
+ env_20m_hg$temp_5m_mean_nep361993_2002 <- hold$temp_5m_mean_nep36
+ env_20m_hg$NH4_5m_mean_bccm1993_2002 <- hold$NH4_5m_mean_bccm
+ env_20m_hg$NH4_5m_mean_nep361993_2002 <- hold$NH4_5m_mean_nep36
+ env_20m_hg$temp_air_cv1993_2002 <- hold$temp_air_cv
+ env_20m_hg$temp_s_cv_bccm1993_2002 <- hold$temp_s_cv_bccm
+ env_20m_hg$temp_s_cv_nep361993_2002 <- hold$temp_s_cv_nep36
+
+ hold <- terra::extract(x = hindcast2003_2012, y = env_20m_hg_sf, fun = "mean", touches = TRUE, bind = TRUE) %>% terra::as.data.frame() 
+ env_20m_hg$precip_mean2003_2012 <- hold$precip_mean
+ env_20m_hg$precip_min2003_2012 <- hold$precip_min
+ env_20m_hg$salt_5m_cv_bccm2003_2012 <- hold$salt_5m_cv_bccm
+ env_20m_hg$salt_5m_cv_nep362003_2012 <- hold$salt_5m_cv_nep36
+ env_20m_hg$salt_5m_mean_bccm2003_2012 <- hold$salt_5m_mean_bccm
+ env_20m_hg$salt_5m_mean_nep362003_2012 <- hold$salt_5m_mean_nep36
+ env_20m_hg$temp_air_min2003_2012 <- hold$temp_air_min
+ env_20m_hg$rsds_min2003_2012 <- hold$rsds_min
+ env_20m_hg$temp_5m_cv_bccm2003_2012 <- hold$temp_5m_cv_bccm
+ env_20m_hg$temp_5m_cv_nep362003_2012 <- hold$temp_5m_cv_nep36
+ env_20m_hg$temp_5m_min_bccm2003_2012 <- hold$temp_5m_min_bccm
+ env_20m_hg$temp_5m_min_nep362003_2012 <- hold$temp_5m_min_nep36
+ env_20m_hg$temp_5m_mean_bccm2003_2012 <- hold$temp_5m_mean_bccm
+ env_20m_hg$temp_5m_mean_nep362003_2012 <- hold$temp_5m_mean_nep36
+ env_20m_hg$NH4_5m_mean_bccm2003_2012 <- hold$NH4_5m_mean_bccm
+ env_20m_hg$NH4_5m_mean_nep362003_2012 <- hold$NH4_5m_mean_nep36
+ env_20m_hg$temp_air_cv2003_2012 <- hold$temp_air_cv
+ env_20m_hg$temp_s_cv_bccm2003_2012 <- hold$temp_s_cv_bccm
+ env_20m_hg$temp_s_cv_nep362003_2012 <- hold$temp_s_cv_nep36
+ 
+
+ 
+ #north central coast
+ env_20m_ncc <- as.data.frame(bathy_ncc, xy=TRUE)
+ names(env_20m_ncc) <- c("X_m", "Y_m", "depth")
+ env_20m_ncc <- env_20m_ncc %>% filter(depth <= max_depth, depth >= min_depth)
+ env_20m_ncc_sf <- st_as_sf(env_20m_ncc, coords = c("X_m","Y_m"), crs = "EPSG:3005")
+ hold <- terra::extract(x = rei_ncc, y = env_20m_ncc_sf)
+ env_20m_ncc$rei <- hold$rei 
+ env_20m_ncc <- env_20m_ncc %>% filter(rei <= max_rei)
+ env_20m_ncc_sf <- st_as_sf(env_20m_ncc, coords = c("X_m","Y_m"), crs = "EPSG:3005")
+ hold <- terra::extract(x = tidal_index_all, y = env_20m_ncc_sf)
+ env_20m_ncc$tidal <- hold$tidal 
+ env_20m_ncc <- env_20m_ncc %>% filter(tidal <= max_tidal)
+ env_20m_ncc_sf <- st_as_sf(env_20m_ncc, coords = c("X_m","Y_m"), crs = "EPSG:3005")
+ hold <- terra::extract(x = hindcast2013_2023, y = env_20m_ncc_sf, fun = "mean", touches = TRUE, bind = TRUE) %>% terra::as.data.frame() 
+ env_20m_ncc$precip_mean2013_2023 <- hold$precip_mean
+ env_20m_ncc$precip_min2013_2023 <- hold$precip_min
+ env_20m_ncc$salt_5m_cv_bccm2013_2023 <- hold$salt_5m_cv_bccm
+ env_20m_ncc$salt_5m_cv_nep362013_2023 <- hold$salt_5m_cv_nep36
+ env_20m_ncc$salt_5m_mean_bccm2013_2023 <- hold$salt_5m_mean_bccm
+ env_20m_ncc$salt_5m_mean_nep362013_2023 <- hold$salt_5m_mean_nep36
+ env_20m_ncc$temp_air_min2013_2023 <- hold$temp_air_min
+ env_20m_ncc$rsds_min2013_2023 <- hold$rsds_min
+ env_20m_ncc$temp_5m_cv_bccm2013_2023 <- hold$temp_5m_cv_bccm
+ env_20m_ncc$temp_5m_cv_nep362013_2023 <- hold$temp_5m_cv_nep36
+ env_20m_ncc$temp_5m_min_bccm2013_2023 <- hold$temp_5m_min_bccm
+ env_20m_ncc$temp_5m_min_nep362013_2023 <- hold$temp_5m_min_nep36
+ env_20m_ncc$temp_5m_mean_bccm2013_2023 <- hold$temp_5m_mean_bccm
+ env_20m_ncc$temp_5m_mean_nep362013_2023 <- hold$temp_5m_mean_nep36
+ env_20m_ncc$NH4_5m_mean_bccm2013_2023 <- hold$NH4_5m_mean_bccm
+ env_20m_ncc$NH4_5m_mean_nep362013_2023 <- hold$NH4_5m_mean_nep36
+ env_20m_ncc$temp_air_cv2013_2023 <- hold$temp_air_cv
+ env_20m_ncc$temp_s_cv_bccm2013_2023 <- hold$temp_s_cv_bccm
+ env_20m_ncc$temp_s_cv_nep362013_2023 <- hold$temp_s_cv_nep36
+ 
+ hold <- terra::extract(x = hindcast1993_2002, y = env_20m_ncc_sf, fun = "mean", touches = TRUE, bind = TRUE) %>% terra::as.data.frame() 
+ env_20m_ncc$precip_mean1993_2002 <- hold$precip_mean
+ env_20m_ncc$precip_min1993_2002 <- hold$precip_min
+ env_20m_ncc$salt_5m_cv_bccm1993_2002 <- hold$salt_5m_cv_bccm
+ env_20m_ncc$salt_5m_cv_nep361993_2002 <- hold$salt_5m_cv_nep36
+ env_20m_ncc$salt_5m_mean_bccm1993_2002 <- hold$salt_5m_mean_bccm
+ env_20m_ncc$salt_5m_mean_nep361993_2002 <- hold$salt_5m_mean_nep36
+ env_20m_ncc$temp_air_min1993_2002 <- hold$temp_air_min
+ env_20m_ncc$rsds_min1993_2002 <- hold$rsds_min
+ env_20m_ncc$temp_5m_cv_bccm1993_2002 <- hold$temp_5m_cv_bccm
+ env_20m_ncc$temp_5m_cv_nep361993_2002 <- hold$temp_5m_cv_nep36
+ env_20m_ncc$temp_5m_min_bccm1993_2002 <- hold$temp_5m_min_bccm
+ env_20m_ncc$temp_5m_min_nep361993_2002 <- hold$temp_5m_min_nep36
+ env_20m_ncc$temp_5m_mean_bccm1993_2002 <- hold$temp_5m_mean_bccm
+ env_20m_ncc$temp_5m_mean_nep361993_2002 <- hold$temp_5m_mean_nep36
+ env_20m_ncc$NH4_5m_mean_bccm1993_2002 <- hold$NH4_5m_mean_bccm
+ env_20m_ncc$NH4_5m_mean_nep361993_2002 <- hold$NH4_5m_mean_nep36
+ env_20m_ncc$temp_air_cv1993_2002 <- hold$temp_air_cv
+ env_20m_ncc$temp_s_cv_bccm1993_2002 <- hold$temp_s_cv_bccm
+ env_20m_ncc$temp_s_cv_nep361993_2002 <- hold$temp_s_cv_nep36
+ 
+ hold <- terra::extract(x = hindcast2003_2012, y = env_20m_ncc_sf, fun = "mean", touches = TRUE, bind = TRUE) %>% terra::as.data.frame() 
+ env_20m_ncc$precip_mean2003_2012 <- hold$precip_mean
+ env_20m_ncc$precip_min2003_2012 <- hold$precip_min
+ env_20m_ncc$salt_5m_cv_bccm2003_2012 <- hold$salt_5m_cv_bccm
+ env_20m_ncc$salt_5m_cv_nep362003_2012 <- hold$salt_5m_cv_nep36
+ env_20m_ncc$salt_5m_mean_bccm2003_2012 <- hold$salt_5m_mean_bccm
+ env_20m_ncc$salt_5m_mean_nep362003_2012 <- hold$salt_5m_mean_nep36
+ env_20m_ncc$temp_air_min2003_2012 <- hold$temp_air_min
+ env_20m_ncc$rsds_min2003_2012 <- hold$rsds_min
+ env_20m_ncc$temp_5m_cv_bccm2003_2012 <- hold$temp_5m_cv_bccm
+ env_20m_ncc$temp_5m_cv_nep362003_2012 <- hold$temp_5m_cv_nep36
+ env_20m_ncc$temp_5m_min_bccm2003_2012 <- hold$temp_5m_min_bccm
+ env_20m_ncc$temp_5m_min_nep362003_2012 <- hold$temp_5m_min_nep36
+ env_20m_ncc$temp_5m_mean_bccm2003_2012 <- hold$temp_5m_mean_bccm
+ env_20m_ncc$temp_5m_mean_nep362003_2012 <- hold$temp_5m_mean_nep36
+ env_20m_ncc$NH4_5m_mean_bccm2003_2012 <- hold$NH4_5m_mean_bccm
+ env_20m_ncc$NH4_5m_mean_nep362003_2012 <- hold$NH4_5m_mean_nep36
+ env_20m_ncc$temp_air_cv2003_2012 <- hold$temp_air_cv
+ env_20m_ncc$temp_s_cv_bccm2003_2012 <- hold$temp_s_cv_bccm
+ env_20m_ncc$temp_s_cv_nep362003_2012 <- hold$temp_s_cv_nep36
+ 
+
+ #queen charlotte
+ env_20m_qcs <- as.data.frame(bathy_qcs, xy=TRUE)
+ names(env_20m_qcs) <- c("X_m", "Y_m", "depth")
+ env_20m_qcs <- env_20m_qcs %>% filter(depth <= max_depth, depth >= min_depth)
+ env_20m_qcs_sf <- st_as_sf(env_20m_qcs, coords = c("X_m","Y_m"), crs = "EPSG:3005")
+ hold <- terra::extract(x = rei_qcs, y = env_20m_qcs_sf)
+ env_20m_qcs$rei <- hold$rei 
+ env_20m_qcs <- env_20m_qcs %>% filter(rei <= max_rei)
+ env_20m_qcs_sf <- st_as_sf(env_20m_qcs, coords = c("X_m","Y_m"), crs = "EPSG:3005")
+ hold <- terra::extract(x = tidal_index_all, y = env_20m_qcs_sf)
+ env_20m_qcs$tidal <- hold$tidal 
+ env_20m_qcs <- env_20m_qcs %>% filter(tidal <= max_tidal)
+ env_20m_qcs_sf <- st_as_sf(env_20m_qcs, coords = c("X_m","Y_m"), crs = "EPSG:3005")
+ hold <- terra::extract(x = hindcast2013_2023, y = env_20m_qcs_sf, fun = "mean", touches = TRUE, bind = TRUE) %>% terra::as.data.frame() 
+ env_20m_qcs$precip_mean2013_2023 <- hold$precip_mean
+ env_20m_qcs$precip_min2013_2023 <- hold$precip_min
+ env_20m_qcs$salt_5m_cv_bccm2013_2023 <- hold$salt_5m_cv_bccm
+ env_20m_qcs$salt_5m_cv_nep362013_2023 <- hold$salt_5m_cv_nep36
+ env_20m_qcs$salt_5m_mean_bccm2013_2023 <- hold$salt_5m_mean_bccm
+ env_20m_qcs$salt_5m_mean_nep362013_2023 <- hold$salt_5m_mean_nep36
+ env_20m_qcs$temp_air_min2013_2023 <- hold$temp_air_min
+ env_20m_qcs$rsds_min2013_2023 <- hold$rsds_min
+ env_20m_qcs$temp_5m_cv_bccm2013_2023 <- hold$temp_5m_cv_bccm
+ env_20m_qcs$temp_5m_cv_nep362013_2023 <- hold$temp_5m_cv_nep36
+ env_20m_qcs$temp_5m_min_bccm2013_2023 <- hold$temp_5m_min_bccm
+ env_20m_qcs$temp_5m_min_nep362013_2023 <- hold$temp_5m_min_nep36
+ env_20m_qcs$temp_5m_mean_bccm2013_2023 <- hold$temp_5m_mean_bccm
+ env_20m_qcs$temp_5m_mean_nep362013_2023 <- hold$temp_5m_mean_nep36
+ env_20m_qcs$NH4_5m_mean_bccm2013_2023 <- hold$NH4_5m_mean_bccm
+ env_20m_qcs$NH4_5m_mean_nep362013_2023 <- hold$NH4_5m_mean_nep36
+ env_20m_qcs$temp_air_cv2013_2023 <- hold$temp_air_cv
+ env_20m_qcs$temp_s_cv_bccm2013_2023 <- hold$temp_s_cv_bccm
+ env_20m_qcs$temp_s_cv_nep362013_2023 <- hold$temp_s_cv_nep36
+ 
+ hold <- terra::extract(x = hindcast1993_2002, y = env_20m_qcs_sf, fun = "mean", touches = TRUE, bind = TRUE) %>% terra::as.data.frame() 
+ env_20m_qcs$precip_mean1993_2002 <- hold$precip_mean
+ env_20m_qcs$precip_min1993_2002 <- hold$precip_min
+ env_20m_qcs$salt_5m_cv_bccm1993_2002 <- hold$salt_5m_cv_bccm
+ env_20m_qcs$salt_5m_cv_nep361993_2002 <- hold$salt_5m_cv_nep36
+ env_20m_qcs$salt_5m_mean_bccm1993_2002 <- hold$salt_5m_mean_bccm
+ env_20m_qcs$salt_5m_mean_nep361993_2002 <- hold$salt_5m_mean_nep36
+ env_20m_qcs$temp_air_min1993_2002 <- hold$temp_air_min
+ env_20m_qcs$rsds_min1993_2002 <- hold$rsds_min
+ env_20m_qcs$temp_5m_cv_bccm1993_2002 <- hold$temp_5m_cv_bccm
+ env_20m_qcs$temp_5m_cv_nep361993_2002 <- hold$temp_5m_cv_nep36
+ env_20m_qcs$temp_5m_min_bccm1993_2002 <- hold$temp_5m_min_bccm
+ env_20m_qcs$temp_5m_min_nep361993_2002 <- hold$temp_5m_min_nep36
+ env_20m_qcs$temp_5m_mean_bccm1993_2002 <- hold$temp_5m_mean_bccm
+ env_20m_qcs$temp_5m_mean_nep361993_2002 <- hold$temp_5m_mean_nep36
+ env_20m_qcs$NH4_5m_mean_bccm1993_2002 <- hold$NH4_5m_mean_bccm
+ env_20m_qcs$NH4_5m_mean_nep361993_2002 <- hold$NH4_5m_mean_nep36
+ env_20m_qcs$temp_air_cv1993_2002 <- hold$temp_air_cv
+ env_20m_qcs$temp_s_cv_bccm1993_2002 <- hold$temp_s_cv_bccm
+ env_20m_qcs$temp_s_cv_nep361993_2002 <- hold$temp_s_cv_nep36
+ 
+ hold <- terra::extract(x = hindcast2003_2012, y = env_20m_qcs_sf, fun = "mean", touches = TRUE, bind = TRUE) %>% terra::as.data.frame() 
+ env_20m_qcs$precip_mean2003_2012 <- hold$precip_mean
+ env_20m_qcs$precip_min2003_2012 <- hold$precip_min
+ env_20m_qcs$salt_5m_cv_bccm2003_2012 <- hold$salt_5m_cv_bccm
+ env_20m_qcs$salt_5m_cv_nep362003_2012 <- hold$salt_5m_cv_nep36
+ env_20m_qcs$salt_5m_mean_bccm2003_2012 <- hold$salt_5m_mean_bccm
+ env_20m_qcs$salt_5m_mean_nep362003_2012 <- hold$salt_5m_mean_nep36
+ env_20m_qcs$temp_air_min2003_2012 <- hold$temp_air_min
+ env_20m_qcs$rsds_min2003_2012 <- hold$rsds_min
+ env_20m_qcs$temp_5m_cv_bccm2003_2012 <- hold$temp_5m_cv_bccm
+ env_20m_qcs$temp_5m_cv_nep362003_2012 <- hold$temp_5m_cv_nep36
+ env_20m_qcs$temp_5m_min_bccm2003_2012 <- hold$temp_5m_min_bccm
+ env_20m_qcs$temp_5m_min_nep362003_2012 <- hold$temp_5m_min_nep36
+ env_20m_qcs$temp_5m_mean_bccm2003_2012 <- hold$temp_5m_mean_bccm
+ env_20m_qcs$temp_5m_mean_nep362003_2012 <- hold$temp_5m_mean_nep36
+ env_20m_qcs$NH4_5m_mean_bccm2003_2012 <- hold$NH4_5m_mean_bccm
+ env_20m_qcs$NH4_5m_mean_nep362003_2012 <- hold$NH4_5m_mean_nep36
+ env_20m_qcs$temp_air_cv2003_2012 <- hold$temp_air_cv
+ env_20m_qcs$temp_s_cv_bccm2003_2012 <- hold$temp_s_cv_bccm
+ env_20m_qcs$temp_s_cv_nep362003_2012 <- hold$temp_s_cv_nep36
+ 
+
+ #salish sea
+ env_20m_ss <- as.data.frame(bathy_ss, xy=TRUE)
+ names(env_20m_ss) <- c("X_m", "Y_m", "depth")
+ env_20m_ss <- env_20m_ss %>% filter(depth <= max_depth, depth >= min_depth)
+ env_20m_ss_sf <- st_as_sf(env_20m_ss, coords = c("X_m","Y_m"), crs = "EPSG:3005")
+ hold <- terra::extract(x = rei_ss, y = env_20m_ss_sf)
+ env_20m_ss$rei <- hold$rei 
+ env_20m_ss <- env_20m_ss %>% filter(rei <= max_rei)
+ env_20m_ss_sf <- st_as_sf(env_20m_ss, coords = c("X_m","Y_m"), crs = "EPSG:3005")
+ hold <- terra::extract(x = tidal_index_all, y = env_20m_ss_sf)
+ env_20m_ss$tidal <- hold$tidal 
+ env_20m_ss <- env_20m_ss %>% filter(tidal <= max_tidal)
+ env_20m_ss_sf <- st_as_sf(env_20m_ss, coords = c("X_m","Y_m"), crs = "EPSG:3005")
+ hold <- terra::extract(x = hindcast2013_2023, y = env_20m_ss_sf, fun = "mean", touches = TRUE, bind = TRUE) %>% terra::as.data.frame() 
+ env_20m_ss$precip_mean2013_2023 <- hold$precip_mean
+ env_20m_ss$precip_min2013_2023 <- hold$precip_min
+ env_20m_ss$salt_5m_cv_bccm2013_2023 <- hold$salt_5m_cv_bccm
+ env_20m_ss$salt_5m_cv_nep362013_2023 <- hold$salt_5m_cv_nep36
+ env_20m_ss$salt_5m_mean_bccm2013_2023 <- hold$salt_5m_mean_bccm
+ env_20m_ss$salt_5m_mean_nep362013_2023 <- hold$salt_5m_mean_nep36
+ env_20m_ss$temp_air_min2013_2023 <- hold$temp_air_min
+ env_20m_ss$rsds_min2013_2023 <- hold$rsds_min
+ env_20m_ss$temp_5m_cv_bccm2013_2023 <- hold$temp_5m_cv_bccm
+ env_20m_ss$temp_5m_cv_nep362013_2023 <- hold$temp_5m_cv_nep36
+ env_20m_ss$temp_5m_min_bccm2013_2023 <- hold$temp_5m_min_bccm
+ env_20m_ss$temp_5m_min_nep362013_2023 <- hold$temp_5m_min_nep36
+ env_20m_ss$temp_5m_mean_bccm2013_2023 <- hold$temp_5m_mean_bccm
+ env_20m_ss$temp_5m_mean_nep362013_2023 <- hold$temp_5m_mean_nep36
+ env_20m_ss$NH4_5m_mean_bccm2013_2023 <- hold$NH4_5m_mean_bccm
+ env_20m_ss$NH4_5m_mean_nep362013_2023 <- hold$NH4_5m_mean_nep36
+ env_20m_ss$temp_air_cv2013_2023 <- hold$temp_air_cv
+ env_20m_ss$temp_s_cv_bccm2013_2023 <- hold$temp_s_cv_bccm
+ env_20m_ss$temp_s_cv_nep362013_2023 <- hold$temp_s_cv_nep36
+ 
+ hold <- terra::extract(x = hindcast1993_2002, y = env_20m_ss_sf, fun = "mean", touches = TRUE, bind = TRUE) %>% terra::as.data.frame() 
+ env_20m_ss$precip_mean1993_2002 <- hold$precip_mean
+ env_20m_ss$precip_min1993_2002 <- hold$precip_min
+ env_20m_ss$salt_5m_cv_bccm1993_2002 <- hold$salt_5m_cv_bccm
+ env_20m_ss$salt_5m_cv_nep361993_2002 <- hold$salt_5m_cv_nep36
+ env_20m_ss$salt_5m_mean_bccm1993_2002 <- hold$salt_5m_mean_bccm
+ env_20m_ss$salt_5m_mean_nep361993_2002 <- hold$salt_5m_mean_nep36
+ env_20m_ss$temp_air_min1993_2002 <- hold$temp_air_min
+ env_20m_ss$rsds_min1993_2002 <- hold$rsds_min
+ env_20m_ss$temp_5m_cv_bccm1993_2002 <- hold$temp_5m_cv_bccm
+ env_20m_ss$temp_5m_cv_nep361993_2002 <- hold$temp_5m_cv_nep36
+ env_20m_ss$temp_5m_min_bccm1993_2002 <- hold$temp_5m_min_bccm
+ env_20m_ss$temp_5m_min_nep361993_2002 <- hold$temp_5m_min_nep36
+ env_20m_ss$temp_5m_mean_bccm1993_2002 <- hold$temp_5m_mean_bccm
+ env_20m_ss$temp_5m_mean_nep361993_2002 <- hold$temp_5m_mean_nep36
+ env_20m_ss$NH4_5m_mean_bccm1993_2002 <- hold$NH4_5m_mean_bccm
+ env_20m_ss$NH4_5m_mean_nep361993_2002 <- hold$NH4_5m_mean_nep36
+ env_20m_ss$temp_air_cv1993_2002 <- hold$temp_air_cv
+ env_20m_ss$temp_s_cv_bccm1993_2002 <- hold$temp_s_cv_bccm
+ env_20m_ss$temp_s_cv_nep361993_2002 <- hold$temp_s_cv_nep36
+ 
+ hold <- terra::extract(x = hindcast2003_2012, y = env_20m_ss_sf, fun = "mean", touches = TRUE, bind = TRUE) %>% terra::as.data.frame() 
+ env_20m_ss$precip_mean2003_2012 <- hold$precip_mean
+ env_20m_ss$precip_min2003_2012 <- hold$precip_min
+ env_20m_ss$salt_5m_cv_bccm2003_2012 <- hold$salt_5m_cv_bccm
+ env_20m_ss$salt_5m_cv_nep362003_2012 <- hold$salt_5m_cv_nep36
+ env_20m_ss$salt_5m_mean_bccm2003_2012 <- hold$salt_5m_mean_bccm
+ env_20m_ss$salt_5m_mean_nep362003_2012 <- hold$salt_5m_mean_nep36
+ env_20m_ss$temp_air_min2003_2012 <- hold$temp_air_min
+ env_20m_ss$rsds_min2003_2012 <- hold$rsds_min
+ env_20m_ss$temp_5m_cv_bccm2003_2012 <- hold$temp_5m_cv_bccm
+ env_20m_ss$temp_5m_cv_nep362003_2012 <- hold$temp_5m_cv_nep36
+ env_20m_ss$temp_5m_min_bccm2003_2012 <- hold$temp_5m_min_bccm
+ env_20m_ss$temp_5m_min_nep362003_2012 <- hold$temp_5m_min_nep36
+ env_20m_ss$temp_5m_mean_bccm2003_2012 <- hold$temp_5m_mean_bccm
+ env_20m_ss$temp_5m_mean_nep362003_2012 <- hold$temp_5m_mean_nep36
+ env_20m_ss$NH4_5m_mean_bccm2003_2012 <- hold$NH4_5m_mean_bccm
+ env_20m_ss$NH4_5m_mean_nep362003_2012 <- hold$NH4_5m_mean_nep36
+ env_20m_ss$temp_air_cv2003_2012 <- hold$temp_air_cv
+ env_20m_ss$temp_s_cv_bccm2003_2012 <- hold$temp_s_cv_bccm
+ env_20m_ss$temp_s_cv_nep362003_2012 <- hold$temp_s_cv_nep36
+ 
+
+
+ #west coast vancouver island
+ env_20m_wcvi <- as.data.frame(bathy_wcvi, xy=TRUE)
+ names(env_20m_wcvi) <- c("X_m", "Y_m", "depth")
+ env_20m_wcvi <- env_20m_wcvi %>% filter(depth <= max_depth, depth >= min_depth)
+ env_20m_wcvi_sf <- st_as_sf(env_20m_wcvi, coords = c("X_m","Y_m"), crs = "EPSG:3005")
+ hold <- terra::extract(x = rei_wcvi, y = env_20m_wcvi_sf)
+ env_20m_wcvi$rei <- hold$rei 
+ env_20m_wcvi <- env_20m_wcvi %>% filter(rei <= max_rei)
+ env_20m_wcvi_sf <- st_as_sf(env_20m_wcvi, coords = c("X_m","Y_m"), crs = "EPSG:3005")
+ hold <- terra::extract(x = tidal_index_all, y = env_20m_wcvi_sf)
+ env_20m_wcvi$tidal <- hold$tidal 
+ env_20m_wcvi <- env_20m_wcvi %>% filter(tidal <= max_tidal)
+ env_20m_wcvi_sf <- st_as_sf(env_20m_wcvi, coords = c("X_m","Y_m"), crs = "EPSG:3005")
+ hold <- terra::extract(x = hindcast2013_2023, y = env_20m_wcvi_sf, fun = "mean", touches = TRUE, bind = TRUE) %>% terra::as.data.frame() 
+ env_20m_wcvi$precip_mean2013_2023 <- hold$precip_mean
+ env_20m_wcvi$precip_min2013_2023 <- hold$precip_min
+ env_20m_wcvi$salt_5m_cv_bccm2013_2023 <- hold$salt_5m_cv_bccm
+ env_20m_wcvi$salt_5m_cv_nep362013_2023 <- hold$salt_5m_cv_nep36
+ env_20m_wcvi$salt_5m_mean_bccm2013_2023 <- hold$salt_5m_mean_bccm
+ env_20m_wcvi$salt_5m_mean_nep362013_2023 <- hold$salt_5m_mean_nep36
+ env_20m_wcvi$temp_air_min2013_2023 <- hold$temp_air_min
+ env_20m_wcvi$rsds_min2013_2023 <- hold$rsds_min
+ env_20m_wcvi$temp_5m_cv_bccm2013_2023 <- hold$temp_5m_cv_bccm
+ env_20m_wcvi$temp_5m_cv_nep362013_2023 <- hold$temp_5m_cv_nep36
+ env_20m_wcvi$temp_5m_min_bccm2013_2023 <- hold$temp_5m_min_bccm
+ env_20m_wcvi$temp_5m_min_nep362013_2023 <- hold$temp_5m_min_nep36
+ env_20m_wcvi$temp_5m_mean_bccm2013_2023 <- hold$temp_5m_mean_bccm
+ env_20m_wcvi$temp_5m_mean_nep362013_2023 <- hold$temp_5m_mean_nep36
+ env_20m_wcvi$NH4_5m_mean_bccm2013_2023 <- hold$NH4_5m_mean_bccm
+ env_20m_wcvi$NH4_5m_mean_nep362013_2023 <- hold$NH4_5m_mean_nep36
+ env_20m_wcvi$temp_air_cv2013_2023 <- hold$temp_air_cv
+ env_20m_wcvi$temp_s_cv_bccm2013_2023 <- hold$temp_s_cv_bccm
+ env_20m_wcvi$temp_s_cv_nep362013_2023 <- hold$temp_s_cv_nep36
+ 
+ hold <- terra::extract(x = hindcast1993_2002, y = env_20m_wcvi_sf, fun = "mean", touches = TRUE, bind = TRUE) %>% terra::as.data.frame() 
+ env_20m_wcvi$precip_mean1993_2002 <- hold$precip_mean
+ env_20m_wcvi$precip_min1993_2002 <- hold$precip_min
+ env_20m_wcvi$salt_5m_cv_bccm1993_2002 <- hold$salt_5m_cv_bccm
+ env_20m_wcvi$salt_5m_cv_nep361993_2002 <- hold$salt_5m_cv_nep36
+ env_20m_wcvi$salt_5m_mean_bccm1993_2002 <- hold$salt_5m_mean_bccm
+ env_20m_wcvi$salt_5m_mean_nep361993_2002 <- hold$salt_5m_mean_nep36
+ env_20m_wcvi$temp_air_min1993_2002 <- hold$temp_air_min
+ env_20m_wcvi$rsds_min1993_2002 <- hold$rsds_min
+ env_20m_wcvi$temp_5m_cv_bccm1993_2002 <- hold$temp_5m_cv_bccm
+ env_20m_wcvi$temp_5m_cv_nep361993_2002 <- hold$temp_5m_cv_nep36
+ env_20m_wcvi$temp_5m_min_bccm1993_2002 <- hold$temp_5m_min_bccm
+ env_20m_wcvi$temp_5m_min_nep361993_2002 <- hold$temp_5m_min_nep36
+ env_20m_wcvi$temp_5m_mean_bccm1993_2002 <- hold$temp_5m_mean_bccm
+ env_20m_wcvi$temp_5m_mean_nep361993_2002 <- hold$temp_5m_mean_nep36
+ env_20m_wcvi$NH4_5m_mean_bccm1993_2002 <- hold$NH4_5m_mean_bccm
+ env_20m_wcvi$NH4_5m_mean_nep361993_2002 <- hold$NH4_5m_mean_nep36
+ env_20m_wcvi$temp_air_cv1993_2002 <- hold$temp_air_cv
+ env_20m_wcvi$temp_s_cv_bccm1993_2002 <- hold$temp_s_cv_bccm
+ env_20m_wcvi$temp_s_cv_nep361993_2002 <- hold$temp_s_cv_nep36
+ 
+ hold <- terra::extract(x = hindcast2003_2012, y = env_20m_wcvi_sf, fun = "mean", touches = TRUE, bind = TRUE) %>% terra::as.data.frame() 
+ env_20m_wcvi$precip_mean2003_2012 <- hold$precip_mean
+ env_20m_wcvi$precip_min2003_2012 <- hold$precip_min
+ env_20m_wcvi$salt_5m_cv_bccm2003_2012 <- hold$salt_5m_cv_bccm
+ env_20m_wcvi$salt_5m_cv_nep362003_2012 <- hold$salt_5m_cv_nep36
+ env_20m_wcvi$salt_5m_mean_bccm2003_2012 <- hold$salt_5m_mean_bccm
+ env_20m_wcvi$salt_5m_mean_nep362003_2012 <- hold$salt_5m_mean_nep36
+ env_20m_wcvi$temp_air_min2003_2012 <- hold$temp_air_min
+ env_20m_wcvi$rsds_min2003_2012 <- hold$rsds_min
+ env_20m_wcvi$temp_5m_cv_bccm2003_2012 <- hold$temp_5m_cv_bccm
+ env_20m_wcvi$temp_5m_cv_nep362003_2012 <- hold$temp_5m_cv_nep36
+ env_20m_wcvi$temp_5m_min_bccm2003_2012 <- hold$temp_5m_min_bccm
+ env_20m_wcvi$temp_5m_min_nep362003_2012 <- hold$temp_5m_min_nep36
+ env_20m_wcvi$temp_5m_mean_bccm2003_2012 <- hold$temp_5m_mean_bccm
+ env_20m_wcvi$temp_5m_mean_nep362003_2012 <- hold$temp_5m_mean_nep36
+ env_20m_wcvi$NH4_5m_mean_bccm2003_2012 <- hold$NH4_5m_mean_bccm
+ env_20m_wcvi$NH4_5m_mean_nep362003_2012 <- hold$NH4_5m_mean_nep36
+ env_20m_wcvi$temp_air_cv2003_2012 <- hold$temp_air_cv
+ env_20m_wcvi$temp_s_cv_bccm2003_2012 <- hold$temp_s_cv_bccm
+ env_20m_wcvi$temp_s_cv_nep362003_2012 <- hold$temp_s_cv_nep36
+ 
+ env_20m_all <- bind_rows(env_20m_hg, env_20m_ncc, env_20m_qcs, env_20m_wcvi,env_20m_ss)
+ 
+ env_20m_all <- env_20m_all %>%
+   filter(salt_5m_mean_bccm2013_2023 > quantile(seagrass_data$saltmean_bccm, probs = 0.001))
+     
+ env_long <- env_20m_all %>%
+   pivot_longer(
+     cols = matches("(1993_2002|2003_2012|2013_2023)$"),
+     names_to = c("variable", "decade"),
+     names_pattern = "^(.*?)(1993_2002|2003_2012|2013_2023)$",
+     values_to = "value"
+   ) %>%
+   mutate(
+     decade = recode(
+       decade,
+       "1993_2002" = "1993–2002",
+       "2003_2012" = "2003–2012",
+       "2013_2023" = "2013–2023"
+     )
+   )
+ 
+ save(env_long, file = "code/output_data/environmental_data_all_decades.RData")
+ save(env_20m_all, file = "code/output_data/environmental_data_all_decades_short.RData")
+ 
+ 
+ obs_decade <- seagrass_data %>%
+   mutate(
+     decade = case_when(
+       Year >= 1993 & Year <= 2002 ~ "1993–2002",
+       Year >= 2003 & Year <= 2012 ~ "2003–2012",
+       Year >= 2013 & Year <= 2023 ~ "2013–2023",
+       TRUE ~ NA_character_
+     )
+   ) %>%
+   filter(!is.na(decade))
+ 
+ save(obs_decade, file = "code/output_data/survey_data_all_decades.RData")
+ 
+ load("code/output_data/environmental_data_all_decades.RData")
+ load("code/output_data/survey_data_all_decades.RData")
+ 
+ 
+ var_crosswalk <- tribble(
+   ~plot_group, ~variable_label, ~model_source, ~env_variable,              ~obs_variable,        ~units,                  ~convert,
+   "Atmospheric", "Mean precipitation",        "single", "precip_mean",           "prmean",             "kg m-2 month-1",       "none",
+   "Atmospheric", "Minimum precipitation",     "single", "precip_min",            "prmin",              "kg m-2 month-1",       "none",
+   "Atmospheric", "Minimum shortwave flux",    "single", "rsds_min",              "rsdsmin",            "MJ m-2",               "none",
+   "Atmospheric", "Minimum air temperature",   "single", "temp_air_min",          "airtempmin",         "degrees C",            "kelvin_to_c",
+   "Atmospheric", "Air temperature CV",        "single", "temp_air_cv",           "airtempcv",          "CV",                   "none",
+   
+   "Ocean", "Mean salinity",                   "BCCM",   "salt_5m_mean_bccm",     "saltmean_bccm",      "psu",                  "none",
+   "Ocean", "Mean salinity",                   "NEP36",  "salt_5m_mean_nep36",    "saltmean_nep",       "psu",                  "none",
+   "Ocean", "Salinity CV",                     "BCCM",   "salt_5m_cv_bccm",       "saltcv_bccm",        "CV",                   "none",
+   "Ocean", "Salinity CV",                     "NEP36",  "salt_5m_cv_nep36",      "saltcv_nep",         "CV",                   "none",
+   
+   "Ocean", "Mean subsurface temperature",     "BCCM",   "temp_5m_mean_bccm",     "tempmean_bccm",      "degrees C",            "none",
+   "Ocean", "Mean subsurface temperature",     "NEP36",  "temp_5m_mean_nep36",    "tempmean_nep",       "degrees C",            "none",
+   "Ocean", "Minimum subsurface temperature",  "BCCM",   "temp_5m_min_bccm",      "tempmin_bccm",       "degrees C",            "none",
+   "Ocean", "Minimum subsurface temperature",  "NEP36",  "temp_5m_min_nep36",     "tempmin_nep",        "degrees C",            "none",
+   "Ocean", "Subsurface temperature CV",       "BCCM",   "temp_5m_cv_bccm",       "tempcv_bccm",        "CV",                   "none",
+   "Ocean", "Subsurface temperature CV",       "NEP36",  "temp_5m_cv_nep36",      "tempcv_nep",         "CV",                   "none",
+   
+   "Ocean", "Mean ammonium",                   "BCCM",   "NH4_5m_mean_bccm",      "NH4_bccm",           "mmol m-3",             "none",
+   "Ocean", "Mean ammonium",                   "NEP36",  "NH4_5m_mean_nep36",     "NH4_nep",            "mmol m-3",             "none",
+   
+   "Ocean", "Surface temperature CV",          "BCCM",   "temp_s_cv_bccm",        "surftempcv_bccm",    "CV",                   "none",
+   "Ocean", "Surface temperature CV",          "NEP36",  "temp_s_cv_nep36",       "surftempcv_nep",     "CV",                   "none"
+ )
+ 
+ 
+ # Study-area / hindcast values
+ hindcast_compare <- var_crosswalk %>%
+   select(
+     plot_group, variable_label, model_source, env_variable, units, convert
+   ) %>%
+   pmap_dfr(function(plot_group, variable_label, model_source,
+                     env_variable, units, convert) {
+     
+     env_long %>%
+       filter(variable == env_variable) %>%
+       transmute(
+         plot_group = plot_group,
+         variable_label = variable_label,
+         model_source = model_source,
+         decade = decade,
+         source_type = "Hindcast",
+         source = if_else(
+           model_source == "single",
+           "Hindcast",
+           paste("Hindcast", model_source)
+         ),
+         value = value,
+         units = units,
+         convert = convert
+       )
+   })
+ 
+ 
+ # SDM observation / survey values
+ survey_compare <- var_crosswalk %>%
+   select(
+     plot_group, variable_label, model_source, obs_variable, units, convert
+   ) %>%
+   pmap_dfr(function(plot_group, variable_label, model_source,
+                     obs_variable, units, convert) {
+     
+     obs_decade %>%
+       transmute(
+         plot_group = plot_group,
+         variable_label = variable_label,
+         model_source = model_source,
+         decade = decade,
+         source_type = "Survey observations",
+         source = if_else(
+           model_source == "single",
+           "Survey observations",
+           paste("Survey observations", model_source)
+         ),
+         value = .data[[obs_variable]],
+         units = units,
+         convert = convert
+       ) %>%
+       filter(!is.na(value))
+   })
+ 
+ 
+ env_obs_compare <- bind_rows(
+   hindcast_compare,
+   survey_compare
+ ) %>%
+   mutate(
+     value_plot = case_when(
+       convert == "kelvin_to_c" ~ value - 273.15,
+       TRUE ~ value
+     ),
+     decade = factor(
+       decade,
+       levels = c("1993–2002", "2003–2012", "2013–2023")
+     ),
+     source_type = factor(
+       source_type,
+       levels = c("Hindcast", "Survey observations")
+     )
+   )
+ 
+ 
+ env_obs_compare %>%
+   count(variable_label, model_source, decade, source_type)
+ 
+ 
+ 
+ 
+ 
+ hindcast_summary <- env_long %>%
+   group_by(variable, decade) %>%
+   summarise(
+     source = "Hindcast",
+     n = n(),
+     mean = mean(value, na.rm = TRUE),
+     sd = sd(value, na.rm = TRUE),
+     median = median(value, na.rm = TRUE),
+     q10 = quantile(value, 0.10, na.rm = TRUE),
+     q25 = quantile(value, 0.25, na.rm = TRUE),
+     q75 = quantile(value, 0.75, na.rm = TRUE),
+     q90 = quantile(value, 0.90, na.rm = TRUE),
+     min = min(value, na.rm = TRUE),
+     max = max(value, na.rm = TRUE),
+     .groups = "drop"
+   )
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ precip_mean_plot <- env_long %>%
+   filter(variable == "precip_mean") %>%
+   mutate(source = "Hindcast") %>%
+   select(decade, value, source)
+ 
+ precip_mean_obs_plot <- obs_decade %>%
+   mutate(
+     source = "Survey",
+     value = prmean
+   ) %>%
+   filter(!is.na(value)) %>%
+   select(decade, value, source)
+ 
+
+ precip_mean_plot_df <- bind_rows(precip_mean_plot, precip_mean_obs_plot)
+ 
+ precip_mean <- ggplot(precip_mean_plot_df, aes(x = decade, y = value, fill = source)) +
+   geom_violin(
+     position = position_dodge(width = 0.8),
+     trim = TRUE,
+     alpha = 0.3
+   ) +
+   geom_boxplot(
+     width = 0.12,
+     position = position_dodge(width = 0.8),
+     outlier.shape = NA,
+     alpha = 0.8
+   ) +
+   scale_fill_manual(
+     values = c(
+       "Survey" = "#E69F00",  # orange
+       "Hindcast"  = "#56B4E9"  # sky blue
+     )
+   ) +
+   labs(
+     x = "Decade",
+     y = expression("Precipitation (kg m"^{-2}~"month"^{-1}*")"),
+     fill = NULL
+   ) +
+   theme_bw() +
+   theme(
+     panel.grid = element_blank(),   # remove grid lines
+     panel.background = element_rect(fill = "white"),
+     plot.background = element_rect(fill = "white"),
+     #legend.position = "right",
+     #axis.text.x = element_text(size = 10),
+     strip.text = element_text(face = "bold"),
+     plot.title = element_text(hjust = 0, face = "bold"),
+     axis.title.x = element_blank(),
+     axis.text.x  = element_blank(),
+     axis.ticks.x = element_blank(),
+     panel.spacing = unit(0, "lines"))  
+ 
+ 
+ 
+ precip_min_plot <- env_long %>%
+   filter(variable == "precip_min") %>%
+   mutate(source = "Hindcast") %>%
+   select(decade, value, source)
+ 
+ precip_min_obs_plot <- obs_decade %>%
+   mutate(
+     source = "Survey",
+     value = prmin
+   ) %>%
+   filter(!is.na(value)) %>%
+   select(decade, value, source)
+ 
+ 
+ precip_min_plot_df <- bind_rows(precip_min_plot, precip_min_obs_plot)
+ 
+ precip_min <- ggplot(precip_min_plot_df, aes(x = decade, y = value, fill = source)) +
+   
+   geom_violin(
+     position = position_dodge(width = 0.8),
+     trim = TRUE,
+     alpha = 0.3
+   ) +
+   
+   geom_boxplot(
+     width = 0.12,
+     position = position_dodge(width = 0.8),
+     outlier.shape = NA,
+     alpha = 0.8
+   ) +
+   scale_fill_manual(
+     values = c(
+       "Survey" = "#E69F00",  # orange
+       "Hindcast"  = "#56B4E9"  # sky blue
+     )
+   ) +
+   labs(
+     x = "Decade",
+     y = expression("Min precipitation (kg m"^{-2}~"month"^{-1}*")"),
+     fill = NULL
+   ) +
+   
+   theme_bw() +
+   theme(
+     panel.grid = element_blank(),   # remove grid lines
+     panel.background = element_rect(fill = "white"),
+     plot.background = element_rect(fill = "white"),
+     #legend.position = "right",
+     #axis.text.x = element_text(size = 10),
+     strip.text = element_text(face = "bold"),
+     plot.title = element_text(hjust = 0, face = "bold"),
+     axis.title.x = element_blank(),
+     axis.text.x  = element_blank(),
+     axis.ticks.x = element_blank(),
+     panel.spacing = unit(0, "lines"))  
+ 
+ 
+
+ 
+ rsds_min_plot <- env_long %>%
+   filter(variable == "rsds_min") %>%
+   mutate(source = "Hindcast") %>%
+   select(decade, value, source)
+ 
+ rsds_min_obs_plot <- obs_decade %>%
+   mutate(
+     source = "Survey",
+     value = rsdsmin
+   ) %>%
+   filter(!is.na(value)) %>%
+   select(decade, value, source)
+ 
+  rsds_min_plot_df <- bind_rows(rsds_min_plot, rsds_min_obs_plot)
+  
+  rsds_min <- ggplot(rsds_min_plot_df, aes(x = decade, y = value, fill = source)) +
+   geom_violin(
+     position = position_dodge(width = 0.8),
+     trim = TRUE,
+     alpha = 0.3
+   ) +
+   geom_boxplot(
+     width = 0.12,
+     position = position_dodge(width = 0.8),
+     outlier.shape = NA,
+     alpha = 0.8
+   ) +
+    scale_fill_manual(
+      values = c(
+        "Survey" = "#E69F00",  # orange
+        "Hindcast"  = "#56B4E9"  # sky blue
+      )
+    ) +
+   labs(
+     x = "Decade",
+     y = expression("Min Surface Downwelling \nShortwave Flux (MJ m"^{-2}~")"),
+     fill = NULL
+   ) +
+   theme_bw() +
+    theme(
+      panel.grid = element_blank(),   # remove grid lines
+      panel.background = element_rect(fill = "white"),
+      plot.background = element_rect(fill = "white"),
+      #legend.position = "right",
+      #axis.text.x = element_text(size = 10),
+      strip.text = element_text(face = "bold"),
+      plot.title = element_text(hjust = 0, face = "bold"),
+      axis.title.x = element_blank(),
+      axis.text.x  = element_blank(),
+      axis.ticks.x = element_blank(),
+      panel.spacing = unit(0, "lines"))  
+  
+  #temp_air_min 
+  airtemp_min_plot <- env_long %>%
+    filter(variable == "temp_air_min") %>%
+    mutate(source = "Hindcast") %>%
+    select(decade, value, source)
+  
+  airtemp_min_obs_plot <- obs_decade %>%
+    mutate(
+      source = "Survey",
+      value = airtempmin
+    ) %>%
+    filter(!is.na(value)) %>%
+    select(decade, value, source)
+  
+  airtemp_min_plot_df <- bind_rows(airtemp_min_plot, airtemp_min_obs_plot)
+  
+  airtemp_min <- ggplot(airtemp_min_plot_df, aes(x = decade, y = value - 273.15, fill = source)) + # convert K to degrees C
+    geom_violin(
+      position = position_dodge(width = 0.8),
+      trim = TRUE,
+      alpha = 0.3
+    ) +
+    geom_boxplot(
+      width = 0.12,
+      position = position_dodge(width = 0.8),
+      outlier.shape = NA,
+      alpha = 0.8
+    ) +
+    scale_fill_manual(
+      values = c(
+        "Survey" = "#E69F00",  # orange
+        "Hindcast"  = "#56B4E9"  # sky blue
+      )
+    ) +
+    labs(
+      x = "Decade",
+      y = expression("Min air temperature ("*degree*C*")"),
+      fill = NULL
+    ) +
+    theme_bw() +
+    theme(
+      panel.grid = element_blank(),   # remove grid lines
+      panel.background = element_rect(fill = "white"),
+      plot.background = element_rect(fill = "white"),
+      #legend.position = "right",
+      #axis.text.x = element_text(size = 10),
+      strip.text = element_text(face = "bold"),
+      plot.title = element_text(hjust = 0, face = "bold"),
+      axis.title.x = element_blank(),
+      axis.text.x  = element_blank(),
+      axis.ticks.x = element_blank(),
+      panel.spacing = unit(0, "lines"))  
+ 
+  
+  #temp_air_cv
+  airtemp_cv_plot <- env_long %>%
+    filter(variable == "temp_air_cv") %>%
+    mutate(source = "Hindcast") %>%
+    select(decade, value, source)
+  
+  airtemp_cv_obs_plot <- obs_decade %>%
+    mutate(
+      source = "Survey",
+      value = airtempcv
+    ) %>%
+    filter(!is.na(value)) %>%
+    select(decade, value, source)
+  
+  airtemp_cv_plot_df <- bind_rows(airtemp_cv_plot, airtemp_cv_obs_plot)
+  
+  airtemp_cv <- ggplot(airtemp_cv_plot_df, aes(x = decade, y = value, fill = source)) +
+    geom_violin(
+      position = position_dodge(width = 0.8),
+      trim = TRUE,
+      alpha = 0.3
+    ) +
+    geom_boxplot(
+      width = 0.12,
+      position = position_dodge(width = 0.8),
+      outlier.shape = NA,
+      alpha = 0.8
+    ) +
+    scale_fill_manual(
+      values = c(
+        "Survey" = "#E69F00",  # orange
+        "Hindcast"  = "#56B4E9"  # sky blue
+      )
+    ) +
+    labs(
+      x = "Decade",
+      y = expression("Air temperature CV"),
+      fill = NULL
+    ) +
+    theme_bw() +
+    theme(
+      panel.grid = element_blank(),   # remove grid lines
+      panel.background = element_rect(fill = "white"),
+      plot.background = element_rect(fill = "white"),
+      legend.position = "right",
+      axis.text.x = element_text(size = 10),
+      strip.text = element_text(face = "bold"),
+      plot.title = element_text(hjust = 0, face = "bold"),
+      panel.spacing = unit(0, "lines"))
+ 
+  
+  # salt_5m_mean_bccm  salt_5m_mean_nep36
+  salt_mean_plot <- env_long %>%
+    filter(variable %in% c("salt_5m_mean_bccm", "salt_5m_mean_nep36")) %>%
+    mutate(
+      source = case_when(
+        variable == "salt_5m_mean_bccm" ~ "Hindcast BCCM",
+        variable == "salt_5m_mean_nep36" ~ "Hindcast NEP36"
+      )
+    ) %>%
+    select(decade, value, source)
+  
+  salt_mean_obs_plot <- obs_decade %>%
+    select(
+      decade,
+      saltmean_bccm,
+      saltmean_nep
+    ) %>%
+    pivot_longer(
+      cols = c(saltmean_bccm, saltmean_nep),
+      names_to = "source",
+      values_to = "value"
+    ) %>%
+    mutate(
+      source = case_when(
+        source == "saltmean_bccm" ~ "Survey BCCM",
+        source == "saltmean_nep" ~ "Survey NEP36"
+      )
+    ) %>%
+    filter(!is.na(value))
+  
+  
+  salt_mean_plot_df <- bind_rows(
+    salt_mean_plot,
+    salt_mean_obs_plot
+  )
+
+  salt_mean <- ggplot(
+    salt_mean_plot_df,
+    aes(x = decade, y = value, fill = source)
+  ) +
+    
+    geom_violin(
+      position = position_dodge(width = 0.8),
+      trim = TRUE,
+      alpha = 0.3
+    ) +
+    
+    geom_boxplot(
+      width = 0.12,
+      position = position_dodge(width = 0.8),
+      outlier.shape = NA,
+      alpha = 0.8
+    ) +
+    scale_fill_manual(
+      values = c(
+        "Hindcast BCCM" = "#56B4E9",  
+        "Hindcast NEP36"  = "#009E73",  
+        "Survey BCCM"   = "#E69F00",  
+        "Survey NEP36"    = "#CC79A7"   
+      )
+    ) +
+    coord_cartesian(ylim = c(20, NA)) +
+    labs(
+      x = "Decade",
+      y = expression("Salinity (psu)"),
+      fill = NULL
+    ) +
+    
+    theme_bw() +
+    
+    theme(
+      panel.grid = element_blank(),   # remove grid lines
+      panel.background = element_rect(fill = "white"),
+      plot.background = element_rect(fill = "white"),
+      #legend.position = "right",
+      #axis.text.x = element_text(size = 10),
+      strip.text = element_text(face = "bold"),
+      plot.title = element_text(hjust = 0, face = "bold"),
+      axis.title.x = element_blank(),
+      axis.text.x  = element_blank(),
+      axis.ticks.x = element_blank(),
+      panel.spacing = unit(0, "lines"))  
+  
+   #salt_5m_cv_bccm  salt_5m_cv_nep36
+  salt_cv_plot <- env_long %>%
+    filter(variable %in% c("salt_5m_cv_bccm", "salt_5m_cv_nep36")) %>%
+    mutate(
+      source = case_when(
+        variable == "salt_5m_cv_bccm" ~ "Hindcast BCCM",
+        variable == "salt_5m_cv_nep36" ~ "Hindcast NEP36"
+      )
+    ) %>%
+    select(decade, value, source)
+  
+  salt_cv_obs_plot <- obs_decade %>%
+    select(
+      decade,
+      saltcv_bccm,
+      saltcv_nep
+    ) %>%
+    pivot_longer(
+      cols = c(saltcv_bccm, saltcv_nep),
+      names_to = "source",
+      values_to = "value"
+    ) %>%
+    mutate(
+      source = case_when(
+        source == "saltcv_bccm" ~ "Survey BCCM",
+        source == "saltcv_nep" ~ "Survey NEP36"
+      )
+    ) %>%
+    filter(!is.na(value))
+  
+  
+  salt_cv_plot_df <- bind_rows(
+    salt_cv_plot,
+    salt_cv_obs_plot
+  )
+  
+  salt_cv <- ggplot(
+    salt_cv_plot_df,
+    aes(x = decade, y = value, fill = source)
+  ) +
+    
+    geom_violin(
+      position = position_dodge(width = 0.8),
+      trim = TRUE,
+      alpha = 0.3
+    ) +
+    
+    geom_boxplot(
+      width = 0.12,
+      position = position_dodge(width = 0.8),
+      outlier.shape = NA,
+      alpha = 0.8
+    ) +
+    scale_fill_manual(
+      values = c(
+        "Hindcast BCCM" = "#56B4E9",  
+        "Hindcast NEP36"  = "#009E73",  
+        "Survey BCCM"   = "#E69F00",  
+        "Survey NEP36"    = "#CC79A7"   
+      )
+    ) +
+    coord_cartesian(ylim = c(0, 20)) +
+    labs(
+      x = "Decade",
+      y = expression("Salinity CV"),
+      fill = NULL
+    ) +
+    
+    theme_bw() +
+    
+    theme(
+      panel.grid = element_blank(),   # remove grid lines
+      panel.background = element_rect(fill = "white"),
+      plot.background = element_rect(fill = "white"),
+      #legend.position = "right",
+      #axis.text.x = element_text(size = 10),
+      strip.text = element_text(face = "bold"),
+      plot.title = element_text(hjust = 0, face = "bold"),
+      axis.title.x = element_blank(),
+      axis.text.x  = element_blank(),
+      axis.ticks.x = element_blank(),
+      panel.spacing = unit(0, "lines"))  
+  
+  #temp_5m_cv_bccm temp_5m_cv_nep36
+  
+  temp_cv_plot <- env_long %>%
+    filter(variable %in% c("temp_5m_cv_bccm", "temp_5m_cv_nep36")) %>%
+    mutate(
+      source = case_when(
+        variable == "temp_5m_cv_bccm" ~ "Hindcast BCCM",
+        variable == "temp_5m_cv_nep36" ~ "Hindcast NEP36"
+      )
+    ) %>%
+    select(decade, value, source)
+  
+  temp_cv_obs_plot <- obs_decade %>%
+    select(
+      decade,
+      tempcv_bccm,
+      tempcv_nep
+    ) %>%
+    pivot_longer(
+      cols = c(tempcv_bccm, tempcv_nep),
+      names_to = "source",
+      values_to = "value"
+    ) %>%
+    mutate(
+      source = case_when(
+        source == "tempcv_bccm" ~ "Survey BCCM",
+        source == "tempcv_nep" ~ "Survey NEP36"
+      )
+    ) %>%
+    filter(!is.na(value))
+  
+  
+  temp_cv_plot_df <- bind_rows(
+    temp_cv_plot,
+    temp_cv_obs_plot
+  )
+  
+  temp_cv <- ggplot(
+    temp_cv_plot_df,
+    aes(x = decade, y = value, fill = source)
+  ) +
+    
+    geom_violin(
+      position = position_dodge(width = 0.8),
+      trim = TRUE,
+      alpha = 0.3
+    ) +
+    
+    geom_boxplot(
+      width = 0.12,
+      position = position_dodge(width = 0.8),
+      outlier.shape = NA,
+      alpha = 0.8
+    ) +
+    scale_fill_manual(
+      values = c(
+        "Hindcast BCCM" = "#56B4E9",  
+        "Hindcast NEP36"  = "#009E73",  
+        "Survey BCCM"   = "#E69F00",  
+        "Survey NEP36"    = "#CC79A7"   
+      )
+    ) +
+    labs(
+      x = "Decade",
+      y = expression("Ocean subsurface temperature CV"),
+      fill = NULL
+    ) +
+    
+    theme_bw() +
+    
+    theme(
+      panel.grid = element_blank(),   # remove grid lines
+      panel.background = element_rect(fill = "white"),
+      plot.background = element_rect(fill = "white"),
+      #legend.position = "right",
+      #axis.text.x = element_text(size = 10),
+      strip.text = element_text(face = "bold"),
+      plot.title = element_text(hjust = 0, face = "bold"),
+      axis.title.x = element_blank(),
+      axis.text.x  = element_blank(),
+      axis.ticks.x = element_blank(),
+      panel.spacing = unit(0, "lines"))  
+  
+  #temp_5m_min_bccm  temp_5m_min_nep36
+  
+  temp_min_plot <- env_long %>%
+    filter(variable %in% c("temp_5m_min_bccm", "temp_5m_min_nep36")) %>%
+    mutate(
+      source = case_when(
+        variable == "temp_5m_min_bccm" ~ "Hindcast BCCM",
+        variable == "temp_5m_min_nep36" ~ "Hindcast NEP36"
+      )
+    ) %>%
+    select(decade, value, source)
+  
+  temp_min_obs_plot <- obs_decade %>%
+    select(
+      decade,
+      tempmin_bccm,
+      tempmin_nep
+    ) %>%
+    pivot_longer(
+      cols = c(tempmin_bccm, tempmin_nep),
+      names_to = "source",
+      values_to = "value"
+    ) %>%
+    mutate(
+      source = case_when(
+        source == "tempmin_bccm" ~ "Survey BCCM",
+        source == "tempmin_nep" ~ "Survey NEP36"
+      )
+    ) %>%
+    filter(!is.na(value))
+  
+  
+  temp_min_plot_df <- bind_rows(
+    temp_min_plot,
+    temp_min_obs_plot
+  )
+  
+  temp_min <- ggplot(
+    temp_min_plot_df,
+    aes(x = decade, y = value, fill = source)
+  ) +
+    
+    geom_violin(
+      position = position_dodge(width = 0.8),
+      trim = TRUE,
+      alpha = 0.3
+    ) +
+    
+    geom_boxplot(
+      width = 0.12,
+      position = position_dodge(width = 0.8),
+      outlier.shape = NA,
+      alpha = 0.8
+    ) +
+    scale_fill_manual(
+      values = c(
+        "Hindcast BCCM" = "#56B4E9",  
+        "Hindcast NEP36"  = "#009E73",  
+        "Survey BCCM"   = "#E69F00",  
+        "Survey NEP36"    = "#CC79A7"   
+      )
+    ) +
+    labs(
+      x = "Decade",
+      y = expression("Ocean subsurface temperature min ("*degree*C*")"),
+      fill = NULL
+    ) +
+    
+    theme_bw() +
+    
+    theme(
+      panel.grid = element_blank(),   # remove grid lines
+      panel.background = element_rect(fill = "white"),
+      plot.background = element_rect(fill = "white"),
+      #legend.position = "right",
+      #axis.text.x = element_text(size = 10),
+      strip.text = element_text(face = "bold"),
+      plot.title = element_text(hjust = 0, face = "bold"),
+      axis.title.x = element_blank(),
+      axis.text.x  = element_blank(),
+      axis.ticks.x = element_blank(),
+      panel.spacing = unit(0, "lines"))  
+  
+  #temp_5m_mean_bccm  temp_5m_mean_nep36
+  temp_mean_plot <- env_long %>%
+    filter(variable %in% c("temp_5m_mean_bccm", "temp_5m_mean_nep36")) %>%
+    mutate(
+      source = case_when(
+        variable == "temp_5m_mean_bccm" ~ "Hindcast BCCM",
+        variable == "temp_5m_mean_nep36" ~ "Hindcast NEP36"
+      )
+    ) %>%
+    select(decade, value, source)
+  
+  temp_mean_obs_plot <- obs_decade %>%
+    select(
+      decade,
+      tempmean_bccm,
+      tempmean_nep
+    ) %>%
+    pivot_longer(
+      cols = c(tempmean_bccm, tempmean_nep),
+      names_to = "source",
+      values_to = "value"
+    ) %>%
+    mutate(
+      source = case_when(
+        source == "tempmean_bccm" ~ "Survey BCCM",
+        source == "tempmean_nep" ~ "Survey NEP36"
+      )
+    ) %>%
+    filter(!is.na(value))
+  
+  
+  temp_mean_plot_df <- bind_rows(
+    temp_mean_plot,
+    temp_mean_obs_plot
+  )
+  
+  temp_mean <- ggplot(
+    temp_mean_plot_df,
+    aes(x = decade, y = value, fill = source)
+  ) +
+    
+    geom_violin(
+      position = position_dodge(width = 0.8),
+      trim = TRUE,
+      alpha = 0.3
+    ) +
+    
+    geom_boxplot(
+      width = 0.12,
+      position = position_dodge(width = 0.8),
+      outlier.shape = NA,
+      alpha = 0.8
+    ) +
+    scale_fill_manual(
+      values = c(
+        "Hindcast BCCM" = "#56B4E9",  
+        "Hindcast NEP36"  = "#009E73",  
+        "Survey BCCM"   = "#E69F00",  
+        "Survey NEP36"    = "#CC79A7"   
+      )
+    ) +
+    labs(
+      x = "Decade",
+      y = expression("Ocean subsurface temperature ("*degree*C*")"),
+      fill = NULL
+    ) +
+    
+    theme_bw() +
+    
+    theme(
+      panel.grid = element_blank(),   # remove grid lines
+      panel.background = element_rect(fill = "white"),
+      plot.background = element_rect(fill = "white"),
+      #legend.position = "right",
+      #axis.text.x = element_text(size = 10),
+      strip.text = element_text(face = "bold"),
+      plot.title = element_text(hjust = 0, face = "bold"),
+      axis.title.x = element_blank(),
+      axis.text.x  = element_blank(),
+      axis.ticks.x = element_blank(),
+      panel.spacing = unit(0, "lines"))  
+  
+  #NH4_5m_mean_bccm  NH4_5m_mean_nep36
+  NH4_mean_plot <- env_long %>%
+    filter(variable %in% c("NH4_5m_mean_bccm", "NH4_5m_mean_nep36")) %>%
+    mutate(
+      source = case_when(
+        variable == "NH4_5m_mean_bccm" ~ "Hindcast BCCM",
+        variable == "NH4_5m_mean_nep36" ~ "Hindcast NEP36"
+      )
+    ) %>%
+    select(decade, value, source)
+  
+  NH4_mean_obs_plot <- obs_decade %>%
+    select(
+      decade,
+      NH4_bccm,
+      NH4_nep
+    ) %>%
+    pivot_longer(
+      cols = c(NH4_bccm, NH4_nep),
+      names_to = "source",
+      values_to = "value"
+    ) %>%
+    mutate(
+      source = case_when(
+        source == "NH4_bccm" ~ "Survey BCCM",
+        source == "NH4_nep" ~ "Survey NEP36"
+      )
+    ) %>%
+    filter(!is.na(value))
+  
+  
+  NH4_mean_plot_df <- bind_rows(
+    NH4_mean_plot,
+    NH4_mean_obs_plot
+  )
+  
+   NH4_mean <- ggplot(
+    NH4_mean_plot_df,
+    aes(x = decade, y = value, fill = source)
+  ) +
+    
+    geom_violin(
+      position = position_dodge(width = 0.8),
+      trim = TRUE,
+      alpha = 0.3
+    ) +
+    
+    geom_boxplot(
+      width = 0.12,
+      position = position_dodge(width = 0.8),
+      outlier.shape = NA,
+      alpha = 0.8
+    ) +
+     scale_fill_manual(
+       values = c(
+         "Hindcast BCCM" = "#56B4E9",  
+         "Hindcast NEP36"  = "#009E73",  
+         "Survey BCCM"   = "#E69F00",  
+         "Survey NEP36"    = "#CC79A7"   
+       )
+     ) +
+     coord_cartesian(ylim = c(0, 2.5)) +
+    labs(
+      x = "Decade",
+      y = expression("Ammonium (mmol m"^{-3}~")"),
+      fill = NULL
+    ) +
+     
+    theme_bw() +
+    
+    theme(
+      panel.grid = element_blank(),
+      panel.background = element_rect(fill = "white"),
+      plot.background = element_rect(fill = "white"),
+      legend.position = "right",
+      axis.text.x = element_text(size = 10),
+      strip.text = element_text(face = "bold"),
+      plot.title = element_text(hjust = 0, face = "bold"),
+      panel.spacing = unit(0, "lines")
+    )
+  
+  
+    #temp_s_cv_bccm temp_s_cv_nep36
+   surfacetemp_cv_plot <- env_long %>%
+     filter(variable %in% c("temp_s_cv_bccm", "temp_s_cv_nep36")) %>%
+     mutate(
+       source = case_when(
+         variable == "temp_s_cv_bccm" ~ "Hindcast BCCM",
+         variable == "temp_s_cv_nep36" ~ "Hindcast NEP36"
+       )
+     ) %>%
+     select(decade, value, source)
+   
+   surfacetemp_cv_obs_plot <- obs_decade %>%
+     select(
+       decade,
+       surftempcv_bccm,
+       surftempcv_nep
+     ) %>%
+     pivot_longer(
+       cols = c(surftempcv_bccm, surftempcv_nep),
+       names_to = "source",
+       values_to = "value"
+     ) %>%
+     mutate(
+       source = case_when(
+         source == "surftempcv_bccm" ~ "Survey BCCM",
+         source == "surftempcv_nep" ~ "Survey NEP36"
+       )
+     ) %>%
+     filter(!is.na(value))
+   
+   
+   surfacetemp_cv_plot_df <- bind_rows(
+     surfacetemp_cv_plot,
+     surfacetemp_cv_obs_plot
+   )
+   surfacetemp_cv <- ggplot(
+     surfacetemp_cv_plot_df,
+     aes(x = decade, y = value, fill = source)
+   ) +
+     
+     geom_violin(
+       position = position_dodge(width = 0.8),
+       trim = TRUE,
+       alpha = 0.3
+     ) +
+     
+     geom_boxplot(
+       width = 0.12,
+       position = position_dodge(width = 0.8),
+       outlier.shape = NA,
+       alpha = 0.8
+     ) +
+     scale_fill_manual(
+       values = c(
+         "Hindcast BCCM" = "#56B4E9",  
+         "Hindcast NEP36"  = "#009E73",  
+         "Survey BCCM"   = "#E69F00",  
+         "Survey NEP36"    = "#CC79A7"   
+       )
+     ) +
+     labs(
+       x = "Decade",
+       y = expression("Ocean surface temperature CV"),
+       fill = NULL
+     ) +
+     
+     theme_bw() +
+     
+     theme(
+       panel.grid = element_blank(),   # remove grid lines
+       panel.background = element_rect(fill = "white"),
+       plot.background = element_rect(fill = "white"),
+       #legend.position = "right",
+       #axis.text.x = element_text(size = 10),
+       strip.text = element_text(face = "bold"),
+       plot.title = element_text(hjust = 0, face = "bold"),
+       axis.title.x = element_blank(),
+       axis.text.x  = element_blank(),
+       axis.ticks.x = element_blank(),
+       panel.spacing = unit(0, "lines"))  
+   
+   
+   
+ atmos <- precip_mean / precip_min / rsds_min / airtemp_min / airtemp_cv + plot_layout(guides = "collect") & theme(legend.position = "right")
+ 
+ ggsave(
+   filename = "figures/atmos_var.png",
+   plot = atmos,
+   width = 12,
+   height = 20,
+   dpi = 300,
+   bg = "white"
+ )
+ 
+ ocean<- salt_mean / salt_cv / temp_mean / temp_min / temp_cv / surfacetemp_cv / NH4_mean + plot_layout(guides = "collect") & theme(legend.position = "right")
+ 
+ ggsave(
+   filename = "figures/ocean_var.png",
+   plot = ocean,
+   width = 14,
+   height = 20,
    dpi = 300,
    bg = "white"
  )
