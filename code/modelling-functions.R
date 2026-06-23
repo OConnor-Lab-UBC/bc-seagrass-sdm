@@ -124,11 +124,6 @@ mdb_connection <- function(db_file_path)  {
 #####  SDM Functions #####
 ##########################
 
-# tjur <- function(y, pred){
-#   mean(pred[y == 1], na.rm = TRUE) - mean(pred[y == 0], na.rm = TRUE)
-# }
-
-
 tjur <- function(y, pred) {
   categories <- sort(unique(y))
   m1 <- mean(pred[which(y == categories[1])], na.rm = TRUE)
@@ -179,6 +174,31 @@ tss_metric <- function(obs, pred, threshold) {
   
   sens <- ifelse(sum(cm["1",]) > 0, cm["1","1"]/sum(cm["1",]), NA)
   spec <- ifelse(sum(cm["0",]) > 0, cm["0","0"]/sum(cm["0",]), NA)
+  sens + spec - 1
+}
+
+# safe Tjur R2
+tjur_r2 <- function(obs, pred) {
+  if (length(unique(obs)) < 2) return(NA_real_)
+  mean(pred[obs == 1], na.rm = TRUE) - mean(pred[obs == 0], na.rm = TRUE)
+}
+# safe AUC using ecospat
+auc_safe <- function(obs, pred) {
+  if (length(unique(obs)) < 2) return(NA_real_)
+  ecospat::ecospat.auctest(pred[obs == 1], pred[obs == 0], nrep = 0)$auc
+}
+# threshold-based TSS
+tss_from_threshold <- function(obs, pred, threshold) {
+  pred_bin <- ifelse(pred >= threshold, 1, 0)
+  
+  tp <- sum(obs == 1 & pred_bin == 1, na.rm = TRUE)
+  tn <- sum(obs == 0 & pred_bin == 0, na.rm = TRUE)
+  fp <- sum(obs == 0 & pred_bin == 1, na.rm = TRUE)
+  fn <- sum(obs == 1 & pred_bin == 0, na.rm = TRUE)
+  
+  sens <- ifelse((tp + fn) == 0, NA, tp / (tp + fn))
+  spec <- ifelse((tn + fp) == 0, NA, tn / (tn + fp))
+  
   sens + spec - 1
 }
 
@@ -249,6 +269,315 @@ glm_ffs <- function(data, NumFolds){
   return(Fold_Outputs)  
 }
 
+
+
+#### nested spatial cross validation to select best smoothing terms 
+
+nested_sdmTMB_cv <- function(
+    data,
+    mesh,
+    spatial_setting = FALSE,
+    ocean_model = c("bccm", "nep"),
+    outer_fold_col = "fold",
+    inner_fold_col = "inner_fold",
+    depth_k_values = list(
+      "linear" = NULL,
+      "2" = 2,
+      "3" = 3,
+      "4" = 4
+    ),
+    airtemp_k_values = list(
+      "linear" = NULL,
+      "2" = 2,
+      "3" = 3,
+      "4" = 4
+    ),
+    priors = sdmTMBpriors(b = normal(0, 1)),
+    family = binomial(link = "logit")
+) {
+  
+  library(dplyr)
+  library(sdmTMB)
+  library(pROC)
+  
+  ocean_model <- match.arg(ocean_model)
+  
+  #-------------------------------------------
+  # choose oceanographic predictors
+  #-------------------------------------------
+  ocean_terms <- switch(
+    ocean_model,
+    bccm = "saltcv_bccm_stnd + NH4_bccm_stnd + tempcv_bccm_stnd",
+    nep  = "saltcv_nep_stnd + NH4_nep_stnd + tempcv_nep_stnd"
+  )
+  
+  #-------------------------------------------
+  # formula builder
+  #-------------------------------------------
+  build_formula <- function(depth_k, airtemp_k, ocean_terms) {
+    depth_term <-
+      if (is.null(depth_k))
+        "depth_stnd"
+    else
+      paste0("s(depth_stnd, k=", depth_k, ")")
+    
+    airtemp_term <-
+      if (is.null(airtemp_k))
+        "airtempmin_stnd"
+    else
+      paste0("s(airtempmin_stnd, k=", airtemp_k, ")")
+    
+    as.formula(
+      paste(
+        "presence ~",
+        depth_term,
+        "+ substrate + slope_stnd + rei_stnd +",
+        airtemp_term,
+        "+ rsdsmin_stnd + prmin_stnd +",
+        ocean_terms,
+        "+ Survey"
+      )
+    )
+  }
+  
+  
+  #-------------------------------------------
+  # helper metrics
+  #-------------------------------------------
+  calc_logloss <- function(actual, prob) {
+    eps <- 1e-15
+    prob_clip <- pmin(pmax(prob, eps), 1 - eps)
+    -mean(actual * log(prob_clip) + (1 - actual) * log(1 - prob_clip), na.rm = TRUE)
+  }
+  
+  calc_tjur <- function(actual, prob) {
+    mean(prob[actual == 1], na.rm = TRUE) - mean(prob[actual == 0], na.rm = TRUE)
+  }
+  
+  calc_brier <- function(actual, prob) {
+    mean((prob - actual)^2, na.rm = TRUE)
+  }
+  
+  calc_best_tss <- function(actual, prob) {
+    thresholds <- sort(unique(prob))
+    
+    if (length(thresholds) == 0) {
+      return(list(
+        tss = NA_real_,
+        sensitivity = NA_real_,
+        specificity = NA_real_,
+        threshold = NA_real_
+      ))
+    }
+    
+    tss_scores <- numeric(length(thresholds))
+    sens_vals <- numeric(length(thresholds))
+    spec_vals <- numeric(length(thresholds))
+    
+    for (j in seq_along(thresholds)) {
+      th <- thresholds[j]
+      pred_class <- as.integer(prob >= th)
+      
+      sens <- if (sum(actual == 1) > 0) {
+        sum(pred_class == 1 & actual == 1) / sum(actual == 1)
+      } else {
+        NA_real_
+      }
+      
+      spec <- if (sum(actual == 0) > 0) {
+        sum(pred_class == 0 & actual == 0) / sum(actual == 0)
+      } else {
+        NA_real_
+      }
+      
+      tss_scores[j] <- sens + spec - 1
+      sens_vals[j] <- sens
+      spec_vals[j] <- spec
+    }
+    
+    best_j <- which.max(tss_scores)
+    
+    list(
+      tss = tss_scores[best_j],
+      sensitivity = sens_vals[best_j],
+      specificity = spec_vals[best_j],
+      threshold = thresholds[best_j]
+    )
+  }
+  
+  safe_auc <- function(actual, prob) {
+    tryCatch(as.numeric(pROC::auc(actual, prob)), error = function(e) NA_real_)
+  }
+  
+  #-------------------------------------------
+  # checks
+  #-------------------------------------------
+  if (!outer_fold_col %in% names(data)) {
+    stop("Outer fold column not found: ", outer_fold_col)
+  }
+  if (!inner_fold_col %in% names(data)) {
+    stop("Inner fold column not found: ", inner_fold_col)
+  }
+  
+  results <- list()
+  
+  for (outer_fold in sort(unique(data[[outer_fold_col]]))) {
+    cat("Outer Fold:", outer_fold, "\n")
+    
+    test_data <- data[data[[outer_fold_col]] == outer_fold, ]
+    train_data <- data[data[[outer_fold_col]] != outer_fold, ]
+    
+    param_grid <- expand.grid(
+      depth_k = names(depth_k_values),
+      airtemp_k = names(airtemp_k_values),
+      stringsAsFactors = FALSE
+    )
+    
+    inner_res <- list()
+    
+    for (i in seq_len(nrow(param_grid))) {
+      params <- param_grid[i, , drop = FALSE]
+      aucs <- c()
+      loglosses <- c()
+      
+      for (inner_fold in sort(unique(train_data[[inner_fold_col]]))) {
+        valid <- train_data[train_data[[inner_fold_col]] == inner_fold, ]
+        train <- train_data[train_data[[inner_fold_col]] != inner_fold, ]
+        
+        depth_k <- depth_k_values[[params$depth_k]]
+        airtemp_k <- airtemp_k_values[[params$airtemp_k]]
+        
+        formula <- build_formula(depth_k, airtemp_k, ocean_terms)
+        
+        fit <- try(
+          sdmTMB(
+            formula = formula,
+            mesh = mesh,
+            family = family,
+            priors = priors,
+            spatial = spatial_setting,
+            data = train,
+            silent = TRUE
+          ),
+          silent = TRUE
+        )
+        
+        if (!inherits(fit, "try-error")) {
+          pred <- predict(fit, newdata = valid)
+          prob <- plogis(pred$est)
+          
+          auc_val <- try(pROC::auc(valid$presence, prob), silent = TRUE)
+          if (!inherits(auc_val, "try-error")) {
+            aucs <- c(aucs, as.numeric(auc_val))
+          }
+          
+          ll <- calc_logloss(valid$presence, prob)
+          loglosses <- c(loglosses, ll)
+        }
+      }
+      
+      inner_res[[i]] <- data.frame(
+        depth_k = params$depth_k,
+        airtemp_k = params$airtemp_k,
+        mean_auc = mean(aucs, na.rm = TRUE),
+        mean_logloss = mean(loglosses, na.rm = TRUE)
+      )
+    }
+    
+    inner_df <- dplyr::bind_rows(inner_res)
+    
+    if (all(is.na(inner_df$mean_logloss))) {
+      best_params <- data.frame(
+        depth_k = NA_character_,
+        airtemp_k = NA_character_,
+        mean_auc = NA_real_,
+        mean_logloss = NA_real_
+      )
+    } else {
+      best_i <- which.min(inner_df$mean_logloss)
+      best_params <- inner_df[best_i, ]
+    }
+    
+    cat("Best inner params for outer fold", outer_fold, ":\n")
+    print(best_params)
+    
+    best_depth_k <- depth_k_values[[best_params$depth_k]]
+    best_airtemp_k <- airtemp_k_values[[best_params$airtemp_k]]
+    
+    formula <- build_formula(
+      best_depth_k,
+      best_airtemp_k,
+      ocean_terms
+    )
+    
+    fit <- try(
+      sdmTMB(
+        formula = formula,
+        mesh = mesh,
+        family = family,
+        priors = priors,
+        spatial = spatial_setting,
+        data = train_data,
+        silent = TRUE
+      ),
+      silent = TRUE
+    )
+    
+    if (!inherits(fit, "try-error")) {
+      pred <- predict(fit, newdata = test_data)
+      prob <- plogis(pred$est)
+      actual <- test_data$presence
+      
+      tss_out <- calc_best_tss(actual, prob)
+      auc <- safe_auc(actual, prob)
+      tjur_r2 <- calc_tjur(actual, prob)
+      brier_score <- calc_brier(actual, prob)
+      logloss <- calc_logloss(actual, prob)
+    } else {
+      auc <- tjur_r2 <- brier_score <- logloss <- NA_real_
+      tss_out <- list(
+        tss = NA_real_,
+        sensitivity = NA_real_,
+        specificity = NA_real_,
+        threshold = NA_real_
+      )
+    }
+    
+    results[[as.character(outer_fold)]] <- data.frame(
+      outer_fold = outer_fold,
+      ocean_model = ocean_model,
+      spatial = spatial_setting,
+      depth_k = best_params$depth_k,
+      airtemp_k = best_params$airtemp_k,
+      test_auc = auc,
+      tjur_r2 = tjur_r2,
+      brier_score = brier_score,
+      sensitivity = tss_out$sensitivity,
+      specificity = tss_out$specificity,
+      tss = tss_out$tss,
+      logloss = logloss,
+      tss_threshold = tss_out$threshold
+    )
+  }
+  
+  final_results <- dplyr::bind_rows(results)
+  
+  summary_results <- final_results %>%
+    summarise(
+      mean_auc = mean(test_auc, na.rm = TRUE),
+      mean_tjur = mean(tjur_r2, na.rm = TRUE),
+      mean_brier = mean(brier_score, na.rm = TRUE),
+      mean_tss = mean(tss, na.rm = TRUE),
+      mean_logloss = mean(logloss, na.rm = TRUE)
+    )
+  
+  list(
+    fold_results = final_results,
+    summary_results = summary_results
+  )
+}
+
+
 # Variable importance
 # Method from SDMtune R package: 
 #  'The function randomly permutes one variable at time (using training and
@@ -261,14 +590,19 @@ glm_ffs <- function(data, NumFolds){
 ### We estimated the relative influence of covariates using a permutation method, based on the method implemented in MaxEnt software (Phillips et al. 2006). For each covariate we: (1) randomized the covariate with respect to the observations, (2) fit a model with the randomized covariate and all other non-randomized covariates, and (3) accessed model performance with the area under the receiver operating characteristic curve (AUC) metric. We completed steps (1) through (3) 10 times and returned a mean AUC value from the 10 permutations. We then calculated the AUC, the difference between the non-randomized model AUC and the permuted mean AUC from the randomized models. Finally, for each covariate, we divided the AUC by the sum of AUC values from all covariates to obtain the relative influence. A large AUC indicates that the randomized covariate has a large influence, while a small AUC indicates that the covariate has little influence on the model fit. For spatial random fields, we adjusted the procedure as randomization of sampling location (latitude and longitude) was not appropriate. We calculated the influence of the spatial random field by dropping it from the model, then measuring AUC between the model with random fields and the model without.
 
 
-varImp_sdmTMB <- function(model, dat, preds, groups = NULL, permute = 10) {
+varImp_sdmTMB <- function(model, dat, preds, permute = 10) {
   library(sdmTMB)
   library(ModelMetrics)
+  
   # ------------------------------
   # Checks
   # ------------------------------
-  if(!all(preds %in% names(dat))) {
+  if (!all(preds %in% names(dat))) {
     stop("Some predictors are missing from the dataset.")
+  }
+  
+  if (!"presence" %in% names(dat)) {
+    stop("Column 'presence' is missing from the dataset.")
   }
   
   obs <- dat$presence
@@ -276,9 +610,9 @@ varImp_sdmTMB <- function(model, dat, preds, groups = NULL, permute = 10) {
   # ------------------------------
   # Handle spatiotemporal models ONLY if needed
   # ------------------------------
-  if(!is.null(model$spatiotemporal) && model$spatiotemporal != "off") {
+  if (!is.null(model$spatiotemporal) && model$spatiotemporal != "off") {
     time_var <- model$time
-    if(is.null(time_var) || !time_var %in% names(dat)) {
+    if (is.null(time_var) || !time_var %in% names(dat)) {
       stop("Model is spatiotemporal but time variable is missing from data.")
     }
     dat[[time_var]] <- as.integer(dat[[time_var]])
@@ -291,16 +625,16 @@ varImp_sdmTMB <- function(model, dat, preds, groups = NULL, permute = 10) {
   base_auc <- auc(obs, base_pred$est)
   rm(base_pred); gc()
   
-  # ======================================================
-  # 1️⃣ INDIVIDUAL VARIABLE IMPORTANCE
-  # ======================================================
-  
+  # ------------------------------
+  # Individual variable importance
+  # ------------------------------
   aucs_ind <- vector("list", length(preds))
   names(aucs_ind) <- preds
   
-  for(v in preds) {
+  for (v in preds) {
     perm_results <- numeric(permute)
-    for(i in seq_len(permute)) {
+    
+    for (i in seq_len(permute)) {
       dat_perm <- dat
       dat_perm[[v]] <- sample(dat_perm[[v]])
       
@@ -317,96 +651,69 @@ varImp_sdmTMB <- function(model, dat, preds, groups = NULL, permute = 10) {
       
       rm(p, dat_perm); gc()
     }
+    
     aucs_ind[[v]] <- perm_results
   }
   
   perm_auc_ind <- sapply(aucs_ind, mean, na.rm = TRUE)
   imp_ind <- pmax(0, base_auc - perm_auc_ind)
-  rel_ind <- round(100 * imp_ind / sum(imp_ind), 1)
+  
+  if (sum(imp_ind, na.rm = TRUE) == 0) {
+    rel_ind <- rep(0, length(imp_ind))
+  } else {
+    rel_ind <- round(100 * imp_ind / sum(imp_ind, na.rm = TRUE), 1)
+  }
   
   ind_df <- data.frame(
     term = preds,
-    relimp = rel_ind,
+    mean_permuted_auc = as.numeric(perm_auc_ind),
+    importance = as.numeric(imp_ind),
+    relimp = as.numeric(rel_ind),
     stringsAsFactors = FALSE
   )
   
-  # ======================================================
-  # 2️⃣ GROUPED VARIABLE IMPORTANCE (optional)
-  # ======================================================
-  
-  grp_df <- NULL
-  
-  if(!is.null(groups)) {
-    
-    # groups must be a named list
-    if(is.null(names(groups))) {
-      stop("Groups must be a *named* list.")
-    }
-    
-    aucs_grp <- vector("list", length(groups))
-    names(aucs_grp) <- names(groups)
-    
-    for(g in names(groups)) {
-      vars <- groups[[g]]
-      
-      if(!all(vars %in% preds)) {
-        stop(paste("Group", g, "contains variables not in preds."))
-      }
-      
-      perm_results <- numeric(permute)
-      
-      for(i in seq_len(permute)) {
-        dat_perm <- dat
-        
-        # Permute ALL variables in the group
-        for(v in vars) {
-          dat_perm[[v]] <- sample(dat_perm[[v]])
-        }
-        
-        p <- try(
-          predict(model, newdata = dat_perm, type = "response", re_form = NA),
-          silent = TRUE
-        )
-        
-        perm_results[i] <- ifelse(
-          inherits(p, "try-error"),
-          NA,
-          auc(obs, p$est)
-        )
-        
-        rm(p, dat_perm); gc()
-      }
-      
-      aucs_grp[[g]] <- perm_results
-    }
-    
-    perm_auc_grp <- sapply(aucs_grp, mean, na.rm = TRUE)
-    imp_grp <- pmax(0, base_auc - perm_auc_grp)
-    rel_grp <- round(100 * imp_grp / sum(imp_grp), 1)
-    
-    grp_df <- data.frame(
-      group = names(groups),
-      relimp = rel_grp,
-      stringsAsFactors = FALSE
-    )
-  }
-  
   # ------------------------------
-  # Return both
+  # Return individual importance only
   # ------------------------------
   list(
     base_auc = base_auc,
-    individual = ind_df,
-    grouped = grp_df
+    individual = ind_df
   )
 }
+
 
 
 
 evalStats <- function(folds, m, CV, response_col) {
   traintest.df <- list()
   
-  for(i in folds){
+  # Helper: sensitivity, specificity, TSS from threshold
+  class_metrics <- function(obs, pred, threshold) {
+    pred_bin <- as.numeric(pred >= threshold)
+    
+    cm <- table(
+      factor(obs, levels = c(0, 1)),
+      factor(pred_bin, levels = c(0, 1))
+    )
+    
+    sensitivity <- ifelse(sum(cm["1", ]) > 0, cm["1", "1"] / sum(cm["1", ]), NA)
+    specificity <- ifelse(sum(cm["0", ]) > 0, cm["0", "0"] / sum(cm["0", ]), NA)
+    tss <- sensitivity + specificity - 1
+    
+    list(
+      sensitivity = sensitivity,
+      specificity = specificity,
+      tss = tss
+    )
+  }
+  
+  # Helper: log loss
+  log_loss_fun <- function(obs, pred, eps = 1e-15) {
+    pred <- pmin(pmax(pred, eps), 1 - eps)
+    -mean(obs * log(pred) + (1 - obs) * log(1 - pred), na.rm = TRUE)
+  }
+  
+  for (i in folds) {
     # Train/test indices
     train_idx <- CV[[i]][["train"]]
     test_idx  <- CV[[i]][["test"]]
@@ -419,20 +726,34 @@ evalStats <- function(folds, m, CV, response_col) {
     pred_train <- plogis(predict(m$models[[i]])$est[train_idx])
     pred_test  <- plogis(predict(m$models[[i]])$est[test_idx])
     
-    # Calculate TSS threshold from training data only
+    # Calculate threshold from training data only
     threshold <- get_optimal_threshold(obs_train, pred_train)
     
+    # Train classification metrics
+    train_cls <- class_metrics(obs_train, pred_train, threshold)
+    
     # Train metrics
-    train_auc  <- ModelMetrics::auc(obs_train, pred_train)
-    train_tjur <- tjur(obs_train, pred_train)
-    train_rmse <- sqrt(mean((obs_train - pred_train)^2))
-    train_tss  <- tss_metric(obs_train, pred_train, threshold)
+    train_auc         <- ModelMetrics::auc(obs_train, pred_train)
+    train_tjur        <- tjur(obs_train, pred_train)
+    train_rmse        <- sqrt(mean((obs_train - pred_train)^2, na.rm = TRUE))
+    train_brier       <- mean((obs_train - pred_train)^2, na.rm = TRUE)
+    train_logloss     <- log_loss_fun(obs_train, pred_train)
+    train_sensitivity <- train_cls$sensitivity
+    train_specificity <- train_cls$specificity
+    train_tss         <- train_cls$tss
+    
+    # Test classification metrics
+    test_cls <- class_metrics(obs_test, pred_test, threshold)
     
     # Test metrics
-    test_auc  <- ModelMetrics::auc(obs_test, pred_test)
-    test_tjur <- tjur(obs_test, pred_test)
-    test_rmse <- sqrt(mean((obs_test - pred_test)^2))
-    test_tss  <- tss_metric(obs_test, pred_test, threshold)
+    test_auc         <- ModelMetrics::auc(obs_test, pred_test)
+    test_tjur        <- tjur(obs_test, pred_test)
+    test_rmse        <- sqrt(mean((obs_test - pred_test)^2, na.rm = TRUE))
+    test_brier       <- mean((obs_test - pred_test)^2, na.rm = TRUE)
+    test_logloss     <- log_loss_fun(obs_test, pred_test)
+    test_sensitivity <- test_cls$sensitivity
+    test_specificity <- test_cls$specificity
+    test_tss         <- test_cls$tss
     
     # Sum log-likelihood (from full model)
     sum_loglikelihood <- m$sum_loglik
@@ -441,36 +762,54 @@ evalStats <- function(folds, m, CV, response_col) {
     traintest.df[[i]] <- data.frame(
       fold = i,
       sum_loglikelihood = sum_loglikelihood,
-      train_auc  = train_auc,
+      train_auc = train_auc,
       train_tjur = train_tjur,
       train_rmse = train_rmse,
-      train_tss  = train_tss,
-      test_auc   = test_auc,
-      test_tjur  = test_tjur,
-      test_rmse  = test_rmse,
-      test_tss   = test_tss,
-      threshold  = threshold
+      train_brier = train_brier,
+      train_logloss = train_logloss,
+      train_sensitivity = train_sensitivity,
+      train_specificity = train_specificity,
+      train_tss = train_tss,
+      test_auc = test_auc,
+      test_tjur = test_tjur,
+      test_rmse = test_rmse,
+      test_brier = test_brier,
+      test_logloss = test_logloss,
+      test_sensitivity = test_sensitivity,
+      test_specificity = test_specificity,
+      test_tss = test_tss,
+      threshold = threshold
     )
   }
   
   # Combine folds and calculate mean metrics
   traintest.df <- do.call(rbind, traintest.df)
+  
   mean_metrics <- traintest.df %>%
     dplyr::summarise(
       mean_sum_loglikelihood = mean(sum_loglikelihood, na.rm = TRUE),
-      mean_train_auc  = mean(train_auc, na.rm = TRUE),
+      mean_train_auc = mean(train_auc, na.rm = TRUE),
       mean_train_tjur = mean(train_tjur, na.rm = TRUE),
       mean_train_rmse = mean(train_rmse, na.rm = TRUE),
-      mean_train_tss  = mean(train_tss, na.rm = TRUE),
-      mean_test_auc   = mean(test_auc, na.rm = TRUE),
-      mean_test_tjur  = mean(test_tjur, na.rm = TRUE),
-      mean_test_rmse  = mean(test_rmse, na.rm = TRUE),
-      mean_test_tss   = mean(test_tss, na.rm = TRUE),
-      mean_threshold  = mean(threshold, na.rm = TRUE)
+      mean_train_brier = mean(train_brier, na.rm = TRUE),
+      mean_train_logloss = mean(train_logloss, na.rm = TRUE),
+      mean_train_sensitivity = mean(train_sensitivity, na.rm = TRUE),
+      mean_train_specificity = mean(train_specificity, na.rm = TRUE),
+      mean_train_tss = mean(train_tss, na.rm = TRUE),
+      mean_test_auc = mean(test_auc, na.rm = TRUE),
+      mean_test_tjur = mean(test_tjur, na.rm = TRUE),
+      mean_test_rmse = mean(test_rmse, na.rm = TRUE),
+      mean_test_brier = mean(test_brier, na.rm = TRUE),
+      mean_test_logloss = mean(test_logloss, na.rm = TRUE),
+      mean_test_sensitivity = mean(test_sensitivity, na.rm = TRUE),
+      mean_test_specificity = mean(test_specificity, na.rm = TRUE),
+      mean_test_tss = mean(test_tss, na.rm = TRUE),
+      mean_threshold = mean(threshold, na.rm = TRUE)
     )
   
   return(list(per_fold = traintest.df, summary = mean_metrics))
 }
+
 
 # Calculate threshold
 calcThresh <- function( x ){
@@ -486,6 +825,55 @@ calcThresh <- function( x ){
 }
 
 # evalulate forecast 
+find_best_tss_threshold <- function(obs, pred) {
+  
+  thresholds <- sort(unique(pred))
+  
+  if (length(thresholds) == 0) {
+    return(list(
+      threshold = NA_real_,
+      TSS = NA_real_,
+      sensitivity = NA_real_,
+      specificity = NA_real_
+    ))
+  }
+  
+  best_tss <- -Inf
+  best_threshold <- NA_real_
+  best_sens <- NA_real_
+  best_spec <- NA_real_
+  
+  for (th in thresholds) {
+    
+    pred_bin <- as.integer(pred >= th)
+    
+    TP <- sum(obs == 1 & pred_bin == 1)
+    FN <- sum(obs == 1 & pred_bin == 0)
+    TN <- sum(obs == 0 & pred_bin == 0)
+    FP <- sum(obs == 0 & pred_bin == 1)
+    
+    sens <- if ((TP + FN) > 0) TP / (TP + FN) else NA
+    spec <- if ((TN + FP) > 0) TN / (TN + FP) else NA
+    
+    tss <- sens + spec - 1
+    
+    if (!is.na(tss) && tss > best_tss) {
+      best_tss <- tss
+      best_threshold <- th
+      best_sens <- sens
+      best_spec <- spec
+    }
+  }
+  
+  list(
+    threshold = best_threshold,
+    TSS = best_tss,
+    sensitivity = best_sens,
+    specificity = best_spec
+  )
+}
+
+
 evaluate_forecast <- function(obs_train,
                               pred_train,
                               obs_test,
@@ -493,14 +881,17 @@ evaluate_forecast <- function(obs_train,
                               threshold = NULL) {
   
   # Coerce to numeric
-  obs_train <- as.numeric(obs_train)
-  obs_test  <- as.numeric(obs_test)
+  obs_train  <- as.numeric(obs_train)
+  obs_test   <- as.numeric(obs_test)
   pred_train <- as.numeric(pred_train)
   pred_test  <- as.numeric(pred_test)
   
-  # Use provided threshold or fallback
-  if(is.null(threshold)) {
-    threshold <- max(0.01, mean(obs_train))  # fallback for rare species
+  # Determine threshold from training data only
+  if (is.null(threshold)) {
+    best <- find_best_tss_threshold(obs_train, pred_train)
+    threshold <- best$threshold
+  } else {
+    best <- NULL
   }
   
   # Binary predictions
@@ -508,64 +899,187 @@ evaluate_forecast <- function(obs_train,
   pred_test_bin  <- as.numeric(pred_test  >= threshold)
   
   # Confusion matrices
-  cm_train <- table(factor(obs_train, levels = c(0,1)),
-                    factor(pred_train_bin, levels = c(0,1)))
-  cm_test  <- table(factor(obs_test, levels = c(0,1)),
-                    factor(pred_test_bin, levels = c(0,1)))
+  cm_train <- table(
+    factor(obs_train, levels = c(0, 1)),
+    factor(pred_train_bin, levels = c(0, 1))
+  )
+  cm_test <- table(
+    factor(obs_test, levels = c(0, 1)),
+    factor(pred_test_bin, levels = c(0, 1))
+  )
+  
+  # Sensitivity and specificity
+  sens_train <- ifelse(sum(cm_train["1", ]) > 0, cm_train["1", "1"] / sum(cm_train["1", ]), NA)
+  spec_train <- ifelse(sum(cm_train["0", ]) > 0, cm_train["0", "0"] / sum(cm_train["0", ]), NA)
+  sens_test  <- ifelse(sum(cm_test["1", ]) > 0, cm_test["1", "1"] / sum(cm_test["1", ]), NA)
+  spec_test  <- ifelse(sum(cm_test["0", ]) > 0, cm_test["0", "0"] / sum(cm_test["0", ]), NA)
   
   # TSS
-  sens_train <- ifelse(sum(cm_train["1",]) > 0, cm_train["1","1"]/sum(cm_train["1",]), NA)
-  spec_train <- ifelse(sum(cm_train["0",]) > 0, cm_train["0","0"]/sum(cm_train["0",]), NA)
-  TSS_train  <- sens_train + spec_train - 1
+  TSS_train <- sens_train + spec_train - 1
+  TSS_test  <- sens_test + spec_test - 1
   
-  sens_test  <- ifelse(sum(cm_test["1",]) > 0, cm_test["1","1"]/sum(cm_test["1",]), NA)
-  spec_test  <- ifelse(sum(cm_test["0",]) > 0, cm_test["0","0"]/sum(cm_test["0",]), NA)
-  TSS_test   <- sens_test + spec_test - 1
+  # Tjur R2
+  Tjur_train <- mean(pred_train[obs_train == 1], na.rm = TRUE) -
+    mean(pred_train[obs_train == 0], na.rm = TRUE)
+  Tjur_test <- mean(pred_test[obs_test == 1], na.rm = TRUE) -
+    mean(pred_test[obs_test == 0], na.rm = TRUE)
   
-  # Other metrics
-  Tjur_train <- mean(pred_train[obs_train==1]) - mean(pred_train[obs_train==0])
-  Tjur_test  <- mean(pred_test[obs_test==1]) - mean(pred_test[obs_test==0])
-  RMSE_train <- sqrt(mean((obs_train - pred_train)^2))
-  RMSE_test  <- sqrt(mean((obs_test - pred_test)^2))
-  AUC_train  <- ModelMetrics::auc(obs_train, pred_train)
-  AUC_test   <- ModelMetrics::auc(obs_test, pred_test)
+  # RMSE
+  RMSE_train <- sqrt(mean((obs_train - pred_train)^2, na.rm = TRUE))
+  RMSE_test  <- sqrt(mean((obs_test - pred_test)^2, na.rm = TRUE))
+  
+  # Brier score
+  Brier_train <- mean((obs_train - pred_train)^2, na.rm = TRUE)
+  Brier_test  <- mean((obs_test - pred_test)^2, na.rm = TRUE)
+  
+  # Log loss
+  eps <- 1e-15
+  pred_train_clip <- pmin(pmax(pred_train, eps), 1 - eps)
+  pred_test_clip  <- pmin(pmax(pred_test, eps), 1 - eps)
+  
+  LogLoss_train <- -mean(
+    obs_train * log(pred_train_clip) +
+      (1 - obs_train) * log(1 - pred_train_clip),
+    na.rm = TRUE
+  )
+  LogLoss_test <- -mean(
+    obs_test * log(pred_test_clip) +
+      (1 - obs_test) * log(1 - pred_test_clip),
+    na.rm = TRUE
+  )
+  
+  # AUC
+  AUC_train <- ModelMetrics::auc(obs_train, pred_train)
+  AUC_test  <- ModelMetrics::auc(obs_test, pred_test)
   
   # Return
   data.frame(
-    dataset = c("training","forecast"),
+    dataset = c("training", "forecast"),
     AUC = c(AUC_train, AUC_test),
     TjurR2 = c(Tjur_train, Tjur_test),
     RMSE = c(RMSE_train, RMSE_test),
+    Brier = c(Brier_train, Brier_test),
+    LogLoss = c(LogLoss_train, LogLoss_test),
+    sensitivity = c(sens_train, sens_test),
+    specificity = c(spec_train, spec_test),
     TSS = c(TSS_train, TSS_test),
-    threshold_used = threshold
+    training_threshold = c(threshold, threshold),
+    optimal_train_TSS = c(best$TSS, best$TSS)
   )
 }
 
-evalfmod <- function( x, thresh ){
+
+evalfmod <- function(x, thresh, sp = NA) {
+  
   eval.df <- data.frame()
-  obspred <- data.frame( PlotID=1:nrow(x),
-                         Observed=x[,'presence'],
-                         Predicted=x[,'fitted_vals'] )
-  # Get confusion matrix based on TSS
-  cmx_tss<- PresenceAbsence::cmx(DATA = obspred, which.model = 1, thresh = thresh$Predicted[thresh$Method == "MaxSens+Spec"])
+  
+  obspred <- data.frame(
+    PlotID = 1:nrow(x),
+    Observed = x[, "presence"],
+    Predicted = x[, "fitted_vals"]
+  )
+  
+  # Threshold for max sensitivity + specificity
+  tss_thresh <- thresh$Predicted[thresh$Method == "MaxSens+Spec"]
+  
+  # Get confusion matrix based on TSS threshold
+  cmx_tss <- PresenceAbsence::cmx(
+    DATA = obspred,
+    which.model = 1,
+    thresh = tss_thresh
+  )
+  
   true_neg <- cmx_tss[1, 1]
   false_neg <- cmx_tss[1, 2]
   false_pos <- cmx_tss[2, 1]
   true_pos <- cmx_tss[2, 2]
-  true_pos_rate <- true_pos / (true_pos + false_neg)
-  true_neg_rate <- true_neg / (true_neg + false_pos)
-  TSS <- true_pos_rate + true_neg_rate - 1
+  
+  sensitivity <- true_pos / (true_pos + false_neg)
+  specificity <- true_neg / (true_neg + false_pos)
+  TSS <- sensitivity + specificity - 1
+  
   # Get confusion matrix based on Kappa
-  cmx_kappa<- PresenceAbsence::cmx(DATA = obspred, which.model = 1, thresh = thresh$Predicted[thresh$Method == "MaxKappa"])
+  cmx_kappa <- PresenceAbsence::cmx(
+    DATA = obspred,
+    which.model = 1,
+    thresh = thresh$Predicted[thresh$Method == "MaxKappa"]
+  )
+  
   kappa <- PresenceAbsence::Kappa(CMX = cmx_kappa, st.dev = TRUE)
-  miller<- modEvA::MillerCalib(model = NULL, obs = x$presence, pred = x$fitted_vals)
-  eer<- modEvA::errorMeasures(model = NULL, obs = x$presence, pred = x$fitted_vals)
-  hlgof_quant<- modEvA::HLfit(model = NULL, obs = x$presence, pred = x$fitted_vals, bin.method = "quantiles", n.bins = 3000) # these values are fine
-  hlgof_prob<- modEvA::HLfit(model = NULL, obs = x$presence, pred = x$fitted_vals, bin.method = "prob.bins") # these values are not great but the highest probs don't have many values
-  hlgof_nbin<- modEvA::HLfit(model = NULL, obs = x$presence, pred = x$fitted_vals, bin.method = "n.bins", n.bins = 8) # these values are fine
-  eval.df <- data.frame(kappa=kappa, TSS=TSS, miller = miller, eer=eer, hlgof_quant$chi.sq, hlgof_quant$p.value, hlgof_quant$RMSE,  hlgof_prob$chi.sq, hlgof_prob$p.value, hlgof_prob$RMSE, hlgof_nbin$chi.sq, hlgof_nbin$p.value, hlgof_nbin$RMSE, species = sp)
+  
+  # Brier score
+  brier <- mean((x$fitted_vals - x$presence)^2, na.rm = TRUE)
+  
+  # Log loss
+  eps <- 1e-15
+  pred_clipped <- pmin(pmax(x$fitted_vals, eps), 1 - eps)
+  log_loss <- -mean(
+    x$presence * log(pred_clipped) +
+      (1 - x$presence) * log(1 - pred_clipped),
+    na.rm = TRUE
+  )
+  
+  miller <- modEvA::MillerCalib(
+    model = NULL,
+    obs = x$presence,
+    pred = x$fitted_vals
+  )
+  
+  eer <- modEvA::errorMeasures(
+    model = NULL,
+    obs = x$presence,
+    pred = x$fitted_vals
+  )
+  
+  hlgof_quant <- modEvA::HLfit(
+    model = NULL,
+    obs = x$presence,
+    pred = x$fitted_vals,
+    bin.method = "quantiles",
+    n.bins = 3000
+  )
+  
+  hlgof_prob <- modEvA::HLfit(
+    model = NULL,
+    obs = x$presence,
+    pred = x$fitted_vals,
+    bin.method = "prob.bins"
+  )
+  
+  hlgof_nbin <- modEvA::HLfit(
+    model = NULL,
+    obs = x$presence,
+    pred = x$fitted_vals,
+    bin.method = "n.bins",
+    n.bins = 8
+  )
+  
+  eval.df <- data.frame(
+    kappa = if (is.list(kappa)) kappa$Kappa else kappa,
+    TSS = TSS,
+    sensitivity = sensitivity,
+    specificity = specificity,
+    brier = brier,
+    log_loss = log_loss,
+    miller = miller,
+    eer = eer,
+    hlgof_quant_chisq = hlgof_quant$chi.sq,
+    hlgof_quant_pvalue = hlgof_quant$p.value,
+    hlgof_quant_RMSE = hlgof_quant$RMSE,
+    hlgof_prob_chisq = hlgof_prob$chi.sq,
+    hlgof_prob_pvalue = hlgof_prob$p.value,
+    hlgof_prob_RMSE = hlgof_prob$RMSE,
+    hlgof_nbin_chisq = hlgof_nbin$chi.sq,
+    hlgof_nbin_pvalue = hlgof_nbin$p.value,
+    hlgof_nbin_RMSE = hlgof_nbin$RMSE,
+    species = sp
+  )
+  
   return(eval.df)
-} 
+}
+
+
+
 
 
 # sdmtmb predictions
@@ -1471,4 +1985,68 @@ evaluate_independent_seagrass <- function(independent, model_names, cv_threshold
     )
   }
   return(results)
+}
+
+
+
+
+generate_pseudoabsences <- function(domain_rast,
+                                    exclusion_rast,
+                                    n_pa,
+                                    buffer_cells = 5, #100 m
+                                    seed = 123) {
+  set.seed(seed)
+  # make sure rasters align
+  if (!terra::compareGeom(domain_rast, exclusion_rast, stopOnError = FALSE)) {
+    stop("domain_rast and exclusion_rast do not have the same geometry.")
+  }
+  # expand exclusion area by neighborhood buffer
+  if (buffer_cells > 0) {
+    exclusion_buffer <- terra::focal(
+      terra::ifel(!is.na(exclusion_rast), 1, NA),
+      w = matrix(1, nrow = 2 * buffer_cells + 1, ncol = 2 * buffer_cells + 1),
+      fun = "max",
+      na.policy = "omit",
+      fillvalue = NA
+    )
+  } else {
+    exclusion_buffer <- terra::ifel(!is.na(exclusion_rast), 1, NA)
+  }
+  # candidate cells = valid domain cells not in exclusion buffer
+  candidate_rast <- terra::ifel(
+    !is.na(domain_rast) & is.na(exclusion_buffer),
+    1,
+    NA
+  )
+  candidate_cells <- which(!is.na(terra::values(candidate_rast)))
+  if (length(candidate_cells) < n_pa) {
+    stop(
+      paste0(
+        "Not enough candidate cells. Requested ", n_pa,
+        ", but only ", length(candidate_cells), " available."
+      )
+    )
+  }
+  sampled_cells <- sample(candidate_cells, size = n_pa, replace = FALSE)
+  sampled_xy <- terra::xyFromCell(candidate_rast, sampled_cells)
+  # raster of pseudo-absence cells
+  pa_rast <- domain_rast
+  terra::values(pa_rast) <- NA
+  pa_rast[sampled_cells] <- 1
+  # data frame
+  pa_df <- data.frame(
+    cell = sampled_cells,
+    x = sampled_xy[, 1],
+    y = sampled_xy[, 2],
+    obs = 0
+  )
+  # sf points
+  pa_sf <- sf::st_as_sf(pa_df, coords = c("x", "y"), crs = terra::crs(domain_rast))
+  list(
+    pa_rast = pa_rast,
+    pa_df = pa_df,
+    pa_sf = pa_sf,
+    candidate_rast = candidate_rast,
+    candidate_n = length(candidate_cells)
+  )
 }

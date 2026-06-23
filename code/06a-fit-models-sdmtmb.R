@@ -18,7 +18,7 @@
 source("code/modelling-functions.R")
 
 ####load packages####
-UsePackages(c("sdmTMB", "sdmTMBextra", "ModelMetrics", "tidyverse", "sf", "future", "terra", "future.apply"))
+UsePackages(c("sdmTMB", "sdmTMBextra", "ModelMetrics", "tidyverse", "sf", "future", "terra", "purrr", "future.apply", "rsample"))
 
 ####load model input ####
 load("code/output_data/seagrass_model_inputs.RData")
@@ -30,10 +30,19 @@ seagrass_data_long <- seagrass_data_long %>%
 #  categorical predictors in environmental layers
 facVars <- c("substrate", "Survey")
 
+#having trouble with MSE survey causing b_j standard error warning as it was only absences for sea grass so combined it with BHm because people doing data would be similar and there would be care in iding correctly
+#Also GSU and ABL was missing from a number of folds so combined with RSU as these are all set in index sites
+seagrass_data_long <- seagrass_data_long %>%
+  mutate(Survey = recode(Survey, MSE = "BHM")) %>%
+  mutate(Survey = recode(Survey, GSU = "RSU")) %>%
+  mutate(Survey = recode(Survey, ABL = "RSU")) %>%
+  mutate(Survey = factor(Survey))
+
+
 ####Eelgrass model####
 sp = "ZO"
 numFolds <- length(unique(seagrass_data$fold_eelgrass))
-data <- filter(seagrass_data_long, species == sp) %>% rename(fold = fold_eelgrass)
+data <- filter(seagrass_data_long, species == sp) %>% rename(fold = fold_eelgrass, inner_fold = innerfold_eelgrass)
 data <- data %>% mutate(Survey = as.factor(Survey)) # was still not recognizing i changed survye to factor so did it again
 print(paste(sp, " present in ", round((sum(data$presence)/nrow(data))*100,2), "% of observations", sep = ""))
 # eelgrass in 3.7% of 20 m aggregated observations
@@ -84,83 +93,275 @@ barrier_mesh <- add_barrier_mesh(mesh, barrier_sf = coastline, proj_scaling = 10
 #fit cv model of spatial blocking 
 plan(multisession)
 
-# model indicated by looking at ffs and at variable relative importance and also considering what is important for future change, and also what resulted in highest AUC, Tjur and sum loglikelihood
-# no spatial
-# AUC = 0.93, tjur = 0.26, loglike -9284
-m_e_1 <- sdmTMB_cv(formula = presence ~ s(depth_stnd, k = 3) + substrate + slope_stnd + rei_stnd +  
-                      s(airtempmin_stnd, k = 3) + rsdsmin_stnd + #chelsa variables
-                      saltcv_bccm_stnd + NH4_bccm_stnd + tempmin_bccm_stnd + #bccm variables
-                     (1|Survey),  #random effect
-                   mesh = barrier_mesh, family = binomial(link = "logit"), spatial = FALSE, data = data, fold_ids = "fold")
+
+depth_k_values <- list(
+  "linear" = NULL,
+  "2" = 2,
+  "3" = 3,
+  "4" = 4
+)
+
+airtemp_k_values <- list(
+  "linear" = NULL,
+  "2" = 2,
+  "3" = 3,
+  "4" = 4
+)
+
+
+res_bccm_nospatial <- nested_sdmTMB_cv(
+  data = data,
+  mesh = barrier_mesh,
+  spatial_setting = FALSE,
+  ocean_model = "bccm",
+  outer_fold_col = "fold",
+  inner_fold_col = "inner_fold"
+)
+
+save(res_bccm_nospatial, file = "code/output_data/model_results/eelgrass_eval_cv_bccm_nospatial.RData")
+tss_thresh_bccm_nospatial<- mean(res_bccm_nospatial[["fold_results"]]$tss_threshold)
+# 0.04564801, linear on air and k = 4 on depth
+# only way to do similar on spatial model is to refit the mesh for every inner fold. More justified to retain the smooth from the non spatial model
+#then to add spatial field so you are isolating effect of spatial field
+
+res_nep_nospatial <- nested_sdmTMB_cv(
+  data = data,
+  mesh = barrier_mesh,
+  spatial_setting = FALSE,
+  ocean_model = "nep",
+  outer_fold_col = "fold",
+  inner_fold_col = "inner_fold"
+)
+save(res_nep_nospatial, file = "code/output_data/model_results/eelgrass_eval_cv_nep_nospatial.RData")
+tss_thresh_nep_nospatial<- mean(res_nep_nospatial[["fold_results"]]$tss_threshold)
+
+
+
+m_e_1 <- sdmTMB_cv(formula = presence ~ s(depth_stnd, k = 4) + substrate + slope_stnd + rei_stnd +  
+                     airtempmin_stnd + rsdsmin_stnd + prmin_stnd +#chelsa variables
+                     saltcv_bccm_stnd + NH4_bccm_stnd + tempcv_bccm_stnd + #bccm variables
+                     Survey,  #fixed effect
+                   mesh = barrier_mesh, priors = sdmTMBpriors(b = normal(0, 1)), family = binomial(link = "logit"), spatial = FALSE, data = data, fold_ids = "fold")
 
 eval_cv_bccm_nospatial <- evalStats(folds = 1:numFolds,  m = m_e_1,  CV = cv_list_eelgrass$cv,  response_col = "presence")
 eval_cv_bccm_nospatial
 
-# best bccm model with spatial 
-# AUC 0.92, tjur 0.27, loglike -10135
-m_e_2 <- sdmTMB_cv(formula = presence ~ s(depth_stnd, k = 3) + substrate + slope_stnd + rei_stnd +
-                     ##chelsa variables, chelsa variables change in importance compared to non spatial model
-                     NH4_bccm_stnd + #bccm variables
-                     (1|Survey),  #random effect
-                    mesh = barrier_mesh, family = binomial(link = "logit"), spatial = TRUE, data = data, fold_ids = "fold") # this is the model that will be used 
-#m_e_2$models
+m_e_2 <- sdmTMB_cv(formula = presence ~ s(depth_stnd, k = 4) + substrate + slope_stnd + rei_stnd +  
+                     airtempmin_stnd + rsdsmin_stnd + prmin_stnd +#chelsa variables
+                     saltcv_bccm_stnd + NH4_bccm_stnd + tempcv_bccm_stnd + #bccm variables
+                     Survey,  #fixed effect
+                   mesh = barrier_mesh, priors = sdmTMBpriors(b = normal(0, 1)), family = binomial(link = "logit"), spatial = TRUE, data = data, fold_ids = "fold")
+
 eval_cv_bccm_spatial <- evalStats(folds = 1:numFolds,  m = m_e_2,  CV = cv_list_eelgrass$cv,  response_col = "presence")
 eval_cv_bccm_spatial
 
-
-# nep model no spatial
-#AUC = 0.930, tjur = 0.25, loglike -9280 
-m_e_3 <- sdmTMB_cv(formula = presence ~  s(depth_stnd, k = 3) + substrate + slope_stnd + rei_stnd + 
-                     s(airtempmin_stnd, k = 3) + rsdsmin_stnd + #chelsa variables
-                     saltcv_nep_stnd + tempcv_nep_stnd + #    ##nep variables
-                     (1|Survey),  #random effect
-                   mesh = barrier_mesh, family = binomial(link = "logit"), spatial = FALSE, data = data, fold_ids = "fold")
+m_e_3 <- sdmTMB_cv(formula = presence ~ s(depth_stnd, k = 4) + substrate + slope_stnd + rei_stnd +  
+                     airtempmin_stnd + rsdsmin_stnd + prmin_stnd +#chelsa variables
+                     saltcv_nep_stnd + NH4_nep_stnd + tempcv_nep_stnd + #nep variables
+                     Survey,  #fixed effect
+                   mesh = barrier_mesh, priors = sdmTMBpriors(b = normal(0, 1)), family = binomial(link = "logit"), spatial = FALSE, data = data, fold_ids = "fold")
 
 eval_cv_nep_nospatial <- evalStats(folds = 1:numFolds,  m = m_e_3,  CV = cv_list_eelgrass$cv,  response_col = "presence")
 eval_cv_nep_nospatial
 
-
-# find nep model with spatial 
-#AUC = 0.92, tjur = 0.27, loglike -10175 
-m_e_4 <- sdmTMB_cv(formula = presence ~  s(depth_stnd, k = 3) + substrate + slope_stnd + rei_stnd + 
-                     airtempmin_stnd + #chelsa variables not as important when spatial field
-                     saltcv_nep_stnd + tempcv_nep_stnd + ##nep variables
-                     (1|Survey),  #random effect
-                   mesh = barrier_mesh, family = binomial(link = "logit"), spatial = TRUE, data = data, fold_ids = "fold")
+m_e_4 <- sdmTMB_cv(formula = presence ~ s(depth_stnd, k = 4) + substrate + slope_stnd + rei_stnd +  
+                     airtempmin_stnd + rsdsmin_stnd + prmin_stnd +#chelsa variables
+                     saltcv_nep_stnd + NH4_nep_stnd + tempcv_nep_stnd + #nep variables
+                     Survey,  #fixed effect
+                   mesh = barrier_mesh, priors = sdmTMBpriors(b = normal(0, 1)), family = binomial(link = "logit"), spatial = TRUE, data = data, fold_ids = "fold")
 
 eval_cv_nep_spatial <- evalStats(folds = 1:numFolds,  m = m_e_4,  CV = cv_list_eelgrass$cv,  response_col = "presence")
 eval_cv_nep_spatial
 
-# cv stats from all best models and save
 eval_cv_list <- list(eval_cv_bccm_nospatial, eval_cv_bccm_spatial, eval_cv_nep_nospatial, eval_cv_nep_spatial)
 save(eval_cv_list, file = "code/output_data/model_results/eelgrass_eval_cv.RData")
-# NEP spatial and BCCM spatial winners and metrics very comparable to each other. For sum log likelihood BCCM spatial is better, but again pretty marginal
-# the spatial random fields is able to account for the atmospheric variables and they are no longer important in the model. 
+
+
+#### test forecasting
+# left a few years gap 2010-2012 #trained model with 1993-2009
+# model does better if you don't include oceanographic or atmospheric data. which makes sense, becasue there are no differences between past and present as geomorphic are  static
+#cannot account for surveys or years in these models as random factor because only ABL, Cuke, GDK, GSU, and RSU surveys were conducted prior to 2013 and you cant make predictions of years not fit in model
+
+data_pre2013 <- data %>% filter(Year < 2010)
+unique(data_pre2013$Survey)
+# Create 10 random folds on pre-2010 data (for model fit)
+set.seed(123)
+folds <- rsample::vfold_cv(data_pre2013, v = 10, strata = "presence")
+
+test_set <- data %>% filter(Year > 2012)
+obs_test <- test_set$presence
+
+results_list <- list()
+
+for (i in seq_along(folds$splits)) {
+  split <- folds$splits[[i]]
+  train_data <- analysis(split)
+  
+  # Remake mesh/barrier for this fold
+  mesh <- make_mesh(data = train_data, xy_cols = c("X", "Y"), cutoff = 55)
+  barrier_mesh <- add_barrier_mesh(mesh, barrier_sf = coastline, proj_scaling = 1000, plot = FALSE)
+  
+  # Fit models (non-spatial and spatial)
+  m_bccm <- sdmTMB(
+    formula = presence ~ s(depth_stnd, k = 4) + substrate + slope_stnd + rei_stnd +  
+      airtempmin_stnd + rsdsmin_stnd + prmin_stnd + 
+      saltcv_bccm_stnd + NH4_bccm_stnd + tempcv_bccm_stnd,
+    mesh = barrier_mesh,
+    priors = sdmTMBpriors(b = normal(0, 1)),
+    family = binomial(link = "logit"),
+    spatial = FALSE,
+    data = train_data
+  )
+  m_bccm_spatial <- sdmTMB(
+    formula = presence ~ s(depth_stnd, k = 4) + substrate + slope_stnd + rei_stnd +  
+      airtempmin_stnd + rsdsmin_stnd + prmin_stnd + 
+      saltcv_bccm_stnd + NH4_bccm_stnd + tempcv_bccm_stnd,
+    mesh = barrier_mesh,
+    priors = sdmTMBpriors(b = normal(0, 1)),
+    family = binomial(link = "logit"),
+    spatial = TRUE,
+    data = train_data
+  )
+  m_nep <- sdmTMB(
+    formula = presence ~ s(depth_stnd, k = 4) + substrate + slope_stnd + rei_stnd +  
+      airtempmin_stnd + rsdsmin_stnd + prmin_stnd + 
+      saltcv_nep_stnd + NH4_nep_stnd + tempcv_nep_stnd,
+    mesh = barrier_mesh,
+    priors = sdmTMBpriors(b = normal(0, 1)),
+    family = binomial(link = "logit"),
+    spatial = FALSE,
+    data = train_data
+  )
+  m_nep_spatial <- sdmTMB(
+    formula = presence ~ s(depth_stnd, k = 4) + substrate + slope_stnd + rei_stnd +  
+      airtempmin_stnd + rsdsmin_stnd + prmin_stnd + 
+      saltcv_nep_stnd + NH4_nep_stnd + tempcv_nep_stnd,
+    mesh = barrier_mesh,
+    priors = sdmTMBpriors(b = normal(0, 1)),
+    family = binomial(link = "logit"),
+    spatial = TRUE,
+    data = train_data
+  )
+  # Predict for this fold's training data (in-sample)
+  pred_train_bccm <- plogis(predict(m_bccm, newdata = train_data)$est)
+  pred_train_spatial_bccm <- plogis(predict(m_bccm_spatial, newdata = train_data)$est)
+  pred_train_nep <- plogis(predict(m_nep, newdata = train_data)$est)
+  pred_train_spatial_nep <- plogis(predict(m_nep_spatial, newdata = train_data)$est)
+  
+  # Predict for fixed test set (after 2012)
+  pred_test_bccm <- plogis(predict(m_bccm, newdata = test_set)$est)
+  pred_test_spatial_bccm <- plogis(predict(m_bccm_spatial, newdata = test_set)$est)
+  pred_test_nep <- plogis(predict(m_nep, newdata = test_set)$est)
+  pred_test_spatial_nep <- plogis(predict(m_nep_spatial, newdata = test_set)$est)
+  
+  # Collect results
+  obs_train <- train_data$presence
+  eval_nonspatial_bccm <- evaluate_forecast(
+    obs_train = obs_train,
+    pred_train = pred_train_bccm,
+    obs_test = obs_test,
+    pred_test = pred_test_bccm
+  )
+  eval_nonspatial_bccm$model <- "BCCM_no_spatial"
+  eval_nonspatial_bccm$fold <- i
+  
+  eval_spatial_bccm <- evaluate_forecast(
+    obs_train = obs_train,
+    pred_train = pred_train_spatial_bccm,
+    obs_test = obs_test,
+    pred_test = pred_test_spatial_bccm
+  )
+  eval_spatial_bccm$model <- "BCCM_spatial"
+  eval_spatial_bccm$fold <- i
+  
+  eval_nonspatial_nep <- evaluate_forecast(
+    obs_train = obs_train,
+    pred_train = pred_train_nep,
+    obs_test = obs_test,
+    pred_test = pred_test_nep
+  )
+  eval_nonspatial_nep$model <- "NEP_no_spatial"
+  eval_nonspatial_nep$fold <- i
+  
+  eval_spatial_nep <- evaluate_forecast(
+    obs_train = obs_train,
+    pred_train = pred_train_spatial_nep,
+    obs_test = obs_test,
+    pred_test = pred_test_spatial_nep
+  )
+  eval_spatial_nep$model <- "NEP_spatial"
+  eval_spatial_nep$fold <- i
+  
+  results_list[[length(results_list) + 1]] <- eval_nonspatial_bccm
+  results_list[[length(results_list) + 1]] <- eval_spatial_bccm
+  results_list[[length(results_list) + 1]] <- eval_nonspatial_nep
+  results_list[[length(results_list) + 1]] <- eval_spatial_nep
+}
+
+forecast_predict_eelgrass <- do.call(rbind, results_list)
+
+# keep only forecast rows
+forecast_only <- forecast_predict_eelgrass %>%
+  filter(dataset == "forecast")
+
+forecast_by_model <- forecast_only %>%
+  group_by(model) %>%
+  summarise(
+    AUC = mean(AUC, na.rm = TRUE),
+    TjurR2 = mean(TjurR2, na.rm = TRUE),
+    RMSE = mean(RMSE, na.rm = TRUE),
+    Brier = mean(Brier, na.rm = TRUE),
+    LogLoss = mean(LogLoss, na.rm = TRUE),
+    sensitivity = mean(sensitivity, na.rm = TRUE),
+    specificity = mean(specificity, na.rm = TRUE),
+    TSS = mean(TSS, na.rm = TRUE),
+    Threshold = mean(training_threshold, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+forecast_by_model
+
+
+save(forecast_predict_eelgrass, forecast_by_model, file = "code/output_data/model_results/forecast_eelgrass_models.RData")
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 ####SDMtmb full model####
 # fit full model bccm 
-fmodel_e_bccm_nospatial <- sdmTMB(formula = presence ~ s(depth_stnd, k = 3) + substrate + slope_stnd + rei_stnd +  
-                                    s(airtempmin_stnd, k = 3) + rsdsmin_stnd + #chelsa variables
-                                    saltcv_bccm_stnd + NH4_bccm_stnd + tempmin_bccm_stnd + #bccm variables
-                                    (1|Survey),  #random effect
+fmodel_e_bccm_nospatial <- sdmTMB(formula = presence ~ s(depth_stnd, k = 4) + substrate + slope_stnd + rei_stnd +  
+                                    airtempmin_stnd + rsdsmin_stnd + prmin_stnd + #chelsa variables
+                                    saltcv_bccm_stnd + NH4_bccm_stnd + tempcv_bccm_stnd + #bccm variables
+                                    Survey,  #fixed effect
                                 mesh = barrier_mesh, family = binomial(link = "logit"), spatial = FALSE, data = data)
 
-fmodel_e_bccm_spatial <- sdmTMB(formula = presence ~ s(depth_stnd, k = 3) + substrate + slope_stnd + rei_stnd +
-                                  NH4_bccm_stnd + #bccm variables
-                                  (1|Survey),  #random effect
+fmodel_e_bccm_spatial <- sdmTMB(formula = presence ~ s(depth_stnd, k = 4) + substrate + slope_stnd + rei_stnd +  
+                                  airtempmin_stnd + rsdsmin_stnd + prmin_stnd + #chelsa variables
+                                  saltcv_bccm_stnd + NH4_bccm_stnd + tempcv_bccm_stnd + #bccm variables
+                                  Survey,  #fixed effect
                                 mesh = barrier_mesh, family = binomial(link = "logit"), spatial = TRUE, data = data)
 
-fmodel_e_nep_nospatial <- sdmTMB(formula = presence ~  s(depth_stnd, k = 3) + substrate + slope_stnd + rei_stnd + 
-                                   s(airtempmin_stnd, k = 3) + rsdsmin_stnd + #chelsa variables
-                                   saltcv_nep_stnd + tempcv_nep_stnd + #    ##nep variables
-                                   (1|Survey),  #random effect
+fmodel_e_nep_nospatial <- sdmTMB(formula = presence ~  s(depth_stnd, k = 4) + substrate + slope_stnd + rei_stnd +  
+                                   airtempmin_stnd + rsdsmin_stnd + prmin_stnd + #chelsa variables
+                                   saltcv_nep_stnd + NH4_nep_stnd + tempcv_nep_stnd + #nep variables
+                                   Survey,  #fixed effect
                                  mesh = barrier_mesh, family = binomial(link = "logit"), spatial = FALSE, data = data)
 
-fmodel_e_nep_spatial <- sdmTMB(formula = presence ~ s(depth_stnd, k = 3) + substrate + slope_stnd + rei_stnd + 
-                                 airtempmin_stnd + #chelsa variables not as important when spatial field
-                                 saltcv_nep_stnd + tempcv_nep_stnd + ##nep variables
-                                 (1|Survey),  #random effect
+fmodel_e_nep_spatial <- sdmTMB(formula = presence ~ s(depth_stnd, k = 4) + substrate + slope_stnd + rei_stnd +  
+                                 airtempmin_stnd + rsdsmin_stnd + prmin_stnd + #chelsa variables
+                                 saltcv_nep_stnd + NH4_nep_stnd + tempcv_nep_stnd + #nep variables
+                                 Survey,  #fixed effect
                                mesh = barrier_mesh, family = binomial(link = "logit"), spatial = TRUE, data = data)
 
 save(data, fmodel_e_bccm_nospatial, fmodel_e_bccm_spatial, fmodel_e_nep_nospatial, fmodel_e_nep_spatial, file = "code/output_data/model_results/final_eelgrass_model.RData")
@@ -196,7 +397,6 @@ save(data, fmodel_e_bccm_nospatial, fmodel_e_bccm_spatial, fmodel_e_nep_nospatia
 # ggeffects::ggpredict(model = fmodel_e_bccm_nospatial,  terms = "Survey") %>% plot() # # Remote sensed adds survey effect 
 # ggeffects::ggpredict(model = fmodel_e_nep_nospatial,  terms = "Survey") %>% plot() # # Remote sensed adds survey effect 
 
-
 # Model check
 tidy(fmodel_e_bccm_nospatial, conf.int = TRUE)
 sanity(fmodel_e_bccm_nospatial)
@@ -206,6 +406,8 @@ tidy(fmodel_e_bccm_spatial, "ran_pars", conf.int = TRUE)
 tidy(fmodel_e_nep_nospatial, conf.int = TRUE)
 sanity(fmodel_e_nep_nospatial)
 tidy(fmodel_e_nep_spatial, conf.int = TRUE)
+sanity(fmodel_e_nep_spatial)
+
 
 models <- list(
   bccm_nospatial = fmodel_e_bccm_nospatial,
@@ -219,6 +421,7 @@ eval_results <- list()
 
 # Loop through each model
 for (m_name in names(models)) {
+  
   model <- models[[m_name]]
   
   # Calculate fitted values
@@ -232,18 +435,20 @@ for (m_name in names(models)) {
   thresh <- calcThresh(x = data_tmp)
   
   # Add threshold-based predictions directly to original data
-  data[[paste0("pred_TSS_thresh_", m_name)]]   <- ifelse(
+  data[[paste0("pred_TSS_thresh_", m_name)]] <- ifelse(
     data_tmp$fitted_vals < thresh$Predicted[thresh$Method == "MaxSens+Spec"], 0, 1
   )
+  
   data[[paste0("pred_kappa_thresh_", m_name)]] <- ifelse(
     data_tmp$fitted_vals < thresh$Predicted[thresh$Method == "MaxKappa"], 0, 1
   )
-  data[[paste0("pred_PCC_thresh_", m_name)]]   <- ifelse(
+  
+  data[[paste0("pred_PCC_thresh_", m_name)]] <- ifelse(
     data_tmp$fitted_vals < thresh$Predicted[thresh$Method == "MaxPCC"], 0, 1
   )
   
   # Evaluate model
-  eval_metrics <- evalfmod(x = data_tmp, thresh = thresh)
+  eval_metrics <- evalfmod(x = data_tmp, thresh = thresh, sp = m_name)
   
   # Save both evaluation metrics AND thresholds in the list
   eval_results[[m_name]] <- list(
@@ -258,7 +463,8 @@ save(eval_results, file = "code/output_data/model_results/eelgrass_eval_final_mo
 
 ###Notes on evaluation statistics
 # Values of TSS greater than 0.6 are considered good, between 0.2 and 0.6 moderate, and less than 0.2 poor (Jones et al. 2010; Landis and Koch 1977).
-
+# brier score: 0 is perfect, 1 is bad
+#log loss: 0 is perfect, higher is bad
 # miller calibration statistic. If the model is well calibrated, the line should lie along (or at least be nearly parallel to) the reference diagonal, i.e. the slope should ideally equal 1 (i.e., 45 degrees) and the intercept 0
 # Miller's calibration statistics are mainly useful when projecting a model outside those training data.
 # A slope greater than 1 indicates that predicted values above 0.5 are underestimating, and predicted values below 0.5 are overestimating, the probability of presence. A slope smaller than 1 (while greater than 0) implies that predicted values below 0.5 are underestimating, and values above 0.5 are overestimating, the probability of presence (Pearce & Ferrier 2000). 
@@ -273,75 +479,40 @@ save(eval_results, file = "code/output_data/model_results/eelgrass_eval_final_mo
 # The smaller the error measure (eer) returned values, the better the model predictions fit the observations.
 
 #get relative importance
-prednames_bccm_nospatial <- c("depth_stnd", "substrate", "rei_stnd", "slope_stnd", "Survey", "rsdsmin_stnd", "airtempmin_stnd", "saltcv_bccm_stnd", "NH4_bccm_stnd", "tempmin_bccm_stnd")
-prednames_bccm_spatial <- c("depth_stnd", "substrate", "rei_stnd", "slope_stnd", "Survey", "NH4_bccm_stnd")
-
-prednames_nep_nospatial <- c("depth_stnd", "substrate", "rei_stnd", "slope_stnd", "Survey", "rsdsmin_stnd", "airtempmin_stnd", "saltcv_nep_stnd", "tempcv_nep_stnd")
-prednames_nep_spatial <- c("depth_stnd", "substrate", "rei_stnd", "slope_stnd", "Survey", "airtempmin_stnd", "saltcv_nep_stnd", "tempcv_nep_stnd")
+prednames_bccm <- c("depth_stnd", "substrate", "rei_stnd", "slope_stnd", "Survey", "rsdsmin_stnd", "airtempmin_stnd", "prmin_stnd", "saltcv_bccm_stnd", "NH4_bccm_stnd", "tempcv_bccm_stnd")
+prednames_nep <- c("depth_stnd", "substrate", "rei_stnd", "slope_stnd", "Survey", "rsdsmin_stnd", "airtempmin_stnd", "prmin_stnd", "saltcv_nep_stnd", "NH4_nep_stnd", "tempcv_nep_stnd")
 
 
-  
-groups <- list(
-  Geomorphic = c("depth_stnd", "slope_stnd", "rei_stnd", "substrate"),
-  Atmospheric = c("airtempmin_stnd", "rsdsmin_stnd"),
-  Oceanographic = c("saltcv_bccm_stnd", "NH4_bccm_stnd", "tempmin_bccm_stnd"),
-  Random = c("Survey")
-)
+
 
 plan(sequential) # the spatial models don't run well on multisession
 
 relimp_e_bccm_nospatial <- varImp_sdmTMB(
   model = fmodel_e_bccm_nospatial,
   dat = data,
-  preds = prednames_bccm_nospatial,
-  groups = groups,
+  preds = prednames_bccm,
   permute = 10
 )
 
-relimp_e_bccm_nospatial$individual
-relimp_e_bccm_nospatial$grouped
 
 save(relimp_e_bccm_nospatial, file = "code/output_data/model_results/relimp_e_bccm_nospatial.RData")
 
-groups <- list(
-  Geomorphic = c("depth_stnd", "slope_stnd", "rei_stnd", "substrate"),
-  #Atmospheric = c("airtempmin_stnd", "rsdsmin_stnd"),
-  Oceanographic = c("NH4_bccm_stnd"),
-  Random = c("Survey")
-)
-
 relimp_e_bccm_spatial <- varImp_sdmTMB( model=fmodel_e_bccm_spatial,
                                    dat=data,
-                                   preds=prednames_bccm_spatial,
-                                   groups = groups,
+                                   preds=prednames_bccm,
                                    permute=10 ) # Number of permutations
 save(relimp_e_bccm_spatial, file = "code/output_data/model_results/relimp_e_bccm_spatial.RData")
 
-groups <- list(
-  Geomorphic = c("depth_stnd", "slope_stnd", "rei_stnd", "substrate"),
-  Atmospheric = c("airtempmin_stnd", "rsdsmin_stnd"),
-  Oceanographic = c("saltcv_nep_stnd", "tempcv_nep_stnd"),
-  Random = c("Survey")
-)
-
 relimp_e_nep_nospatial <- varImp_sdmTMB( model=fmodel_e_nep_nospatial,
                          dat=data,
-                         preds=prednames_nep_nospatial,
-                         groups = groups,
+                         preds=prednames_nep,
                          permute=10 ) # Number of permutations
 save(relimp_e_nep_nospatial, file = "code/output_data/model_results/relimp_e_nep_nospatial.RData")
 
-groups <- list(
-  Geomorphic = c("depth_stnd", "slope_stnd", "rei_stnd", "substrate"),
-  Atmospheric = c("airtempmin_stnd"), #, "rsdsmin_stnd"),
-  Oceanographic = c("saltcv_nep_stnd", "tempcv_nep_stnd"),
-  Random = c("Survey")
-)
 
 relimp_e_nep_spatial <- varImp_sdmTMB( model=fmodel_e_nep_spatial,
                                   dat=data,
-                                  preds=prednames_nep_spatial,
-                                  groups = groups,
+                                  preds=prednames_nep,
                                   permute=10 ) # Number of permutations
 save(relimp_e_nep_spatial, file = "code/output_data/model_results/relimp_e_nep_spatial.RData")
 
@@ -424,250 +595,10 @@ save(samps, mcmc_res, ret, r_ret, file = "code/output_data/model_results/residua
 #   geom_jitter(width = 0.05, height = 0)
 
 
-#### test forecasting
-# left a few years gap 2010-2012 #trained model with 1993-2009
-# model does better if you don't include oceanographic or atmospheric data. which makes sense, becasue there are no differences between past and present as geomorphic are  static
-#cannot account for surveys or years in these models as random factor because only ABL, Cuke, GDK, GSU, and RSU surveys were conducted prior to 2013 and you cant make predictions of years not fit in model
-
-data_pre2013 <- data %>% filter(Year < 2010)
-unique(data_pre2013$Survey)
-mesh_pre2013 <- make_mesh(data = data_pre2013, xy_cols = c("X", "Y"), cutoff = 55) 
-plot(mesh_pre2013)
-barrier_mesh_pre2013 <- add_barrier_mesh(mesh_pre2013, barrier_sf = coastline, proj_scaling = 1000, plot = TRUE)
-#BCCM
-m_eelgrass_forecast_bccm <- sdmTMB(formula = presence ~ s(depth_stnd, k = 3) + substrate + slope_stnd + rei_stnd +
-                                     s(airtempmin_stnd, k = 3) + rsdscv_stnd + #chelsa variables
-                                     saltcv_bccm_stnd + NH4_bccm_stnd + tempmin_bccm_stnd, #bccm variables
-                                   mesh = barrier_mesh_pre2013, 
-                                   family = binomial(link = "logit"), 
-                                   spatial = FALSE, 
-                                   data = data_pre2013) 
-m_eelgrass_forecast_spatial_bccm <- sdmTMB(formula = presence ~ s(depth_stnd, k = 3) + substrate + slope_stnd + rei_stnd +
-                                             NH4_bccm_stnd, #bccm variables
-                                           mesh = barrier_mesh_pre2013, 
-                                           family = binomial(link = "logit"), 
-                                           spatial = TRUE, 
-                                           data = data_pre2013) 
-data.df <- data %>% select(presence, X, Y, depth_stnd, slope_stnd, rei_stnd, substrate, saltcv_bccm_stnd, NH4_bccm_stnd, airtempmin_stnd, rsdscv_stnd, tempmin_bccm_stnd, Survey, Year)
-
-forecast <- plogis(predict(m_eelgrass_forecast_bccm, newdata = data.df %>% filter(Year > 2012))$est)
-forecast_spatial <- plogis(predict(m_eelgrass_forecast_spatial_bccm, newdata = data.df %>% filter(Year > 2012))$est)
-
-pre_2013 <- plogis(predict(m_eelgrass_forecast_bccm, newdata = data.df %>% filter(Year < 2010))$est)
-pre_2013_spatial <- plogis(predict(m_eelgrass_forecast_spatial_bccm, newdata = data.df %>% filter(Year < 2010))$est)
-
-# Observations
-obs_train <- data.df$presence[data.df$Year < 2010]
-obs_forecast <- data.df$presence[data.df$Year > 2012]
-
-# ---- BCCM Non-Spatial ----
-forecast_predict_eelgrass_bccm <- evaluate_forecast(
-  obs_train = obs_train,
-  pred_train = pre_2013,
-  obs_test = obs_forecast,
-  pred_test = forecast,
-  threshold = 0.037 # from cv model fit
-)
-
-forecast_predict_eelgrass_bccm$model <- "BCCM_no_spatial"
-
-# ---- BCCM Spatial ----
-forecast_predict_eelgrass_bccm_spatial <- evaluate_forecast(
-  obs_train = obs_train,
-  pred_train = pre_2013_spatial,
-  obs_test = obs_forecast,
-  pred_test = forecast_spatial,
-  threshold = 0.037 # from cv model fit
-)
-
-forecast_predict_eelgrass_bccm_spatial$model <- "BCCM_spatial"
-
-forecast_predict_eelgrass_bccm <- rbind(
-  forecast_predict_eelgrass_bccm,
-  forecast_predict_eelgrass_bccm_spatial
-)
-
-#NEP36
-m_eelgrass_forecast_nep <- sdmTMB(formula = presence ~ s(depth_stnd, k = 3) + substrate + slope_stnd + rei_stnd + 
-                                    s(airtempmin_stnd, k = 3) + rsdscv_stnd + #chelsa variables
-                                    saltcv_nep_stnd + tempcv_nep_stnd, #    ##nep variables
-                                  mesh = barrier_mesh_pre2013, 
-                                  family = binomial(link = "logit"), 
-                                  spatial = FALSE, 
-                                  data = data_pre2013) 
-m_eelgrass_forecast_spatial_nep <- sdmTMB(formula = presence ~ s(depth_stnd, k = 3) + substrate + slope_stnd + rei_stnd + 
-                                            saltcv_nep_stnd + tempcv_nep_stnd, ##nep variables
-                                          mesh = barrier_mesh_pre2013, 
-                                          family = binomial(link = "logit"), 
-                                          spatial = TRUE, 
-                                          data = data_pre2013) 
-data.df <- data %>% select(presence, X, Y, depth_stnd, slope_stnd, rei_stnd, substrate, saltcv_nep_stnd, airtempmin_stnd, rsdscv_stnd, tempcv_nep_stnd, Year)
-
-forecast <- plogis(predict(m_eelgrass_forecast_nep, newdata = data.df %>% filter(Year > 2012))$est)
-forecast_spatial <- plogis(predict(m_eelgrass_forecast_spatial_nep, newdata = data.df %>% filter(Year > 2012))$est)
-
-pre_2013 <- plogis(predict(m_eelgrass_forecast_nep, newdata = data.df %>% filter(Year < 2010))$est)
-pre_2013_spatial <- plogis(predict(m_eelgrass_forecast_spatial_nep, newdata = data.df %>% filter(Year < 2010))$est)
-
-# Observations
-obs_train <- data.df$presence[data.df$Year < 2010]
-obs_forecast <- data.df$presence[data.df$Year > 2012]
-
-# ---- NEP Non-Spatial ----
-forecast_predict_eelgrass_nep <- evaluate_forecast(
-  obs_train = obs_train,
-  pred_train = pre_2013,
-  obs_test = obs_forecast,
-  pred_test = forecast,
-  threshold = 0.037 # from cv model fit
-)
-
-forecast_predict_eelgrass_nep$model <- "NEP_no_spatial"
-
-# ---- NEP Spatial ----
-forecast_predict_eelgrass_nep_spatial <- evaluate_forecast(
-  obs_train = obs_train,
-  pred_train = pre_2013_spatial,
-  obs_test = obs_forecast,
-  pred_test = forecast_spatial,
-  threshold = 0.037 # from cv model fit
-)
-
-forecast_predict_eelgrass_nep_spatial$model <- "NEP_spatial"
-
-forecast_predict_eelgrass_nep <- rbind(
-  forecast_predict_eelgrass_nep,
-  forecast_predict_eelgrass_nep_spatial
-)
-
-forecast_results_all <- rbind(
-  forecast_predict_eelgrass_bccm,
-  forecast_predict_eelgrass_nep
-)
-
-save(forecast_results_all, file = "code/output_data/model_results/forecast_eelgrass_models.RData")
-
-#all models comparable with AUC, with TJur bccm model with spatial does best but again, only marginally, next is NEP spatial
 
 
 
 
-
-
-####Eelgrass delta model with percent cover ####
-dat2 <- subset(data, mean_PerCovZO > 0)
-#not all surveys had records of percent cover
-
-# recomend to use beta family which has to have percent cover rescaled to 0 to 1 with no 100% percent cover 
-
-dat2$cover_beta <- (dat2$mean_PerCovZO - 0.5) / 100
-
-range(dat2$cover_beta)
-
-dat2$Survey <- factor(dat2$Survey,
-                      levels = c("ABL", "BHM", "Cuk", "GSU", "Mul", "RSU"))
-mesh2 <- make_mesh(dat2,
-                   xy_cols = c("X", "Y"),
-                   mesh = mesh$mesh
-)
-plot(mesh2)
-barrier_mesh2 <- add_barrier_mesh(mesh2, barrier_sf = coastline, proj_scaling = 1000, plot = TRUE)
-#better to have more flexible spline on depth
-#better with spatial
-m_e_per_1 <- sdmTMB_cv(formula = cover_beta ~ s(depth_stnd, k=5) + substrate + freshwater_sqrt_stnd +
-                         surftempmin_bccm_stnd + PARmean_bccm_stnd+ #bccm variables
-                         (1|Survey),  #random effect
-                       mesh = barrier_mesh2, 
-                       family = Beta(link = "logit"), 
-                       spatial = TRUE, 
-                       fold_ids = "fold",
-                       data = dat2)
-m_e_per_1$sum_loglik # -9038
-
-m_e_per_2 <- sdmTMB_cv(formula = cover_beta ~ s(depth_stnd, k=5) + substrate + freshwater_sqrt_stnd +
-                         surftempmin_nep_stnd + PARmean_nep_stnd + #nep variables
-                         (1|Survey),  #random effect
-                       mesh = barrier_mesh2, 
-                       family = Beta(link = "logit"),
-                       spatial = TRUE, 
-                       fold_ids = "fold",
-                       data = dat2)
-m_e_per_2$sum_loglik # -9048
-
-#So best models that include all best factors from both nep and bccm
-# best model has surftemp min, parmean, freshwater sqrt, substrate and depth but model was underdispersed!
-m_e_per_bccm_final <- sdmTMB(formula = cover_beta ~ s(depth_stnd, k=5), #+ substrate + #freshwater_sqrt_stnd +
-                               #surftempmin_bccm_stnd + PARmean_bccm_stnd, # + #+ #bccm variables
-                               #(1|Survey),  #random effect
-                       mesh = barrier_mesh2, 
-                       family = Beta(link = "logit"), 
-                       spatial = FALSE, 
-                       data = dat2)
-# Gamma and lognormal family don't work well
-
-
-m_e_per_nep_final <- sdmTMB(formula = mean_PerCovZO ~ s(depth_stnd, k=5) + substrate + freshwater_sqrt_stnd +
-                         surftempmin_nep_stnd + PARmean_nep_stnd +  #nep variables
-                         (1|Survey),  #random effect
-                       mesh = barrier_mesh2, 
-                       family = Gamma(link = "log"), 
-                       spatial = TRUE, 
-                       data = dat2)
-
-sanity(m_e_per_bccm_final)
-sanity(m_e_per_nep_final)
-#print(fmodel_e_delta_bccm_nospatial)
-
-tidy(m_e_per_bccm_final)
-tidy(m_e_per_bccm_final, "ran_pars", conf.int = TRUE)
-tidy(m_e_per_nep_final)
-tidy(m_e_per_nep_final, "ran_pars", conf.int = TRUE)
-
-visreg::visreg(m_e_per_bccm_final, "depth_stnd")
-visreg::visreg(m_e_per_nep_final, "depth_stnd")
-
-visreg::visreg(m_e_per_bccm_final, "substrate")
-visreg::visreg(m_e_per_nep_final, "substrate")
-
-visreg::visreg(m_e_per_bccm_final, "freshwater_sqrt_stnd")
-visreg::visreg(m_e_per_nep_final, "freshwater_sqrt_stnd")
-
-visreg::visreg(m_e_per_bccm_final, "surftempmin_bccm_stnd")
-visreg::visreg(m_e_per_nep_final, "surftempmin_nep_stnd")
-
-visreg::visreg(m_e_per_bccm_final, "PARmean_bccm_stnd")
-visreg::visreg(m_e_per_nep_final, "PARmean_nep_stnd")
-
-visreg::visreg(m_e_per_bccm_final, "Survey")
-visreg::visreg(m_e_per_nep_final, "Survey")
-
-library(DHARMa)
-sim <- simulateResiduals(
-  fittedModel = m_e_per_bccm_final,
-  n = 250,
-  refit = FALSE
-)
-fitted_vals <- fitted(m_e_per_bccm_final)
-plot(sim)
-summary(sim$scaledResiduals)
-plotResiduals(sim, fitted_vals)
-plotResiduals(sim, dat2$depth)
-
-set.seed(123)
-rq_res <- residuals(m_e_per_bccm_final, type = "mle-mvn")
-rq_res <- rq_res[is.finite(rq_res)] # some Inf
-qqnorm(rq_res);abline(0, 1)
-
-set.seed(123)
-ret<- simulate(m_e_per_bccm_final, nsim = 500, type = "mle-mvn") 
-r_ret <-  dharma_residuals(ret, m_e_per_bccm_final, return_DHARMa = TRUE)
-plot(r_ret)
-DHARMa::testResiduals(r_ret)
-
-DHARMa::testSpatialAutocorrelation(r_ret, x = dat2$X, y = dat2$Y)
-
-
-# residuals are not plotting right, need to figure out right family!!!
 
 
 
@@ -698,7 +629,7 @@ substrates_present # there are surgrass presence observations on all substrates
 ## variables that came out include most often depth,  airtempcv, substrate, air temp min, rei sqrt, freshwater sqrt, rei, parmin nep, freshwater. A few times surftempcv bccm and tempmean bccm and tidal came out
 
 #make mesh # 30 size mesh means there is no underdispersion
-mesh<- make_mesh(data = data, xy_cols = c("X", "Y"), cutoff = 85) 
+mesh<- make_mesh(data = data, xy_cols = c("X", "Y"), cutoff = 55) 
 plot(mesh)
 barrier_mesh <- add_barrier_mesh(mesh, barrier_sf = coastline, proj_scaling = 1000, plot = TRUE)
 
@@ -710,41 +641,37 @@ plan(multisession)
 # NO3 was significant but after reviewing variable between SSC and BCCM there was no good distribution between borders
 
 # no spatial 
-# AUC = 0.968, tjur = 0.248, loglike -3706 
-m_s_1 <- sdmTMB_cv(formula = presence ~ s(depth_stnd) + tidal_sqrt_stnd  + s(rei_sqrt_stnd, k = 3) + substrate + cul_eff_stnd + 
-                      airtempcv_stnd + prmean_stnd + rsdsmin_stnd + #chelsa variables
-                      saltcv_bccm_stnd + tempmin_bccm_stnd + surftempcv_bccm_stnd + #bccm variables
-                      (1|Survey),  #random effect
+m_s_1 <- sdmTMB_cv(formula = presence ~ s(depth_stnd, k = 3) + s(rei_sqrt_stnd, k = 3) + substrate + tidal_sqrt_stnd + 
+                     airtempcv_stnd + prmean_stnd + #chelsa variables
+                     saltmean_bccm_stnd + tempmean_bccm_stnd + surftempcv_bccm_stnd + #bccm variables
+                     Survey,  #fixed effect
                     mesh = barrier_mesh, family = binomial(link = "logit"), spatial = FALSE, data = data, fold_ids = "fold")
 eval_cv_bccm_nospatial <- evalStats( folds=1:numFolds,m=m_s_1,CV=cv_list_seagrass$cv,  response_col = "presence")
 eval_cv_bccm_nospatial
 
 # bccm model with spatial
-# AUC = 0.968, tjur = 0.324, loglike -6333 
-m_s_2 <- sdmTMB_cv(formula = presence ~ s(depth_stnd) + s(rei_sqrt_stnd, k = 3) + substrate +    
-                     airtempcv_stnd +  
-                     surftempcv_bccm_stnd + 
-                     (1|Survey),  #random effect
+m_s_2 <- sdmTMB_cv(formula = presence ~ s(depth_stnd, k = 3) + s(rei_sqrt_stnd, k = 3) + substrate + tidal_sqrt_stnd + 
+                     airtempcv_stnd + prmean_stnd + #chelsa variables
+                     saltmean_bccm_stnd + tempmean_bccm_stnd + surftempcv_bccm_stnd + #bccm variables
+                     Survey,  #fixed effect
                    mesh = barrier_mesh, family = binomial(link = "logit"), spatial = TRUE, data = data, fold_ids = "fold")
 eval_cv_bccm_spatial <- evalStats( folds=1:numFolds,m=m_s_2,CV=cv_list_seagrass$cv,  response_col = "presence")
 eval_cv_bccm_spatial
 
 # nep model no spatial
-# AUC = 0.969, tjur = 0.240, loglike -3724 
-m_s_3 <- sdmTMB_cv(formula = presence ~ s(depth_stnd) + s(rei_sqrt_stnd, k = 3) + substrate + 
+m_s_3 <- sdmTMB_cv(formula = presence ~ s(depth_stnd, k = 3) + s(rei_sqrt_stnd, k = 3) + substrate + tidal_sqrt_stnd +  
                      airtempcv_stnd + prmean_stnd + #chelsa variables
-                     saltmean_nep_stnd +  tempmean_nep_stnd + surftempcv_nep_stnd + #nep variables
-                     (1|Survey),  #random effect
+                     saltmean_nep_stnd + tempmean_nep_stnd + surftempcv_nep_stnd + #nep variables
+                     Survey,  #fixed effect
                    mesh = barrier_mesh, family = binomial(link = "logit"), spatial = FALSE, data = data, fold_ids = "fold")
 eval_cv_nep_nospatial <- evalStats( folds=1:numFolds,m=m_s_3,CV=cv_list_seagrass$cv,  response_col = "presence")
 eval_cv_nep_nospatial
 
 # nep model spatial 
-# AUC = 0.969, tjur = 0.291, loglike -4464
-m_s_4 <- sdmTMB_cv(formula = presence ~ s(depth_stnd) + s(rei_sqrt_stnd, k = 3) + substrate +  
+m_s_4 <- sdmTMB_cv(formula = presence ~ s(depth_stnd, k = 3) + s(rei_sqrt_stnd, k = 3) + substrate + tidal_sqrt_stnd +  
                      airtempcv_stnd + prmean_stnd + #chelsa variables
                      saltmean_nep_stnd + tempmean_nep_stnd + surftempcv_nep_stnd + #nep variables
-                     (1|Survey),  #random effect
+                     Survey,  #fixed effect
                    mesh = barrier_mesh, family = binomial(link = "logit"), spatial = TRUE, data = data, fold_ids = "fold")
 eval_cv_nep_spatial <- evalStats( folds=1:numFolds,m=m_s_4,CV=cv_list_seagrass$cv,  response_col = "presence")
 eval_cv_nep_spatial
@@ -763,36 +690,36 @@ save(eval_cv_list_surfgrass, file = "code/output_data/model_results/eval_cv_surf
 #fit full model
 
 
-fmodel_s_bccm_nospatial <- sdmTMB(formula = presence ~ s(depth_stnd) + tidal_sqrt_stnd  + s(rei_sqrt_stnd, k = 3) + substrate + cul_eff_stnd + 
-                                    airtempcv_stnd + prmean_stnd + rsdsmin_stnd + #chelsa variables
-                                    saltcv_bccm_stnd + tempmin_bccm_stnd + surftempcv_bccm_stnd + #bccm variables
-                                    (1|Survey),  #random effect
+fmodel_s_bccm_nospatial <- sdmTMB(formula = presence ~ s(depth_stnd, k = 3) + s(rei_sqrt_stnd, k = 3) + substrate + tidal_sqrt_stnd + 
+                                    airtempcv_stnd + prmean_stnd + #chelsa variables
+                                    saltmean_bccm_stnd + tempmean_bccm_stnd + surftempcv_bccm_stnd + #bccm variables
+                                    Survey,  #fixed effect
                                 mesh = barrier_mesh, #random effect
                                 family = binomial(link = "logit"), 
                                 spatial = FALSE, 
                                 data = data)
-fmodel_s_bccm_spatial <- sdmTMB(formula =  presence ~ s(depth_stnd) + s(rei_sqrt_stnd, k = 3) + substrate +    
-                                  airtempcv_stnd +  
-                                  surftempcv_bccm_stnd + 
-                                  (1|Survey),  #random effect
+fmodel_s_bccm_spatial <- sdmTMB(formula =  presence ~ s(depth_stnd, k = 3) + s(rei_sqrt_stnd, k = 3) + substrate + tidal_sqrt_stnd +  
+                                  airtempcv_stnd + prmean_stnd + #chelsa variables
+                                  saltmean_bccm_stnd + tempmean_bccm_stnd + surftempcv_bccm_stnd + #bccm variables
+                                  Survey,  #fixed effect
                                 mesh = barrier_mesh, 
                                 family = binomial(link = "logit"), 
                                 spatial = TRUE, 
                                 data = data)
 
-fmodel_s_nep_nospatial <- sdmTMB(formula = presence ~ s(depth_stnd) + s(rei_sqrt_stnd, k = 3) + substrate +  
+fmodel_s_nep_nospatial <- sdmTMB(formula = presence ~ s(depth_stnd, k = 3) + s(rei_sqrt_stnd, k = 3) + substrate + tidal_sqrt_stnd +  
                                    airtempcv_stnd + prmean_stnd + #chelsa variables
-                                   saltmean_nep_stnd +  tempmean_nep_stnd + surftempcv_nep_stnd + #nep variables
-                                   (1|Survey),  #random effect
+                                   saltmean_nep_stnd + tempmean_nep_stnd + surftempcv_nep_stnd + #nep variables
+                                   Survey,  #fixed effect
                                   mesh = barrier_mesh, 
                                   family = binomial(link = "logit"), 
                                   spatial = FALSE, 
                                   data = data)
 
-fmodel_s_nep_spatial <- sdmTMB(formula = presence ~ s(depth_stnd) + s(rei_sqrt_stnd, k = 3) + substrate +  
+fmodel_s_nep_spatial <- sdmTMB(formula = presence ~ s(depth_stnd, k = 3) + s(rei_sqrt_stnd, k = 3) + substrate + tidal_sqrt_stnd +  
                                  airtempcv_stnd + prmean_stnd + #chelsa variables
                                  saltmean_nep_stnd + tempmean_nep_stnd + surftempcv_nep_stnd + #nep variables
-                                 (1|Survey),  #random effect
+                                 Survey,  #fixed effect
                                  mesh = barrier_mesh, 
                                  family = binomial(link = "logit"), 
                                  spatial = TRUE, 
@@ -852,6 +779,7 @@ tidy(fmodel_s_bccm_spatial, "ran_pars", conf.int = TRUE)
 tidy(fmodel_s_nep_nospatial, conf.int = TRUE)
 sanity(fmodel_s_nep_nospatial)
 tidy(fmodel_s_nep_spatial, conf.int = TRUE)
+sanity(fmodel_s_nep_spatial)
 
 models <- list(
   bccm_nospatial = fmodel_s_bccm_nospatial,
@@ -865,6 +793,7 @@ eval_results <- list()
 
 # Loop through each model
 for (m_name in names(models)) {
+  
   model <- models[[m_name]]
   
   # Calculate fitted values
@@ -878,18 +807,20 @@ for (m_name in names(models)) {
   thresh <- calcThresh(x = data_tmp)
   
   # Add threshold-based predictions directly to original data
-  data[[paste0("pred_TSS_thresh_", m_name)]]   <- ifelse(
+  data[[paste0("pred_TSS_thresh_", m_name)]] <- ifelse(
     data_tmp$fitted_vals < thresh$Predicted[thresh$Method == "MaxSens+Spec"], 0, 1
   )
+  
   data[[paste0("pred_kappa_thresh_", m_name)]] <- ifelse(
     data_tmp$fitted_vals < thresh$Predicted[thresh$Method == "MaxKappa"], 0, 1
   )
-  data[[paste0("pred_PCC_thresh_", m_name)]]   <- ifelse(
+  
+  data[[paste0("pred_PCC_thresh_", m_name)]] <- ifelse(
     data_tmp$fitted_vals < thresh$Predicted[thresh$Method == "MaxPCC"], 0, 1
   )
   
   # Evaluate model
-  eval_metrics <- evalfmod(x = data_tmp, thresh = thresh)
+  eval_metrics <- evalfmod(x = data_tmp, thresh = thresh, sp = m_name)
   
   # Save both evaluation metrics AND thresholds in the list
   eval_results[[m_name]] <- list(
@@ -906,88 +837,38 @@ save(eval_results, file = "code/output_data/model_results/surfgrass_eval_final_m
 #get relative importance
 plan(sequential) # the spatial models don't run well on multisession
 
-prednames_bccm_nospatial <- c("depth_stnd", "tidal_sqrt_stnd", "substrate", "rei_sqrt_stnd", "cul_eff_stnd", 
-                              "Survey", "rsdsmin_stnd", "airtempcv_stnd", "prmean_stnd", "saltcv_bccm_stnd", 
-                              "tempmin_bccm_stnd", "surftempcv_bccm_stnd")
-groups <- list(
-  Geomorphic = c("depth_stnd", "tidal_sqrt_stnd", "substrate", "rei_sqrt_stnd", "cul_eff_stnd"),
-  Atmospheric = c("rsdsmin_stnd", "airtempcv_stnd", "prmean_stnd"),
-  Oceanographic = c("saltcv_bccm_stnd",  "tempmin_bccm_stnd", "surftempcv_bccm_stnd"),
-  Random = c("Survey")
-)
+prednames_bccm <- c("depth_stnd", "substrate", "rei_sqrt_stnd", "tidal_sqrt_stnd", "Survey", "airtempcv_stnd", 
+                    "prmean_stnd", "saltmean_bccm_stnd", "tempmean_bccm_stnd", "surftempcv_bccm_stnd")
+prednames_nep <- c("depth_stnd", "substrate", "rei_sqrt_stnd", "tidal_sqrt_stnd", "Survey", "airtempcv_stnd", 
+                   "prmean_stnd", "saltmean_nep_stnd", "tempmean_nep_stnd", "surftempcv_nep_stnd")
 
 relimp_s_bccm_nospatial <- varImp_sdmTMB(
   model = fmodel_s_bccm_nospatial,
   dat = data,
-  preds = prednames_bccm_nospatial,
-  groups = groups,
-  permute = 10
+  preds = prednames_bccm,
+ permute = 10
 )
-
-relimp_s_bccm_nospatial$individual
-relimp_s_bccm_nospatial$grouped
 
 save(relimp_s_bccm_nospatial, file = "code/output_data/model_results/relimp_s_bccm_nospatial.RData")
 
-
-prednames_bccm_spatial <- c("depth_stnd", "substrate", "rei_sqrt_stnd", "Survey", "airtempcv_stnd", "surftempcv_bccm_stnd")
-
-groups <- list(
-  Geomorphic = c("depth_stnd", "substrate", "rei_sqrt_stnd"),
-  Atmospheric = c("airtempcv_stnd"),
-  Oceanographic = c("surftempcv_bccm_stnd"),
-  Random = c("Survey")
-)
-
 relimp_s_bccm_spatial <- varImp_sdmTMB( model=fmodel_s_bccm_spatial,
                                         dat=data,
-                                        preds=prednames_bccm_spatial,
-                                        groups = groups,
+                                        preds=prednames_bccm,
                                         permute=10 ) # Number of permutations
-relimp_s_bccm_spatial$individual
-relimp_s_bccm_spatial$grouped
 save(relimp_s_bccm_spatial, file = "code/output_data/model_results/relimp_s_bccm_spatial.RData")
 
 
-prednames_nep_nospatial <- c("depth_stnd", "substrate", "rei_sqrt_stnd", "Survey", 
-                             "airtempcv_stnd", "prmean_stnd", 
-                             "saltmean_nep_stnd", "tempmean_nep_stnd", "surftempcv_nep_stnd")
-groups <- list(
-  Geomorphic = c("depth_stnd", "substrate", "rei_sqrt_stnd"),
-  Atmospheric = c("airtempcv_stnd", "prmean_stnd"),
-  Oceanographic = c("saltmean_nep_stnd", "tempmean_nep_stnd", "surftempcv_nep_stnd"),
-  Random = c("Survey")
-)
-
 relimp_s_nep_nospatial <- varImp_sdmTMB( model=fmodel_s_nep_nospatial,
                                          dat=data,
-                                         preds=prednames_nep_nospatial,
-                                         groups = groups,
+                                         preds=prednames_nep,
                                          permute=10 ) # Number of permutations
-
-relimp_s_nep_nospatial$individual
-relimp_s_nep_nospatial$grouped
-
 save(relimp_s_nep_nospatial, file = "code/output_data/model_results/relimp_s_nep_nospatial.RData")
 
-prednames_nep_spatial <- c("depth_stnd", "substrate", "rei_sqrt_stnd", "Survey", 
-                           "airtempcv_stnd", "prmean_stnd", 
-                           "saltmean_nep_stnd", "tempmean_nep_stnd", "surftempcv_nep_stnd")
-
-groups <- list(
-  Geomorphic = c("depth_stnd", "substrate", "rei_sqrt_stnd"),
-  Atmospheric = c("airtempcv_stnd", "prmean_stnd"),
-  Oceanographic = c("saltmean_nep_stnd", "tempmean_nep_stnd", "surftempcv_nep_stnd"),
-  Random = c("Survey")
-)
 
 relimp_s_nep_spatial <- varImp_sdmTMB( model=fmodel_s_nep_spatial,
                                        dat=data,
-                                       preds=prednames_nep_spatial,
-                                       groups = groups,
+                                       preds=prednames_nep,
                                        permute=10 ) # Number of permutations
-relimp_s_nep_spatial$individual
-relimp_s_nep_spatial$grouped
 save(relimp_s_nep_spatial, file = "code/output_data/model_results/relimp_s_nep_spatial.RData")
 
 
@@ -1062,25 +943,34 @@ save(samps, mcmc_res, ret, r_ret, file = "code/output_data/model_results/residua
 # left a few years gap 2010-2012 #trained model with 1993-2009
 data_pre2013 <- data %>% dplyr::filter(Year < 2010)
 unique(data_pre2013$Survey)
-mesh_pre2013 <- make_mesh(data = data_pre2013, xy_cols = c("X", "Y"), cutoff = 85) 
+substrates_present <- data_pre2013 %>% group_by(substrate) %>% summarise(n_present = sum(presence))
+substrates_present # there are no surfgrass presences on mud so need to combine with sand 
+data_pre2013 <- data_pre2013 %>%
+  mutate(substrate = recode(substrate, Mud = "Sand")) %>%
+  mutate(substrate = factor(substrate))
+
+mesh_pre2013 <- make_mesh(data = data_pre2013, xy_cols = c("X", "Y"), cutoff = 55) 
 plot(mesh_pre2013)
 barrier_mesh_pre2013 <- add_barrier_mesh(mesh_pre2013, barrier_sf = coastline, proj_scaling = 1000, plot = TRUE)
 #BCCM
-m_surfgrass_forecast_bccm <- sdmTMB(formula = presence ~ s(depth_stnd) + tidal_sqrt_stnd  + s(rei_sqrt_stnd, k = 3) + substrate + cul_eff_stnd + 
-                                      airtempcv_stnd + prmean_stnd + rsdsmin_stnd + #chelsa variables
-                                      saltcv_bccm_stnd + tempmin_bccm_stnd + surftempcv_bccm_stnd, #bccm variables
+m_surfgrass_forecast_bccm <- sdmTMB(formula = presence ~ s(depth_stnd, k = 3) + s(rei_sqrt_stnd, k = 3) + substrate + tidal_sqrt_stnd + 
+                                      airtempcv_stnd + prmean_stnd + #chelsa variables
+                                      saltmean_bccm_stnd + tempmean_bccm_stnd + surftempcv_bccm_stnd, 
                                     mesh = barrier_mesh_pre2013, 
                                     family = binomial(link = "logit"), 
                                     spatial = FALSE, 
                                     data = data_pre2013) 
-m_surfgrass_forecast_spatial_bccm <- sdmTMB(formula = presence ~ s(depth_stnd) + s(rei_sqrt_stnd, k = 3) + substrate +    
-                                              airtempcv_stnd +  
-                                              surftempcv_bccm_stnd, #bccm variables
+m_surfgrass_forecast_spatial_bccm <- sdmTMB(formula = presence ~ s(depth_stnd, k = 3) + s(rei_sqrt_stnd, k = 3) + substrate + tidal_sqrt_stnd + 
+                                              airtempcv_stnd + prmean_stnd + #chelsa variables
+                                              saltmean_bccm_stnd + tempmean_bccm_stnd + surftempcv_bccm_stnd, 
                                            mesh = barrier_mesh_pre2013, 
                                            family = binomial(link = "logit"), 
                                            spatial = TRUE, 
                                            data = data_pre2013) 
-data.df <- data %>% select(presence, X, Y, depth_stnd, tidal_sqrt_stnd, rei_sqrt_stnd, substrate, cul_eff_stnd, saltcv_bccm_stnd, airtempcv_stnd, prmean_stnd, rsdsmin_stnd, tempmin_bccm_stnd, surftempcv_bccm_stnd, Survey, Year)
+data.df <- data %>% select(presence, X, Y, depth_stnd, tidal_sqrt_stnd, rei_sqrt_stnd, substrate, airtempcv_stnd, prmean_stnd, saltmean_bccm_stnd, tempmean_bccm_stnd, surftempcv_bccm_stnd, Survey, Year)
+data.df <- data.df %>%
+  mutate(substrate = recode(substrate, Mud = "Sand")) %>%
+  mutate(substrate = factor(substrate))
 
 forecast <- plogis(predict(m_surfgrass_forecast_bccm, newdata = data.df %>% filter(Year > 2012))$est)
 forecast_spatial <- plogis(predict(m_surfgrass_forecast_spatial_bccm, newdata = data.df %>% filter(Year > 2012))$est)
@@ -1120,21 +1010,24 @@ forecast_predict_surfgrass_bccm <- rbind(
 )
 
 #NEP36
-m_surfgrass_forecast_nep <- sdmTMB(formula = presence ~ s(depth_stnd) + s(rei_sqrt_stnd, k = 3) + substrate + 
+m_surfgrass_forecast_nep <- sdmTMB(formula = presence ~ s(depth_stnd, k = 3) + s(rei_sqrt_stnd, k = 3) + substrate + tidal_sqrt_stnd +  
                                      airtempcv_stnd + prmean_stnd + #chelsa variables
-                                     saltmean_nep_stnd +  tempmean_nep_stnd + surftempcv_nep_stnd, #    ##nep variables
+                                     saltmean_nep_stnd + tempmean_nep_stnd + surftempcv_nep_stnd,    ##nep variables
                                   mesh = barrier_mesh_pre2013, 
                                   family = binomial(link = "logit"), 
                                   spatial = FALSE, 
                                   data = data_pre2013) 
-m_surfgrass_forecast_spatial_nep <- sdmTMB(formula = presence ~ s(depth_stnd) + s(rei_sqrt_stnd, k = 3) + substrate +  
+m_surfgrass_forecast_spatial_nep <- sdmTMB(formula = presence ~ s(depth_stnd, k = 3) + s(rei_sqrt_stnd, k = 3) + substrate + tidal_sqrt_stnd +  
                                              airtempcv_stnd + prmean_stnd + #chelsa variables
-                                             saltmean_nep_stnd + tempmean_nep_stnd + surftempcv_nep_stnd, ##nep variables
+                                             saltmean_nep_stnd + tempmean_nep_stnd + surftempcv_nep_stnd,    ##nep variables
                                           mesh = barrier_mesh_pre2013, 
                                           family = binomial(link = "logit"), 
                                           spatial = TRUE, 
                                           data = data_pre2013) 
-data.df <- data %>% select(presence, X, Y, depth_stnd, tidal_sqrt_stnd, rei_sqrt_stnd, substrate, saltmean_nep_stnd, cul_eff_stnd, airtempcv_stnd, prmean_stnd, tempmean_nep_stnd, surftempcv_nep_stnd, Year)
+data.df <- data %>% select(presence, X, Y, depth_stnd, tidal_sqrt_stnd, rei_sqrt_stnd, substrate, airtempcv_stnd, prmean_stnd, saltmean_nep_stnd, tempmean_nep_stnd, surftempcv_nep_stnd, Survey, Year)
+data.df <- data.df %>%
+  mutate(substrate = recode(substrate, Mud = "Sand")) %>%
+  mutate(substrate = factor(substrate))
 
 forecast <- plogis(predict(m_surfgrass_forecast_nep, newdata = data.df %>% filter(Year > 2012))$est)
 forecast_spatial <- plogis(predict(m_surfgrass_forecast_spatial_nep, newdata = data.df %>% filter(Year > 2012))$est)
@@ -1179,3 +1072,137 @@ forecast_results_all <- rbind(
 )
 
 save(forecast_results_all, file = "code/output_data/model_results/forecast_surfgrass_models.RData")
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+# 
+# ####Eelgrass delta model with percent cover ####
+# dat2 <- subset(data, mean_PerCovZO > 0)
+# #not all surveys had records of percent cover
+# 
+# # recomend to use beta family which has to have percent cover rescaled to 0 to 1 with no 100% percent cover 
+# 
+# dat2$cover_beta <- (dat2$mean_PerCovZO - 0.5) / 100
+# 
+# range(dat2$cover_beta)
+# 
+# dat2$Survey <- factor(dat2$Survey,
+#                       levels = c("ABL", "BHM", "Cuk", "GSU", "Mul", "RSU"))
+# mesh2 <- make_mesh(dat2,
+#                    xy_cols = c("X", "Y"),
+#                    mesh = mesh$mesh
+# )
+# plot(mesh2)
+# barrier_mesh2 <- add_barrier_mesh(mesh2, barrier_sf = coastline, proj_scaling = 1000, plot = TRUE)
+# #better to have more flexible spline on depth
+# #better with spatial
+# m_e_per_1 <- sdmTMB_cv(formula = cover_beta ~ s(depth_stnd, k=5) + substrate + freshwater_sqrt_stnd +
+#                          surftempmin_bccm_stnd + PARmean_bccm_stnd+ #bccm variables
+#                          (1|Survey),  #random effect
+#                        mesh = barrier_mesh2, 
+#                        family = Beta(link = "logit"), 
+#                        spatial = TRUE, 
+#                        fold_ids = "fold",
+#                        data = dat2)
+# m_e_per_1$sum_loglik # -9038
+# 
+# m_e_per_2 <- sdmTMB_cv(formula = cover_beta ~ s(depth_stnd, k=5) + substrate + freshwater_sqrt_stnd +
+#                          surftempmin_nep_stnd + PARmean_nep_stnd + #nep variables
+#                          (1|Survey),  #random effect
+#                        mesh = barrier_mesh2, 
+#                        family = Beta(link = "logit"),
+#                        spatial = TRUE, 
+#                        fold_ids = "fold",
+#                        data = dat2)
+# m_e_per_2$sum_loglik # -9048
+# 
+# #So best models that include all best factors from both nep and bccm
+# # best model has surftemp min, parmean, freshwater sqrt, substrate and depth but model was underdispersed!
+# m_e_per_bccm_final <- sdmTMB(formula = cover_beta ~ s(depth_stnd, k=5), #+ substrate + #freshwater_sqrt_stnd +
+#                                #surftempmin_bccm_stnd + PARmean_bccm_stnd, # + #+ #bccm variables
+#                                #(1|Survey),  #random effect
+#                        mesh = barrier_mesh2, 
+#                        family = Beta(link = "logit"), 
+#                        spatial = FALSE, 
+#                        data = dat2)
+# # Gamma and lognormal family don't work well
+# 
+# 
+# m_e_per_nep_final <- sdmTMB(formula = mean_PerCovZO ~ s(depth_stnd, k=5) + substrate + freshwater_sqrt_stnd +
+#                          surftempmin_nep_stnd + PARmean_nep_stnd +  #nep variables
+#                          (1|Survey),  #random effect
+#                        mesh = barrier_mesh2, 
+#                        family = Gamma(link = "log"), 
+#                        spatial = TRUE, 
+#                        data = dat2)
+# 
+# sanity(m_e_per_bccm_final)
+# sanity(m_e_per_nep_final)
+# #print(fmodel_e_delta_bccm_nospatial)
+# 
+# tidy(m_e_per_bccm_final)
+# tidy(m_e_per_bccm_final, "ran_pars", conf.int = TRUE)
+# tidy(m_e_per_nep_final)
+# tidy(m_e_per_nep_final, "ran_pars", conf.int = TRUE)
+# 
+# visreg::visreg(m_e_per_bccm_final, "depth_stnd")
+# visreg::visreg(m_e_per_nep_final, "depth_stnd")
+# 
+# visreg::visreg(m_e_per_bccm_final, "substrate")
+# visreg::visreg(m_e_per_nep_final, "substrate")
+# 
+# visreg::visreg(m_e_per_bccm_final, "freshwater_sqrt_stnd")
+# visreg::visreg(m_e_per_nep_final, "freshwater_sqrt_stnd")
+# 
+# visreg::visreg(m_e_per_bccm_final, "surftempmin_bccm_stnd")
+# visreg::visreg(m_e_per_nep_final, "surftempmin_nep_stnd")
+# 
+# visreg::visreg(m_e_per_bccm_final, "PARmean_bccm_stnd")
+# visreg::visreg(m_e_per_nep_final, "PARmean_nep_stnd")
+# 
+# visreg::visreg(m_e_per_bccm_final, "Survey")
+# visreg::visreg(m_e_per_nep_final, "Survey")
+# 
+# library(DHARMa)
+# sim <- simulateResiduals(
+#   fittedModel = m_e_per_bccm_final,
+#   n = 250,
+#   refit = FALSE
+# )
+# fitted_vals <- fitted(m_e_per_bccm_final)
+# plot(sim)
+# summary(sim$scaledResiduals)
+# plotResiduals(sim, fitted_vals)
+# plotResiduals(sim, dat2$depth)
+# 
+# set.seed(123)
+# rq_res <- residuals(m_e_per_bccm_final, type = "mle-mvn")
+# rq_res <- rq_res[is.finite(rq_res)] # some Inf
+# qqnorm(rq_res);abline(0, 1)
+# 
+# set.seed(123)
+# ret<- simulate(m_e_per_bccm_final, nsim = 500, type = "mle-mvn") 
+# r_ret <-  dharma_residuals(ret, m_e_per_bccm_final, return_DHARMa = TRUE)
+# plot(r_ret)
+# DHARMa::testResiduals(r_ret)
+# 
+# DHARMa::testSpatialAutocorrelation(r_ret, x = dat2$X, y = dat2$Y)
+# 
+# 
+# # residuals are not plotting right, need to figure out right family!!!
+# 

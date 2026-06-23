@@ -270,6 +270,16 @@ sp_blocks_eelgrass <- cv_spatial(x = spatialised_sf,
                         seed = 42, # to ensure reproducibility
                         plot = FALSE)
 
+sp_blocks_inner_eelgrass <- blockCV::cv_spatial(
+  x = spatialised_sf,
+  k = 5,
+  size = 110000,
+  hexagon = FALSE,
+  selection = "random",
+  seed = 99,
+  plot = FALSE
+)
+
 #having trouble getting presences in all blocks for surfgrass
 # not possible to have blocks that are greater than matern range for surfgrass (192km)
 # You generally want: Block size ≈ scale of autocorrelation
@@ -283,11 +293,26 @@ sp_blocks_seagrass <- cv_spatial(x = spatialised_sf,
                                  biomod2 = FALSE,
                                  seed = 123, # to ensure reproducibility
                                  plot = FALSE)
+
+sp_blocks_inner_seagrass <- blockCV::cv_spatial(
+  x = spatialised_sf,
+  k = 5,
+  size = 160000,
+  hexagon = FALSE,
+  selection = "random",
+  seed = 89,
+  plot = FALSE
+)
+
 spatialised_sf$fold_eelgrass <- sp_blocks_eelgrass$folds_ids
+spatialised_sf$innerfold_eelgrass <- sp_blocks_inner_eelgrass$folds_ids
 spatialised_sf$fold_seagrass <- sp_blocks_seagrass$folds_ids
+spatialised_sf$innerfold_seagrass <- sp_blocks_inner_seagrass$folds_ids
 #spatialised_sf$fold[is.na(spatialised_sf$fold)] <- 10
 table(spatialised_sf$fold_eelgrass)
 table(spatialised_sf$fold_seagrass)
+table(spatialised_sf$innerfold_eelgrass)
+table(spatialised_sf$innerfold_seagrass)
 
 save(spatialised_sf, file = "code/output_data/seagrass_sf_file.RData")
 
@@ -295,9 +320,11 @@ save(spatialised_sf, file = "code/output_data/seagrass_sf_file.RData")
 #check that there are presences in each fold
 ph <- spatialised_sf %>% filter(PH ==1) 
 unique(ph$fold_seagrass)
+unique(ph$innerfold_seagrass)
 zo <- spatialised_sf %>% filter(ZO ==1) 
 unique(zo$fold_seagrass)
 unique(zo$fold_eelgrass)
+unique(zo$innerfold_eelgrass)
 
 cv_plot_eelgrass <- cv_plot(cv = sp_blocks_eelgrass, #  blockCV object
         x = spatialised_sf, # sample points
@@ -352,7 +379,7 @@ seagrass_data$X_m <- XY$X*1000
 seagrass_data$Y_m <- XY$Y*1000
 
 seagrass_data_long <- seagrass_data %>%
-  select(HKey, ID, fold_eelgrass, fold_seagrass, Year, substrate, depth_stnd:cul_eff_stnd, ZO, PH, mean_PerCovZO, X:Y_m) %>%
+  select(HKey, ID, fold_eelgrass, innerfold_eelgrass, fold_seagrass, innerfold_seagrass, Year, substrate, depth_stnd:cul_eff_stnd, ZO, PH, mean_PerCovZO, X:Y_m) %>%
   gather(key = species, value = presence, ZO:PH) %>%
   mutate(presence = ifelse(presence > 1, 1, presence)) %>%
   mutate(HKey = factor(HKey), substrate = factor(substrate))
