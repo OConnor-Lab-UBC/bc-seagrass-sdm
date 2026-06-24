@@ -39,128 +39,145 @@ coastline <- coastline_full %>%
 load("code/output_data/seagrass_sf_file.RData")
 
 jewel_cb_10 <- c(
-  "#0F766E", # deep teal
-  "#3B5BA5", # sapphire
-  "#7A5195", # amethyst
-  "#C0567D", # rose
-  "#DD6B20", # amber
-  "#2F855A", # emerald
-  "#4C6A92", # steel blue
-  "#9C4221", # copper
-  "#6B46C1", # violet
-  "#B7791F"  # ochre gold
+  "#0F766E", "#3B5BA5", "#7A5195", "#C0567D", "#DD6B20",
+  "#2F855A", "#4C6A92", "#9C4221", "#6B46C1", "#B7791F"
 )
 
-base_map_theme <- theme_void(base_size = 12) +
+base_map_theme <- theme_bw() +
   theme(
-    plot.title = element_text(face = "bold", size = 14, hjust = 0),
-    legend.title = element_text(face = "bold"),
-    legend.position = "right",
-    panel.background = element_rect(fill = "white", color = NA),
-    plot.background = element_rect(fill = "white", color = NA),
-    plot.margin = margin(2, 2, 2, 2)
+    panel.grid = element_blank(),
+    strip.background = element_blank(),
+    strip.text = element_text(face = "bold"),
+    plot.title = element_text(face = "bold", hjust = 0.5),
+    legend.title = element_text(face = "bold")
   )
-p_eelgrass <- ggplot() +
-  geom_sf(
-    data = coastline,
-    fill = "grey96",
-    color = "grey50",
-    linewidth = 0.35
-  ) +
-  geom_sf(
-    data = spatialised_sf,
-    aes(color = factor(fold_eelgrass)),
-    size = 0.8
-  ) +
-  scale_color_manual(
-    values = jewel_cb_10,
-    name = "Fold"
-  ) +
-  coord_sf(expand = FALSE) +
-  labs(title = "Eelgrass") +
-  base_map_theme
 
-p_surfgrass <- ggplot() +
-  geom_sf(
-    data = coastline,
-    fill = "grey96",
-    color = "grey50",
-    linewidth = 0.35
-  ) +
-  geom_sf(
-    data = spatialised_sf,
-    aes(color = factor(fold_seagrass)),
-    size = 0.8
-  ) +
-  scale_color_manual(
-    values = jewel_cb_10,
-    name = "Fold"
-  ) +
-  coord_sf(expand = FALSE) +
-  labs(title = "Surfgrass") +
-  base_map_theme
-combined_plot <- p_eelgrass + p_surfgrass +
-  plot_layout(guides = "collect") &
-  theme(legend.position = "right")
-combined_plot
+map_extent <- coord_sf(
+  xlim = c(530000, 1228000),
+  ylim = c(366000, 1101000),
+  expand = FALSE
+)
 
+plot_data <- bind_rows(
+  spatialised_sf %>%
+    mutate(species = "Eelgrass (1993–2023)",
+           fold = factor(fold_eelgrass)),
+  spatialised_sf %>%
+    mutate(species = "Surfgrass (1993–2023)",
+           fold = factor(fold_seagrass))
+)
 
-spatialised_sf <- spatialised_sf %>%
-  mutate(
-    year_group = case_when(
-      Year >= 1993 & Year <= 2009 ~ "1993–2009",
-      Year >= 2012 & Year <= 2023 ~ "2012–2023",
-      TRUE ~ NA_character_
-    ),
-    year_group = factor(year_group, levels = c("1993–2009", "2012–2023"))
-  )
-p_year_groups <- ggplot() +
-  geom_sf(
-    data = coastline,
-    fill = "grey96",
-    color = "grey50",
-    linewidth = 0.35
+spatial_fold <- ggplot() +
+  geom_sf(data = coastline,
+          fill = "grey96",
+          colour = "grey60",
+          linewidth = 0.3) +
+  geom_sf(data = plot_data,
+          aes(colour = fold),
+          size = 1.2) +
+  facet_wrap(~species) +
+  scale_colour_manual(values = jewel_cb_10, name = "Spatial fold") +
+  coord_sf(
+    xlim = c(530000, 1228000),
+    ylim = c(366000, 1101000),
+    expand = FALSE
   ) +
-  geom_sf(
-    data = filter(spatialised_sf, year_group == "1993–2009"),
-    aes(color = year_group),
-    size = 1.2
-  ) +
-  geom_sf(
-    data = filter(spatialised_sf, year_group == "2012–2023"),
-    aes(color = year_group),
-    size = 0.7,
-    alpha = 0.8
-  ) +
-  scale_color_manual(
-    values = c(
-      "1993–2009" = "#F58518",
-      "2012–2023" = "#4C78A8"
-    ),
-    name = "Year"
-  ) +
-  coord_sf(expand = FALSE) +
-  theme_void(base_size = 12) +
+  theme_bw() +
   theme(
-    plot.title = element_text(face = "bold", size = 14, hjust = 0),
-    legend.title = element_text(face = "bold"),
-    legend.position = "right",
-    panel.background = element_rect(fill = "white", color = NA),
-    plot.background = element_rect(fill = "white", color = NA),
-    plot.margin = margin(2, 2, 2, 2)
+    panel.grid = element_blank(),
+    strip.background = element_blank(),
+    strip.text = element_text(face = "bold"),
+    legend.position = "right"
   )
-p_year_groups
-
-fold_schemes <- combined_plot/p_year_groups
 
 ggsave(
-  filename = "figures/fold_schemes.png",
-  plot = fold_schemes,
-  width = 6,
+  filename = "figures/spatial_folds.png",
+  plot = spatial_fold,
+  width = 10,
   height = 6,
   dpi = 300,
   bg = "white"
 )
+
+
+
+# Training data
+data_pre2013 <- spatialised_sf %>%
+  filter(Year < 2010) %>%
+  mutate(row_id = row_number())
+
+# Testing data
+data_post2013 <- spatialised_sf %>%
+  filter(Year > 2012)
+
+# Create folds
+set.seed(123)
+folds <- rsample::vfold_cv(data_pre2013, v = 10, strata = "ZO")
+
+# Assign fold numbers
+data_pre2013$tempfold <- NA_integer_
+
+for (i in seq_along(folds$splits)) {
+  test_ids <- rsample::assessment(folds$splits[[i]])$row_id
+  data_pre2013$tempfold[
+    match(test_ids, data_pre2013$row_id)
+  ] <- i
+}
+
+# Add panel labels
+data_pre2013 <- data_pre2013 %>%
+  mutate(
+    panel = "Training dataset (1993–2009)\n10 random folds",
+    plot_group = factor(tempfold)
+  )
+
+data_post2013 <- data_post2013 %>%
+  mutate(
+    panel = "Testing dataset (2013–2023)",
+    plot_group = "Testing"
+  )
+
+# Combine datasets
+plot_data <- bind_rows(data_pre2013, data_post2013)
+
+# Plot
+temp_fold <- ggplot() +
+  geom_sf(
+    data = coastline,
+    fill = "grey96",
+    colour = "grey60",
+    linewidth = 0.3
+  ) +
+  geom_sf(data = data_pre2013,
+          aes(colour = factor(tempfold)),
+          size = 1.2) +
+  geom_sf(data = data_post2013,
+          colour = "#F58518",
+          size = 1.2) +
+  facet_wrap(~panel) +
+  scale_colour_brewer(palette = "Set3", name = "Random fold")+
+  coord_sf(
+    xlim = c(530000, 1228000),
+    ylim = c(366000, 1101000),
+    expand = FALSE
+  ) +
+  theme_bw() +
+  theme(
+    panel.grid = element_blank(),
+    strip.background = element_blank(),
+    strip.text = element_text(face = "bold")
+  )
+
+ggsave(
+  filename = "figures/temp_folds.png",
+  plot = temp_fold,
+  width = 10,
+  height = 6,
+  dpi = 300,
+  bg = "white"
+)
+
+
 
 
 

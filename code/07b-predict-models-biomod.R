@@ -37,6 +37,13 @@ seagrass_data_long <- seagrass_data_long %>%
     Year_factor = as.factor(Year)
   )
 
+seagrass_data_long <- seagrass_data_long %>%
+  mutate(Survey = recode(Survey, MSE = "BHM")) %>%
+  mutate(Survey = recode(Survey, GSU = "RSU")) %>%
+  mutate(Survey = recode(Survey, ABL = "RSU")) %>%
+  mutate(Survey = factor(Survey))
+
+
 
 #eelgrass models
 
@@ -45,13 +52,22 @@ numFolds <- length(unique(seagrass_data$fold_eelgrass))
 dat2 <- filter(seagrass_data_long, species == sp) %>% rename(fold = fold_eelgrass)
 
 pred_vars = c("depth_stnd", "slope_stnd", "rei_stnd", "substrate",
-              "airtempmin_stnd", "rsdsmin_stnd", "prmin_stnd",
-              "saltcv_bccm_stnd", "NH4_bccm_stnd", "tempmin_bccm_stnd")
+  "airtempmin_stnd", "rsdsmin_stnd", "prmin_stnd",
+  "saltcv_bccm_stnd", "NH4_bccm_stnd", "tempcv_bccm_stnd", "Survey")
 
 #BCCM model
 env<- env_20m_all %>% dplyr::select(depth_stnd, slope_stnd, rei_stnd, substrate, airtempmin_stnd, rsdsmin_stnd, prmin_stnd, 
-                                    saltcv_bccm_stnd, NH4_bccm_stnd, tempmin_bccm_stnd)
-env$substrate <- as.factor(env$substrate)
+                                    saltcv_bccm_stnd, NH4_bccm_stnd, tempcv_bccm_stnd)
+
+env$substrate <- factor(
+  env$substrate,
+  levels = levels(dat2$substrate)
+)
+
+env$Survey <- factor(
+  "BHM",
+  levels = levels(dat2$Survey)
+)
 
 
 set.seed(123)
@@ -360,11 +376,21 @@ writeRaster(raster_qcs, file.path(outdir, paste0("eelgrass_predictions_qcs_se_xg
 #NEP model
 pred_vars = c("depth_stnd", "slope_stnd", "rei_stnd", "substrate",
               "airtempmin_stnd", "rsdsmin_stnd", "prmin_stnd",
-              "saltcv_nep_stnd", "tempcv_nep_stnd")
+              "saltcv_nep_stnd", "NH4_nep_stnd", "tempcv_nep_stnd", "Survey")
 
 env<- env_20m_all %>% dplyr::select(depth_stnd, slope_stnd, rei_stnd, substrate, airtempmin_stnd, rsdsmin_stnd, prmin_stnd, 
-                                    saltcv_nep_stnd, tempcv_nep_stnd)
-env$substrate <- as.factor(env$substrate)
+                                    saltcv_nep_stnd, NH4_nep_stnd, tempcv_nep_stnd)
+
+env$substrate <- factor(
+  env$substrate,
+  levels = levels(dat2$substrate)
+)
+
+env$Survey <- factor(
+  "BHM",
+  levels = levels(dat2$Survey)
+)
+
 
 set.seed(123)
 # make a full gbm model without cv
@@ -662,6 +688,11 @@ raster_qcs <- env_20m_all %>%
   dplyr::select(X_m, Y_m, xgb_nep_se)
 raster_qcs <- rast(x = raster_qcs %>% as.matrix, type = "xyz", crs = "EPSG:3005")
 writeRaster(raster_qcs, file.path(outdir, paste0("eelgrass_predictions_qcs_se_xgb_nep.tif")), overwrite = TRUE)
+
+
+
+
+#HAVE NO MODIFIED ANYTHING FOR SURFGRASS YET!!
 
 
 #surfgrass models

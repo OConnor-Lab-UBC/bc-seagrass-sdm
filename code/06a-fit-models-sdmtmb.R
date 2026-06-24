@@ -93,7 +93,7 @@ barrier_mesh <- add_barrier_mesh(mesh, barrier_sf = coastline, proj_scaling = 10
 #fit cv model of spatial blocking 
 plan(multisession)
 
-
+# run nested spatial cross validation on two non spatial models to determine appropriate spline terms
 depth_k_values <- list(
   "linear" = NULL,
   "2" = 2,
@@ -120,7 +120,7 @@ res_bccm_nospatial <- nested_sdmTMB_cv(
 
 save(res_bccm_nospatial, file = "code/output_data/model_results/eelgrass_eval_cv_bccm_nospatial.RData")
 tss_thresh_bccm_nospatial<- mean(res_bccm_nospatial[["fold_results"]]$tss_threshold)
-# 0.04564801, linear on air and k = 4 on depth
+# threshold 0.04564801, linear on air and k = 4 on depth
 # only way to do similar on spatial model is to refit the mesh for every inner fold. More justified to retain the smooth from the non spatial model
 #then to add spatial field so you are isolating effect of spatial field
 
@@ -134,6 +134,7 @@ res_nep_nospatial <- nested_sdmTMB_cv(
 )
 save(res_nep_nospatial, file = "code/output_data/model_results/eelgrass_eval_cv_nep_nospatial.RData")
 tss_thresh_nep_nospatial<- mean(res_nep_nospatial[["fold_results"]]$tss_threshold)
+# threshold 0.0417, linear on air and k = 4 on depth
 
 
 
@@ -182,85 +183,113 @@ save(eval_cv_list, file = "code/output_data/model_results/eelgrass_eval_cv.RData
 # model does better if you don't include oceanographic or atmospheric data. which makes sense, becasue there are no differences between past and present as geomorphic are  static
 #cannot account for surveys or years in these models as random factor because only ABL, Cuke, GDK, GSU, and RSU surveys were conducted prior to 2013 and you cant make predictions of years not fit in model
 
-data_pre2013 <- data %>% filter(Year < 2010)
+data_pre2013 <- data %>%
+  filter(Year < 2010) %>%
+  mutate(row_id = row_number())
+names(data_pre2013)
+
 unique(data_pre2013$Survey)
+test_set <- data %>% filter(Year > 2012)
+obs_test <- test_set$presence
+
+formula_bccm <- presence ~ s(depth_stnd, k = 4) + substrate + slope_stnd + rei_stnd +  
+  airtempmin_stnd + rsdsmin_stnd + prmin_stnd + 
+  saltcv_bccm_stnd + NH4_bccm_stnd + tempcv_bccm_stnd
+formula_nep <- presence ~ s(depth_stnd, k = 4) + substrate + slope_stnd + rei_stnd +  
+  airtempmin_stnd + rsdsmin_stnd + prmin_stnd + 
+  saltcv_nep_stnd + NH4_nep_stnd + tempcv_nep_stnd
+cv_thr_bccm <- get_global_cv_threshold_sdmTMB(
+  data_train = data_pre2013,
+  formula = formula_bccm,
+  coastline = coastline,
+  spatial = FALSE
+)
+cv_thr_bccm_spatial <- get_global_cv_threshold_sdmTMB(
+  data_train = data_pre2013,
+  formula = formula_bccm,
+  coastline = coastline,
+  spatial = TRUE
+)
+cv_thr_nep <- get_global_cv_threshold_sdmTMB(
+  data_train = data_pre2013,
+  formula = formula_nep,
+  coastline = coastline,
+  spatial = FALSE
+)
+cv_thr_nep_spatial <- get_global_cv_threshold_sdmTMB(
+  data_train = data_pre2013,
+  formula = formula_nep,
+  coastline = coastline,
+  spatial = TRUE
+)
+
+
 # Create 10 random folds on pre-2010 data (for model fit)
 set.seed(123)
 folds <- rsample::vfold_cv(data_pre2013, v = 10, strata = "presence")
-
-test_set <- data %>% filter(Year > 2012)
-obs_test <- test_set$presence
 
 results_list <- list()
 
 for (i in seq_along(folds$splits)) {
   split <- folds$splits[[i]]
   train_data <- analysis(split)
+  obs_train <- train_data$presence
   
-  # Remake mesh/barrier for this fold
   mesh <- make_mesh(data = train_data, xy_cols = c("X", "Y"), cutoff = 55)
   barrier_mesh <- add_barrier_mesh(mesh, barrier_sf = coastline, proj_scaling = 1000, plot = FALSE)
   
-  # Fit models (non-spatial and spatial)
   m_bccm <- sdmTMB(
-    formula = presence ~ s(depth_stnd, k = 4) + substrate + slope_stnd + rei_stnd +  
-      airtempmin_stnd + rsdsmin_stnd + prmin_stnd + 
-      saltcv_bccm_stnd + NH4_bccm_stnd + tempcv_bccm_stnd,
+    formula = formula_bccm,
     mesh = barrier_mesh,
     priors = sdmTMBpriors(b = normal(0, 1)),
     family = binomial(link = "logit"),
     spatial = FALSE,
     data = train_data
   )
+  
   m_bccm_spatial <- sdmTMB(
-    formula = presence ~ s(depth_stnd, k = 4) + substrate + slope_stnd + rei_stnd +  
-      airtempmin_stnd + rsdsmin_stnd + prmin_stnd + 
-      saltcv_bccm_stnd + NH4_bccm_stnd + tempcv_bccm_stnd,
+    formula = formula_bccm,
     mesh = barrier_mesh,
     priors = sdmTMBpriors(b = normal(0, 1)),
     family = binomial(link = "logit"),
     spatial = TRUE,
     data = train_data
   )
+  
   m_nep <- sdmTMB(
-    formula = presence ~ s(depth_stnd, k = 4) + substrate + slope_stnd + rei_stnd +  
-      airtempmin_stnd + rsdsmin_stnd + prmin_stnd + 
-      saltcv_nep_stnd + NH4_nep_stnd + tempcv_nep_stnd,
+    formula = formula_nep,
     mesh = barrier_mesh,
     priors = sdmTMBpriors(b = normal(0, 1)),
     family = binomial(link = "logit"),
     spatial = FALSE,
     data = train_data
   )
+  
   m_nep_spatial <- sdmTMB(
-    formula = presence ~ s(depth_stnd, k = 4) + substrate + slope_stnd + rei_stnd +  
-      airtempmin_stnd + rsdsmin_stnd + prmin_stnd + 
-      saltcv_nep_stnd + NH4_nep_stnd + tempcv_nep_stnd,
+    formula = formula_nep,
     mesh = barrier_mesh,
     priors = sdmTMBpriors(b = normal(0, 1)),
     family = binomial(link = "logit"),
     spatial = TRUE,
     data = train_data
   )
-  # Predict for this fold's training data (in-sample)
+  
   pred_train_bccm <- plogis(predict(m_bccm, newdata = train_data)$est)
   pred_train_spatial_bccm <- plogis(predict(m_bccm_spatial, newdata = train_data)$est)
   pred_train_nep <- plogis(predict(m_nep, newdata = train_data)$est)
   pred_train_spatial_nep <- plogis(predict(m_nep_spatial, newdata = train_data)$est)
   
-  # Predict for fixed test set (after 2012)
   pred_test_bccm <- plogis(predict(m_bccm, newdata = test_set)$est)
   pred_test_spatial_bccm <- plogis(predict(m_bccm_spatial, newdata = test_set)$est)
   pred_test_nep <- plogis(predict(m_nep, newdata = test_set)$est)
   pred_test_spatial_nep <- plogis(predict(m_nep_spatial, newdata = test_set)$est)
   
-  # Collect results
-  obs_train <- train_data$presence
   eval_nonspatial_bccm <- evaluate_forecast(
     obs_train = obs_train,
     pred_train = pred_train_bccm,
     obs_test = obs_test,
-    pred_test = pred_test_bccm
+    pred_test = pred_test_bccm,
+    threshold = cv_thr_bccm$threshold
   )
   eval_nonspatial_bccm$model <- "BCCM_no_spatial"
   eval_nonspatial_bccm$fold <- i
@@ -269,7 +298,8 @@ for (i in seq_along(folds$splits)) {
     obs_train = obs_train,
     pred_train = pred_train_spatial_bccm,
     obs_test = obs_test,
-    pred_test = pred_test_spatial_bccm
+    pred_test = pred_test_spatial_bccm,
+    threshold = cv_thr_bccm_spatial$threshold
   )
   eval_spatial_bccm$model <- "BCCM_spatial"
   eval_spatial_bccm$fold <- i
@@ -278,7 +308,8 @@ for (i in seq_along(folds$splits)) {
     obs_train = obs_train,
     pred_train = pred_train_nep,
     obs_test = obs_test,
-    pred_test = pred_test_nep
+    pred_test = pred_test_nep,
+    threshold = cv_thr_nep$threshold
   )
   eval_nonspatial_nep$model <- "NEP_no_spatial"
   eval_nonspatial_nep$fold <- i
@@ -287,7 +318,8 @@ for (i in seq_along(folds$splits)) {
     obs_train = obs_train,
     pred_train = pred_train_spatial_nep,
     obs_test = obs_test,
-    pred_test = pred_test_spatial_nep
+    pred_test = pred_test_spatial_nep,
+    threshold = cv_thr_nep_spatial$threshold
   )
   eval_spatial_nep$model <- "NEP_spatial"
   eval_spatial_nep$fold <- i
@@ -297,13 +329,9 @@ for (i in seq_along(folds$splits)) {
   results_list[[length(results_list) + 1]] <- eval_nonspatial_nep
   results_list[[length(results_list) + 1]] <- eval_spatial_nep
 }
-
 forecast_predict_eelgrass <- do.call(rbind, results_list)
-
-# keep only forecast rows
 forecast_only <- forecast_predict_eelgrass %>%
   filter(dataset == "forecast")
-
 forecast_by_model <- forecast_only %>%
   group_by(model) %>%
   summarise(
@@ -315,27 +343,12 @@ forecast_by_model <- forecast_only %>%
     sensitivity = mean(sensitivity, na.rm = TRUE),
     specificity = mean(specificity, na.rm = TRUE),
     TSS = mean(TSS, na.rm = TRUE),
-    Threshold = mean(training_threshold, na.rm = TRUE),
+    Threshold = mean(threshold, na.rm = TRUE),
     .groups = "drop"
   )
-
 forecast_by_model
 
-
 save(forecast_predict_eelgrass, forecast_by_model, file = "code/output_data/model_results/forecast_eelgrass_models.RData")
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 ####SDMtmb full model####

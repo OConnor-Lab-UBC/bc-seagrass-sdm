@@ -24,11 +24,42 @@ load("code/output_data/seagrass_model_inputs.RData")
 load("code/output_data/model_results/final_eelgrass_model.RData")
 #load("code/output_data/model_results/final_surfgrass_model.RData")
 unique(data$Survey)
+# choosing which survey to use to make predictions, 
+# eelgrass
+data %>%
+  filter(species == "ZO") %>%
+  group_by(Survey) %>%
+  summarise(
+    presences = sum(presence == 1, na.rm = TRUE),
+    absences = sum(presence == 0, na.rm = TRUE),
+    prevalence = presences / (presences + absences),
+    total = n()
+  )
+#don't want to use RSU which stands for index sites as these wouldn't include much species presences
+# GDK and cuke survey are done by industry
+# BHm and Multi have comprehensive algae recording and are random transects. 
+# BHM has most presences compared to Multi and highest prevalence overall
+
+data %>%
+  filter(species == "PH") %>%
+  group_by(Survey) %>%
+  summarise(
+    presences = sum(presence == 1, na.rm = TRUE),
+    absences = sum(presence == 0, na.rm = TRUE),
+    prevalence = presences / (presences + absences),
+    total = n()
+  )
+# ABL has this highest prevalence but are index sites so this would be repeated sampling
+# doing it for BHm and Multi looks like the best call and seeing which works best hey both have high prevalence, BHM has more presences (double Multi)
+
+
+
+
 # make predictions and get standard error
 
 # Parameters to set
-survey_type <- c("ABL", "BHM", "Cuk", "GDK", "GSU", "MSE", "Mul", "RSU")
-model_name<- "bccm_spatial"
+survey_type <- c("BHM")
+model_name<- "nep_spatial"
 species <- "eelgrass"
 model <- get(paste0("fmodel_e_", model_name))
 #model <- get(paste0("fmodel_s_", model_name))
@@ -42,75 +73,76 @@ PredictSDM_bySurvey(
   model_name  = model_name
 )
 
-#mean predictions across all surveys
-mean_pred <- AverageSurveyPredictions(
-  species    = species,
-  model_name = model_name
-)
+load()
+# #mean predictions across all surveys
+# mean_pred <- AverageSurveyPredictions(
+#   species    = species,
+#   model_name = model_name
+# )
 
 # change to 0-1 away from log-odds (logit) space
-mean_pred <- mean_pred %>%
+pred <- pred %>%
   mutate(est_p = plogis(est))
 
 #### save rasters ####
 outdir <- file.path("./raster", species, model_name)
 if (!dir.exists(outdir)) dir.create(outdir, recursive = TRUE)
 
-raster_hg <- mean_pred %>%
+raster_hg <- pred %>%
   filter(region == "Haida Gwaii") %>%
   select(X_m, Y_m, est_p)
 raster_hg <- rast(x = raster_hg %>% as.matrix, type = "xyz", crs = "EPSG:3005")
 writeRaster(raster_hg, file.path(outdir, paste0(species, "_predictions_hg_", model_name, ".tif")), overwrite = TRUE)
 
-raster_ss <- mean_pred %>%
+raster_ss <- pred %>%
   filter(region == "Salish Sea") %>%
   select(X_m, Y_m, est_p)
 raster_ss <- rast(x = raster_ss %>% as.matrix, type = "xyz", crs = "EPSG:3005")
 writeRaster(raster_ss, file.path(outdir, paste0(species, "_predictions_ss_", model_name, ".tif")), overwrite = TRUE)
 
-raster_wcvi <- mean_pred %>%
+raster_wcvi <- pred %>%
   filter(region == "West Coast Vancouver Island") %>%
   select(X_m, Y_m, est_p)
 raster_wcvi <- rast(x = raster_wcvi %>% as.matrix, type = "xyz", crs = "EPSG:3005")
 writeRaster(raster_wcvi, file.path(outdir, paste0(species, "_predictions_wcvi_", model_name, ".tif")), overwrite = TRUE)
 
-raster_ncc <- mean_pred %>%
+raster_ncc <- pred %>%
   filter(region == "North Central Coast") %>%
   select(X_m, Y_m, est_p)
 raster_ncc <- rast(x = raster_ncc %>% as.matrix, type = "xyz", crs = "EPSG:3005")
 writeRaster(raster_ncc, file.path(outdir, paste0(species, "_predictions_ncc_", model_name, ".tif")), overwrite = TRUE)
 
-raster_qcs <- mean_pred %>%
+raster_qcs <- pred %>%
   filter(region == "Queen Charlotte Strait") %>%
   select(X_m, Y_m, est_p)
 raster_qcs <- rast(x = raster_qcs %>% as.matrix, type = "xyz", crs = "EPSG:3005")
 writeRaster(raster_qcs, file.path(outdir, paste0(species, "_predictions_qcs_", model_name, ".tif")), overwrite = TRUE)
 
-raster_hg_se <- mean_pred %>%
+raster_hg_se <- pred %>%
   filter(region == "Haida Gwaii") %>%
   select(X_m, Y_m, SE)
 raster_hg_se <- rast(x = raster_hg_se %>% as.matrix, type = "xyz", crs = "EPSG:3005")
 writeRaster(raster_hg_se, file.path(outdir, paste0(species, "_predictions_hg_se_", model_name, ".tif")), overwrite = TRUE)
 
-raster_ss_se <- mean_pred %>%
+raster_ss_se <- pred %>%
   filter(region == "Salish Sea") %>%
   select(X_m, Y_m, SE)
 raster_ss_se <- rast(x = raster_ss_se %>% as.matrix, type = "xyz", crs = "EPSG:3005")
 writeRaster(raster_ss_se, file.path(outdir, paste0(species, "_predictions_ss_se_", model_name, ".tif")), overwrite = TRUE)
 
-raster_wcvi_se <- mean_pred %>%
+raster_wcvi_se <- pred %>%
   filter(region == "West Coast Vancouver Island") %>%
   select(X_m, Y_m, SE)
 raster_wcvi_se <- rast(x = raster_wcvi_se %>% as.matrix, type = "xyz", crs = "EPSG:3005")
 writeRaster(raster_wcvi_se, file.path(outdir, paste0(species, "_predictions_wcvi_se_", model_name, ".tif")), overwrite = TRUE)
 
-raster_ncc_se <- mean_pred %>%
+raster_ncc_se <- pred %>%
   filter(region == "North Central Coast") %>%
   select(X_m, Y_m, SE)
 raster_ncc_se <- rast(x = raster_ncc_se %>% as.matrix, type = "xyz", crs = "EPSG:3005")
 writeRaster(raster_ncc_se, file.path(outdir, paste0(species, "_predictions_ncc_se_", model_name, ".tif")), overwrite = TRUE)
 
-raster_qcs_se <- mean_pred %>%
+raster_qcs_se <- pred %>%
   filter(region == "Queen Charlotte Strait") %>%
   select(X_m, Y_m, SE)
 raster_qcs_se <- rast(x = raster_qcs_se %>% as.matrix, type = "xyz", crs = "EPSG:3005")
