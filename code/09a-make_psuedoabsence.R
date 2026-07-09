@@ -30,6 +30,29 @@ eelgrass_indep <- rast("code/output_data/independent_validation/BCeelgrass_netfo
 values(eelgrass_indep)[values(eelgrass_indep) >= 1] <- 1
 eelgrass_indep2 <- rast("code/output_data/independent_validation/BCeelgrass_netforce_1974_2012.tif")
 values(eelgrass_indep2)[values(eelgrass_indep2) >= 1] <- 1
+dfo2024<-vect("code/output_data/processed_observations/SpatializedQuadrats_aggregated_2024only_ZO.shp")
+
+dfo2024_rast <- terra::rasterize(
+  x = dfo2024,
+  y = template_rast,
+  field = "ZO",
+  touches = TRUE
+)
+
+#Peng et al 2026 remote sense global seagrass dataset https://www.nature.com/articles/s41586-026-10704-3
+peng<-vect("raw_data/Pengetal2026/bc_seagrass_2023_2024.shp")
+peng_proj <- project(peng, template_rast)
+
+peng_rast <- terra::rasterize(
+  x = peng_proj,
+  y = template_rast,
+  field = "b1",
+  touches = TRUE
+)
+
+peng_rast <- ifel(!is.na(peng_rast), 1, NA)
+
+
 # load model inputs
 load("code/output_data/seagrass_model_inputs.RData")
 data <- seagrass_data_long %>%
@@ -49,7 +72,7 @@ training_pres_rast <- ifel(!is.na(training_pres_rast), 1, NA)
 freq(training_pres_rast)
 
 combined_exclusion <- terra::ifel(
-  !is.na(training_pres_rast) | !is.na(eelgrass_indep) | !is.na(eelgrass_indep2),
+  !is.na(training_pres_rast) | !is.na(eelgrass_indep) | !is.na(eelgrass_indep2) | !is.na(dfo2024_rast) | !is.na(peng_rast),
   1,
   NA
 )

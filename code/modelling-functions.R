@@ -1414,16 +1414,87 @@ nested_gbm_spatial <- function(
     inner_col = "inner_fold",
     gbm_grid){
   
+  library(dplyr)
   library(gbm)
+  library(pROC)
+  
+  calc_logloss <- function(actual, prob) {
+    eps <- 1e-15
+    prob_clip <- pmin(pmax(prob, eps), 1 - eps)
+    -mean(actual * log(prob_clip) + (1 - actual) * log(1 - prob_clip), na.rm = TRUE)
+  }
+  
+  calc_tjur <- function(actual, prob) {
+    mean(prob[actual == 1], na.rm = TRUE) - mean(prob[actual == 0], na.rm = TRUE)
+  }
+  
+  calc_brier <- function(actual, prob) {
+    mean((prob - actual)^2, na.rm = TRUE)
+  }
+  
+  class_metrics <- function(actual, prob, threshold) {
+    pred_class <- as.integer(prob >= threshold)
+    
+    sensitivity <- if (sum(actual == 1) > 0) {
+      sum(pred_class == 1 & actual == 1) / sum(actual == 1)
+    } else {
+      NA_real_
+    }
+    
+    specificity <- if (sum(actual == 0) > 0) {
+      sum(pred_class == 0 & actual == 0) / sum(actual == 0)
+    } else {
+      NA_real_
+    }
+    
+    tss <- sensitivity + specificity - 1
+    
+    list(
+      sensitivity = sensitivity,
+      specificity = specificity,
+      tss = tss
+    )
+  }
+  
+  get_optimal_threshold <- function(actual, prob) {
+    thresholds <- sort(unique(prob))
+    
+    if (length(thresholds) == 0) {
+      return(NA_real_)
+    }
+    
+    tss_scores <- numeric(length(thresholds))
+    
+    for (j in seq_along(thresholds)) {
+      th <- thresholds[j]
+      pred_class <- as.integer(prob >= th)
+      
+      sens <- if (sum(actual == 1) > 0) {
+        sum(pred_class == 1 & actual == 1) / sum(actual == 1)
+      } else {
+        NA_real_
+      }
+      
+      spec <- if (sum(actual == 0) > 0) {
+        sum(pred_class == 0 & actual == 0) / sum(actual == 0)
+      } else {
+        NA_real_
+      }
+      
+      tss_scores[j] <- sens + spec - 1
+    }
+    
+    thresholds[which.max(tss_scores)]
+  }
+  
+  safe_auc <- function(actual, prob) {
+    tryCatch(as.numeric(pROC::auc(actual, prob)), error = function(e) NA_real_)
+  }
   
   outer_results <- list()
-  
-  all_predictions <- c()
-  all_observations <- c()
-  
   outer_folds <- sort(unique(dat[[outer_col]]))
   
-  for(ofold in outer_folds){
+  for (ofold in outer_folds) {
     
     message("Outer Fold: ", ofold)
     
@@ -1435,15 +1506,14 @@ nested_gbm_spatial <- function(
     
     inner_scores <- list()
     
-    for(g in seq_len(nrow(gbm_grid))){
+    for (g in seq_len(nrow(gbm_grid))) {
       
-      pars <- gbm_grid[g,]
-      
+      pars <- gbm_grid[g, ]
       inner_res <- c()
-      
+      inner_best_trees <- c()
       inner_folds <- sort(unique(train_outer[[inner_col]]))
       
-      for(ifold in inner_folds){
+      for (ifold in inner_folds) {
         
         train_inner <- train_outer %>%
           filter(.data[[inner_col]] != ifold)
@@ -1453,111 +1523,151 @@ nested_gbm_spatial <- function(
         
         mod <- gbm(
           formula = as.formula(
-            paste(response,"~",paste(predictors,collapse="+"))
+            paste(response, "~", paste(predictors, collapse = "+"))
           ),
           data = train_inner,
           distribution = "bernoulli",
-          n.trees = pars$n.trees,
+          n.trees = 5000,
           interaction.depth = pars$interaction.depth,
           shrinkage = pars$shrinkage,
           n.minobsinnode = pars$n.minobsinnode,
           bag.fraction = 0.7,
-          train.fraction = 1,
+          train.fraction = 0.8,
           verbose = FALSE
         )
+        
+        best_trees <- gbm.perf(
+          mod,
+          method = "OOB",
+          plot.it = FALSE
+        )
+        
+        if (is.null(best_trees) || is.na(best_trees)) {
+          best_trees <- 5000
+        }
         
         pred <- predict(
           mod,
           valid_inner,
-          n.trees = pars$n.trees,
+          n.trees = best_trees,
           type = "response"
         )
         
         inner_res <- c(
           inner_res,
-          logloss_fun(valid_inner[[response]], pred)
+          calc_logloss(valid_inner[[response]], pred)
         )
         
+        inner_best_trees <- c(
+          inner_best_trees,
+          best_trees
+        )
       }
       
       inner_scores[[g]] <- data.frame(
-        pars,
-        mean_logloss = mean(inner_res),
-        sd_logloss = sd(inner_res)
+        interaction.depth = pars$interaction.depth,
+        shrinkage = pars$shrinkage,
+        n.minobsinnode = pars$n.minobsinnode,
+        mean_logloss = mean(inner_res, na.rm = TRUE),
+        sd_logloss = sd(inner_res, na.rm = TRUE),
+        mean_trees = mean(inner_best_trees, na.rm = TRUE)
       )
-      
     }
     
     tuning <- bind_rows(inner_scores) %>%
       arrange(mean_logloss)
     
-    best <- tuning[1,]
+    best <- tuning[1, ]
     
     final_mod <- gbm(
       formula = as.formula(
-        paste(response,"~",paste(predictors,collapse="+"))
+        paste(response, "~", paste(predictors, collapse = "+"))
       ),
       data = train_outer,
       distribution = "bernoulli",
-      n.trees = best$n.trees,
+      n.trees = 5000,
       interaction.depth = best$interaction.depth,
       shrinkage = best$shrinkage,
       n.minobsinnode = best$n.minobsinnode,
       bag.fraction = 0.7,
-      train.fraction = 1,
+      train.fraction = 0.8,
       verbose = FALSE
     )
     
-    pred <- predict(
+    final_trees <- round(best$mean_trees)
+    
+    pred_train <- predict(
       final_mod,
-      test_outer,
-      n.trees = best$n.trees,
+      train_outer,
+      n.trees = final_trees,
       type = "response"
     )
     
-    obs <- test_outer[[response]]
-    
-    all_predictions <- c(all_predictions,pred)
-    all_observations <- c(all_observations,obs)
-    
-    thr <- get_tss_threshold(obs,pred)
-    
-    outer_results[[length(outer_results)+1]] <- data.frame(
-      model="GBM",
-      outer_fold=ofold,
-      threshold=thr,
-      AUC=as.numeric(pROC::auc(obs,pred)),
-      Tjur=tjur_fun(obs,pred),
-      TSS=tss_fun(obs,pred,thr),
-      Sensitivity=sensitivity_fun(obs,ifelse(pred>=thr,1,0)),
-      Specificity=specificity_fun(obs,ifelse(pred>=thr,1,0)),
-      Brier=brier_fun(obs,pred),
-      LogLoss=logloss_fun(obs,pred)
+    pred_test <- predict(
+      final_mod,
+      test_outer,
+      n.trees = final_trees,
+      type = "response"
     )
     
+    obs_train <- train_outer[[response]]
+    obs_test <- test_outer[[response]]
+    
+    threshold <- get_optimal_threshold(obs_train, pred_train)
+    
+    train_cls <- class_metrics(obs_train, pred_train, threshold)
+    test_cls <- class_metrics(obs_test, pred_test, threshold)
+    
+    outer_results[[length(outer_results) + 1]] <- data.frame(
+      model = "GBM",
+      outer_fold = ofold,
+      interaction.depth = best$interaction.depth,
+      shrinkage = best$shrinkage,
+      n.minobsinnode = best$n.minobsinnode,
+      n.trees = final_trees,
+      threshold = threshold,
+      train_auc = safe_auc(obs_train, pred_train),
+      train_tjur = calc_tjur(obs_train, pred_train),
+      train_brier = calc_brier(obs_train, pred_train),
+      train_logloss = calc_logloss(obs_train, pred_train),
+      train_sensitivity = train_cls$sensitivity,
+      train_specificity = train_cls$specificity,
+      train_tss = train_cls$tss,
+      test_auc = safe_auc(obs_test, pred_test),
+      test_tjur = calc_tjur(obs_test, pred_test),
+      test_brier = calc_brier(obs_test, pred_test),
+      test_logloss = calc_logloss(obs_test, pred_test),
+      test_sensitivity = test_cls$sensitivity,
+      test_specificity = test_cls$specificity,
+      test_tss = test_cls$tss
+    )
   }
   
   fold_metrics <- bind_rows(outer_results)
   
-  global_threshold <- get_tss_threshold(
-    all_observations,
-    all_predictions
-  )
-  
   list(
     fold_metrics = fold_metrics,
     summary = fold_metrics %>%
-      summarise(across(
-        c(AUC,Tjur,TSS,Sensitivity,
-          Specificity,Brier,LogLoss),
-        list(mean=mean,sd=sd)
-      )),
-    threshold = global_threshold,
-    predictions = all_predictions,
-    observations = all_observations
+      summarise(
+        mean_threshold = mean(threshold, na.rm = TRUE),
+        mean_train_auc = mean(train_auc, na.rm = TRUE),
+        mean_train_tjur = mean(train_tjur, na.rm = TRUE),
+        mean_train_brier = mean(train_brier, na.rm = TRUE),
+        mean_train_logloss = mean(train_logloss, na.rm = TRUE),
+        mean_train_sensitivity = mean(train_sensitivity, na.rm = TRUE),
+        mean_train_specificity = mean(train_specificity, na.rm = TRUE),
+        mean_train_tss = mean(train_tss, na.rm = TRUE),
+        mean_test_auc = mean(test_auc, na.rm = TRUE),
+        mean_test_tjur = mean(test_tjur, na.rm = TRUE),
+        mean_test_brier = mean(test_brier, na.rm = TRUE),
+        mean_test_logloss = mean(test_logloss, na.rm = TRUE),
+        mean_test_sensitivity = mean(test_sensitivity, na.rm = TRUE),
+        mean_test_specificity = mean(test_specificity, na.rm = TRUE),
+        mean_test_tss = mean(test_tss, na.rm = TRUE)
+      )
   )
-  
 }
+
 
 nested_xgb_spatial <- function(
     dat,
@@ -1565,18 +1675,90 @@ nested_xgb_spatial <- function(
     response = "presence",
     outer_col = "outer_fold",
     inner_col = "inner_fold",
-    xgb_grid){
+    xgb_grid
+) {
   
+  library(dplyr)
   library(xgboost)
+  library(pROC)
+  
+  calc_logloss <- function(actual, prob) {
+    eps <- 1e-15
+    prob_clip <- pmin(pmax(prob, eps), 1 - eps)
+    -mean(actual * log(prob_clip) + (1 - actual) * log(1 - prob_clip), na.rm = TRUE)
+  }
+  
+  calc_tjur <- function(actual, prob) {
+    mean(prob[actual == 1], na.rm = TRUE) - mean(prob[actual == 0], na.rm = TRUE)
+  }
+  
+  calc_brier <- function(actual, prob) {
+    mean((prob - actual)^2, na.rm = TRUE)
+  }
+  
+  class_metrics <- function(actual, prob, threshold) {
+    pred_class <- as.integer(prob >= threshold)
+    
+    sensitivity <- if (sum(actual == 1) > 0) {
+      sum(pred_class == 1 & actual == 1) / sum(actual == 1)
+    } else {
+      NA_real_
+    }
+    
+    specificity <- if (sum(actual == 0) > 0) {
+      sum(pred_class == 0 & actual == 0) / sum(actual == 0)
+    } else {
+      NA_real_
+    }
+    
+    tss <- sensitivity + specificity - 1
+    
+    list(
+      sensitivity = sensitivity,
+      specificity = specificity,
+      tss = tss
+    )
+  }
+  
+  get_optimal_threshold <- function(actual, prob) {
+    thresholds <- sort(unique(prob))
+    
+    if (length(thresholds) == 0) {
+      return(NA_real_)
+    }
+    
+    tss_scores <- numeric(length(thresholds))
+    
+    for (j in seq_along(thresholds)) {
+      th <- thresholds[j]
+      pred_class <- as.integer(prob >= th)
+      
+      sens <- if (sum(actual == 1) > 0) {
+        sum(pred_class == 1 & actual == 1) / sum(actual == 1)
+      } else {
+        NA_real_
+      }
+      
+      spec <- if (sum(actual == 0) > 0) {
+        sum(pred_class == 0 & actual == 0) / sum(actual == 0)
+      } else {
+        NA_real_
+      }
+      
+      tss_scores[j] <- sens + spec - 1
+    }
+    
+    thresholds[which.max(tss_scores)]
+  }
+  
+  safe_auc <- function(actual, prob) {
+    tryCatch(as.numeric(pROC::auc(actual, prob)), error = function(e) NA_real_)
+  }
   
   outer_results <- list()
-  
-  all_predictions <- c()
-  all_observations <- c()
-  
   outer_folds <- sort(unique(dat[[outer_col]]))
   
-  for(ofold in outer_folds){
+  for (ofold in outer_folds) {
     
     message("Outer Fold: ", ofold)
     
@@ -1588,15 +1770,13 @@ nested_xgb_spatial <- function(
     
     inner_scores <- list()
     
-    for(g in seq_len(nrow(xgb_grid))){
+    for (g in seq_len(nrow(xgb_grid))) {
       
-      pars <- xgb_grid[g,]
-      
+      pars <- xgb_grid[g, ]
       loglosses <- c()
-      
       inner_folds <- sort(unique(train_outer[[inner_col]]))
       
-      for(ifold in inner_folds){
+      for (ifold in inner_folds) {
         
         train_inner <- train_outer %>%
           filter(.data[[inner_col]] != ifold)
@@ -1605,169 +1785,270 @@ nested_xgb_spatial <- function(
           filter(.data[[inner_col]] == ifold)
         
         X_train <- model.matrix(
-          ~ . -1,
-          train_inner[,predictors]
+          ~ . - 1,
+          train_inner[, predictors, drop = FALSE]
         )
         
         X_valid <- model.matrix(
-          ~ . -1,
-          valid_inner[,predictors]
+          ~ . - 1,
+          valid_inner[, predictors, drop = FALSE]
         )
         
         dtrain <- xgb.DMatrix(
-          X_train,
-          label=train_inner[[response]]
+          data = X_train,
+          label = train_inner[[response]]
         )
         
         mod <- xgb.train(
-          params=list(
-            objective="binary:logistic",
-            eval_metric="logloss",
-            eta=pars$eta,
-            max_depth=pars$max_depth,
-            subsample=pars$subsample,
-            colsample_bytree=pars$colsample_bytree
+          params = list(
+            objective = "binary:logistic",
+            eval_metric = "logloss",
+            eta = pars$eta,
+            max_depth = pars$max_depth,
+            subsample = pars$subsample,
+            colsample_bytree = pars$colsample_bytree
           ),
-          data=dtrain,
-          nrounds=pars$nrounds,
-          verbose=0
+          data = dtrain,
+          nrounds = pars$nrounds,
+          verbose = 0
         )
         
-        pred <- predict(mod,X_valid)
+        pred <- predict(mod, X_valid)
         
         loglosses <- c(
           loglosses,
-          logloss_fun(valid_inner[[response]],pred)
+          calc_logloss(valid_inner[[response]], pred)
         )
-        
       }
       
       inner_scores[[g]] <- data.frame(
-        pars,
-        mean_logloss=mean(loglosses),
-        sd_logloss=sd(loglosses)
+        eta = pars$eta,
+        max_depth = pars$max_depth,
+        subsample = pars$subsample,
+        colsample_bytree = pars$colsample_bytree,
+        nrounds = pars$nrounds,
+        mean_logloss = mean(loglosses, na.rm = TRUE),
+        sd_logloss = sd(loglosses, na.rm = TRUE)
       )
-      
     }
     
     tuning <- bind_rows(inner_scores) %>%
       arrange(mean_logloss)
     
-    best <- tuning[1,]
+    best <- tuning[1, ]
     
-    X_train <- model.matrix(
-      ~ . -1,
-      train_outer[,predictors]
+    X_train_outer <- model.matrix(
+      ~ . - 1,
+      train_outer[, predictors, drop = FALSE]
     )
     
-    X_test <- model.matrix(
-      ~ . -1,
-      test_outer[,predictors]
+    X_test_outer <- model.matrix(
+      ~ . - 1,
+      test_outer[, predictors, drop = FALSE]
     )
     
-    dtrain <- xgb.DMatrix(
-      X_train,
-      label=train_outer[[response]]
+    dtrain_outer <- xgb.DMatrix(
+      data = X_train_outer,
+      label = train_outer[[response]]
     )
     
     final_mod <- xgb.train(
-      params=list(
-        objective="binary:logistic",
-        eval_metric="logloss",
-        eta=best$eta,
-        max_depth=best$max_depth,
-        subsample=best$subsample,
-        colsample_bytree=best$colsample_bytree
+      params = list(
+        objective = "binary:logistic",
+        eval_metric = "logloss",
+        eta = best$eta,
+        max_depth = best$max_depth,
+        subsample = best$subsample,
+        colsample_bytree = best$colsample_bytree
       ),
-      data=dtrain,
-      nrounds=best$nrounds,
-      verbose=0
+      data = dtrain_outer,
+      nrounds = best$nrounds,
+      verbose = 0
     )
     
-    pred <- predict(final_mod,X_test)
+    pred_train <- predict(final_mod, X_train_outer)
+    pred_test <- predict(final_mod, X_test_outer)
     
-    obs <- test_outer[[response]]
+    obs_train <- train_outer[[response]]
+    obs_test <- test_outer[[response]]
     
-    all_predictions <- c(all_predictions,pred)
-    all_observations <- c(all_observations,obs)
+    threshold <- get_optimal_threshold(obs_train, pred_train)
     
-    thr <- get_tss_threshold(obs,pred)
+    train_cls <- class_metrics(obs_train, pred_train, threshold)
+    test_cls <- class_metrics(obs_test, pred_test, threshold)
     
-    outer_results[[length(outer_results)+1]] <- data.frame(
-      model="XGBOOST",
-      outer_fold=ofold,
-      threshold=thr,
-      AUC=as.numeric(pROC::auc(obs,pred)),
-      Tjur=tjur_fun(obs,pred),
-      TSS=tss_fun(obs,pred,thr),
-      Sensitivity=sensitivity_fun(obs,ifelse(pred>=thr,1,0)),
-      Specificity=specificity_fun(obs,ifelse(pred>=thr,1,0)),
-      Brier=brier_fun(obs,pred),
-      LogLoss=logloss_fun(obs,pred)
+    outer_results[[length(outer_results) + 1]] <- data.frame(
+      model = "XGBOOST",
+      outer_fold = ofold,
+      eta = best$eta,
+      max_depth = best$max_depth,
+      subsample = best$subsample,
+      colsample_bytree = best$colsample_bytree,
+      nrounds = best$nrounds,
+      threshold = threshold,
+      train_auc = safe_auc(obs_train, pred_train),
+      train_tjur = calc_tjur(obs_train, pred_train),
+      train_brier = calc_brier(obs_train, pred_train),
+      train_logloss = calc_logloss(obs_train, pred_train),
+      train_sensitivity = train_cls$sensitivity,
+      train_specificity = train_cls$specificity,
+      train_tss = train_cls$tss,
+      test_auc = safe_auc(obs_test, pred_test),
+      test_tjur = calc_tjur(obs_test, pred_test),
+      test_brier = calc_brier(obs_test, pred_test),
+      test_logloss = calc_logloss(obs_test, pred_test),
+      test_sensitivity = test_cls$sensitivity,
+      test_specificity = test_cls$specificity,
+      test_tss = test_cls$tss
     )
-    
   }
   
   fold_metrics <- bind_rows(outer_results)
   
-  global_threshold <- get_tss_threshold(
-    all_observations,
-    all_predictions
+  list(
+    fold_metrics = fold_metrics,
+    summary = fold_metrics %>%
+      summarise(
+        mean_threshold = mean(threshold, na.rm = TRUE),
+        mean_train_auc = mean(train_auc, na.rm = TRUE),
+        mean_train_tjur = mean(train_tjur, na.rm = TRUE),
+        mean_train_brier = mean(train_brier, na.rm = TRUE),
+        mean_train_logloss = mean(train_logloss, na.rm = TRUE),
+        mean_train_sensitivity = mean(train_sensitivity, na.rm = TRUE),
+        mean_train_specificity = mean(train_specificity, na.rm = TRUE),
+        mean_train_tss = mean(train_tss, na.rm = TRUE),
+        mean_test_auc = mean(test_auc, na.rm = TRUE),
+        mean_test_tjur = mean(test_tjur, na.rm = TRUE),
+        mean_test_brier = mean(test_brier, na.rm = TRUE),
+        mean_test_logloss = mean(test_logloss, na.rm = TRUE),
+        mean_test_sensitivity = mean(test_sensitivity, na.rm = TRUE),
+        mean_test_specificity = mean(test_specificity, na.rm = TRUE),
+        mean_test_tss = mean(test_tss, na.rm = TRUE)
+      )
+  )
+}
+
+get_global_cv_threshold_xgb <- function(
+    data_train,
+    predictors,
+    response = "presence",
+    eta,
+    max_depth,
+    subsample,
+    colsample_bytree,
+    nrounds,
+    v = 10,
+    seed = 123
+) {
+  
+  library(dplyr)
+  library(rsample)
+  library(xgboost)
+  
+  data_train <- data_train %>%
+    dplyr::mutate(row_id_cv = dplyr::row_number())
+  
+  set.seed(seed)
+  folds <- rsample::vfold_cv(
+    data_train,
+    v = v,
+    strata = response
+  )
+  
+  pred_oof <- rep(NA_real_, nrow(data_train))
+  
+  for (i in seq_along(folds$splits)) {
+    split <- folds$splits[[i]]
+    analysis_data <- rsample::analysis(split)
+    assessment_data <- rsample::assessment(split)
+    
+    X_analysis <- model.matrix(
+      ~ . - 1,
+      data = analysis_data[, predictors, drop = FALSE]
+    )
+    
+    X_assessment <- model.matrix(
+      ~ . - 1,
+      data = assessment_data[, predictors, drop = FALSE]
+    )
+    
+    dtrain <- xgb.DMatrix(
+      data = X_analysis,
+      label = analysis_data[[response]]
+    )
+    
+    xgb_fit <- xgb.train(
+      params = list(
+        objective = "binary:logistic",
+        eval_metric = "logloss",
+        eta = eta,
+        max_depth = max_depth,
+        subsample = subsample,
+        colsample_bytree = colsample_bytree
+      ),
+      data = dtrain,
+      nrounds = nrounds,
+      verbose = 0
+    )
+    
+    pred <- predict(xgb_fit, X_assessment)
+    pred_oof[assessment_data$row_id_cv] <- pred
+  }
+  
+  keep <- !is.na(pred_oof)
+  
+  best <- find_best_tss_threshold(
+    obs = data_train[[response]][keep],
+    pred = pred_oof[keep]
   )
   
   list(
-    fold_metrics=fold_metrics,
-    summary=fold_metrics %>%
-      summarise(across(
-        c(AUC,Tjur,TSS,Sensitivity,
-          Specificity,Brier,LogLoss),
-        list(mean=mean,sd=sd)
-      )),
-    threshold=global_threshold,
-    predictions=all_predictions,
-    observations=all_observations
+    threshold = best$threshold,
+    TSS = best$TSS,
+    oof_pred = pred_oof
   )
-  
 }
 
-
-run_temporal_gbm <- function(
+run_temporal_gbm_forecast <- function(
     data_pre2013,
     test_set,
     predictors,
+    threshold,
     response = "presence",
     n.trees,
     interaction.depth,
     shrinkage,
-    n.minobsinnode
-){
+    n.minobsinnode,
+    v = 10,
+    seed = 123,
+    model_name = "GBM"
+) {
   
   library(gbm)
   library(rsample)
   library(dplyr)
   
-  set.seed(123)
+  set.seed(seed)
   
   folds <- rsample::vfold_cv(
     data_pre2013,
-    v = 10,
+    v = v,
     strata = response
   )
   
   results <- list()
   
-  for(i in seq_along(folds$splits)){
+  for (i in seq_along(folds$splits)) {
     
     split <- folds$splits[[i]]
-    
-    train_data <- analysis(split)
+    train_data <- rsample::analysis(split)
     
     obs_train <- train_data[[response]]
     obs_test <- test_set[[response]]
     
     gbm_fit <- gbm(
       formula = as.formula(
-        paste(response,"~",paste(predictors,collapse="+"))
+        paste(response, "~", paste(predictors, collapse = "+"))
       ),
       distribution = "bernoulli",
       data = train_data,
@@ -1782,21 +2063,16 @@ run_temporal_gbm <- function(
     
     pred_train <- predict(
       gbm_fit,
-      train_data,
+      newdata = train_data,
       n.trees = n.trees,
       type = "response"
     )
     
     pred_test <- predict(
       gbm_fit,
-      test_set,
+      newdata = test_set,
       n.trees = n.trees,
       type = "response"
-    )
-    
-    threshold <- get_tss_threshold(
-      obs_train,
-      pred_train
     )
     
     eval <- evaluate_forecast(
@@ -1807,63 +2083,65 @@ run_temporal_gbm <- function(
       threshold = threshold
     )
     
-    eval$model <- "GBM"
+    eval$model <- model_name
     eval$fold <- i
     
     results[[i]] <- eval
   }
   
   bind_rows(results)
-  
 }
 
-
-run_temporal_xgb <- function(
+run_temporal_xgb_forecast <- function(
     data_pre2013,
     test_set,
     predictors,
+    threshold,
     response = "presence",
     eta,
     max_depth,
     subsample,
     colsample_bytree,
-    nrounds
-){
+    nrounds,
+    v = 10,
+    seed = 123,
+    model_name = "XGBOOST"
+) {
   
   library(xgboost)
   library(rsample)
+  library(dplyr)
   
-  set.seed(123)
+  set.seed(seed)
   
   folds <- rsample::vfold_cv(
     data_pre2013,
-    v = 10,
+    v = v,
     strata = response
   )
   
   results <- list()
   
-  for(i in seq_along(folds$splits)){
+  for (i in seq_along(folds$splits)) {
     
     split <- folds$splits[[i]]
-    
-    train_data <- analysis(split)
+    train_data <- rsample::analysis(split)
     
     obs_train <- train_data[[response]]
     obs_test <- test_set[[response]]
     
     X_train <- model.matrix(
       ~ . - 1,
-      data = train_data[, predictors]
+      data = train_data[, predictors, drop = FALSE]
     )
     
     X_test <- model.matrix(
       ~ . - 1,
-      data = test_set[, predictors]
+      data = test_set[, predictors, drop = FALSE]
     )
     
     dtrain <- xgb.DMatrix(
-      X_train,
+      data = X_train,
       label = obs_train
     )
     
@@ -1881,20 +2159,8 @@ run_temporal_xgb <- function(
       verbose = 0
     )
     
-    pred_train <- predict(
-      xgb_fit,
-      X_train
-    )
-    
-    pred_test <- predict(
-      xgb_fit,
-      X_test
-    )
-    
-    threshold <- get_tss_threshold(
-      obs_train,
-      pred_train
-    )
+    pred_train <- predict(xgb_fit, X_train)
+    pred_test <- predict(xgb_fit, X_test)
     
     eval <- evaluate_forecast(
       obs_train = obs_train,
@@ -1904,18 +2170,86 @@ run_temporal_xgb <- function(
       threshold = threshold
     )
     
-    eval$model <- "XGBOOST"
+    eval$model <- model_name
     eval$fold <- i
     
     results[[i]] <- eval
-    
   }
   
   bind_rows(results)
-  
 }
 
-
+get_global_cv_threshold_gbm <- function(
+    data_train,
+    predictors,
+    response = "presence",
+    n.trees,
+    interaction.depth,
+    shrinkage,
+    n.minobsinnode,
+    v = 10,
+    seed = 123
+) {
+  
+  library(dplyr)
+  library(rsample)
+  library(gbm)
+  
+  data_train <- data_train %>%
+    dplyr::mutate(row_id_cv = dplyr::row_number())
+  
+  set.seed(seed)
+  folds <- rsample::vfold_cv(
+    data_train,
+    v = v,
+    strata = response
+  )
+  
+  pred_oof <- rep(NA_real_, nrow(data_train))
+  
+  for (i in seq_along(folds$splits)) {
+    split <- folds$splits[[i]]
+    analysis_data <- rsample::analysis(split)
+    assessment_data <- rsample::assessment(split)
+    
+    gbm_fit <- gbm(
+      formula = as.formula(
+        paste(response, "~", paste(predictors, collapse = "+"))
+      ),
+      distribution = "bernoulli",
+      data = analysis_data,
+      n.trees = n.trees,
+      interaction.depth = interaction.depth,
+      shrinkage = shrinkage,
+      n.minobsinnode = n.minobsinnode,
+      bag.fraction = 0.7,
+      train.fraction = 1,
+      verbose = FALSE
+    )
+    
+    pred <- predict(
+      gbm_fit,
+      newdata = assessment_data,
+      n.trees = n.trees,
+      type = "response"
+    )
+    
+    pred_oof[assessment_data$row_id_cv] <- pred
+  }
+  
+  keep <- !is.na(pred_oof)
+  
+  best <- find_best_tss_threshold(
+    obs = data_train[[response]][keep],
+    pred = pred_oof[keep]
+  )
+  
+  list(
+    threshold = best$threshold,
+    TSS = best$TSS,
+    oof_pred = pred_oof
+  )
+}
 
 
 

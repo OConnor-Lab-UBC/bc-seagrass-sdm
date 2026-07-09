@@ -954,15 +954,22 @@ spat$ZO[spat$ZO > 0] <- 1
 
 
 
-#JUST KEEP WHERE VALUES ARE PRESENCES????????
+#JUST KEEP WHERE VALUES ARE PRESENCES
 
+spat.zo<- spat %>% filter (ZO == 1) %>% select (-PH)
+spat.ph<- spat %>% filter (PH == 1) %>% select (-ZO)
 
 # Convert to spdf and export
-spat.spdf <- spat %>%
+spat.spdf.zo <- spat.zo %>%
+  st_as_sf(coords = c("X", "Y"), crs = "EPSG:3005")
+
+spat.spdf.ph <- spat.ph %>%
   st_as_sf(coords = c("X", "Y"), crs = "EPSG:3005")
 
 # export as shapefile
 # likely to have issues with attribute field names shortening
-st_write(spat.spdf, "code/output_data/processed_observations/SpatializedQuadrats_aggregated_2024only.shp", append=FALSE)
+st_write(spat.spdf.zo, "code/output_data/processed_observations/SpatializedQuadrats_aggregated_2024only_ZO.shp", append=FALSE)
+st_write(spat.spdf.ph, "code/output_data/processed_observations/SpatializedQuadrats_aggregated_2024only_PH.shp", append=FALSE)
 
-save(spat, file="code/output_data/processed_observations/seagrass_data_spatialized_aggregated_2024only.RData")
+save(spat.zo, file="code/output_data/processed_observations/seagrass_data_spatialized_aggregated_2024only_ZO.RData")
+save(spat.ph, file="code/output_data/processed_observations/seagrass_data_spatialized_aggregated_2024only_PH.RData")
