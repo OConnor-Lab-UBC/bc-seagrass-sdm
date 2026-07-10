@@ -127,6 +127,30 @@ presence_count[presence_count == 0] <- NA
 
 writeRaster(presence_count, "code/output_data/independent_validation/BCeelgrass_netforce_1974_2012.tif", overwrite = TRUE)
 
+### Fraser River Estuary paper came out after this was created with new Roberts bank and Boundary Bay eelgrass layer from 2020: 
+#https://summit.sfu.ca/item/40386
+# Metro Vancouver. (2022). Metro Vancouver Regional District Regional Land Cover Classification and Sensitive Ecosystem Inventory Update. Regional Planning and Housing Services Greater Vancouver Regional District. https://metrovancouver.org:443/services/regional-planning/sensitive-ecosystem-inventory-mapping-app
+
+netforce<- rast("code/output_data/independent_validation/BCeelgrass_netforce_2013_2023.tif")
+
+fraser<- vect("raw_data/MetroVan2020/2020_Eelgrass_MetroVanSEI.shp")
+fraser_proj <- project(fraser, netforce)
+
+fraser_rast <- terra::rasterize(
+  x = fraser_proj,
+  y = netforce,
+  field = "Shape_Area",
+  touches = TRUE
+)
+
+fraser_rast <- ifel(!is.na(fraser_rast), 1, NA)
+
+#can combine and not worry about years becasue there are no other datasets mapped for after 2013 in this area
+combined <- merge(netforce, fraser_rast)
+plot(combined)
+
+writeRaster(combined, "code/output_data/independent_validation/BCeelgrass_netforce_2013_2023.tif", overwrite = TRUE)
+
 
 
 #### phyllospadix, there is so little data with overlap will not be separating by years and doing a count, just a yes or no

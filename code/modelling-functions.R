@@ -2288,140 +2288,310 @@ perm_importance_xgb <- function(model, X, y, nrep = 10) {
   )
 }
 
-#### Independent Data Validation Function ####
-evaluate_independent_seagrass <- function(independent, model_names, cv_thresholds, raster_stack) {
-  results <- data.frame()
-  for (m in model_names) {
-    
-    pred <- independent[[m]]
-    obs  <- independent$obs  # should all be 1s
-    
-    # ---- Get threshold from CV table ----
-    thr <- cv_thresholds$mean_threshold[cv_thresholds$model == m]
-    
-    # ---- Presence-only metrics ----
-    #MPS=mean of predicted suitability values at observed presence locations, Higher MPS → model predicts eelgrass occurs in areas of high suitability.
-    #It’s a direct measure of how well the model aligns with known presences on a continuous scale, without requiring a threshold.
-    MPS  <- mean(pred, na.rm = TRUE)
-    # FPPS= number of presences ≥ threshold/ Total Number of presences with predicted suitability 
-    # The proportion of observed eelgrass locations that are classified as suitable by the model using a chosen threshold.
-    #FPPS close to 1 → nearly all eelgrass occurrences are correctly predicted as suitable.
-    FPPS <- mean(pred >= thr, na.rm = TRUE)
-    #FNR= number of presences < threshold / total Number of presences with predicted suitability = 1−FPPS
-    #The proportion of known eelgrass locations that the model fails to predict as suitable.
-    # Directly shows model omission error at the presence locations, which is crucial for conservation planning where missing real occurrences can have serious implications.
-    FNR  <- mean(pred < thr, na.rm = TRUE)
-    
-    # ---- Boyce Index ----
-    CBI <- NA
-    
-    pred_all <- terra::values(raster_stack[[m]])
-    
-    finite_preds <- pred_all[is.finite(pred_all)]
-    obs_presences <- pred[obs == 1]
-    
-    if (length(finite_preds) > 0 && length(obs_presences) > 0) {
-      
-      CBI <- tryCatch({
-        
-        boyce <- ecospat.boyce(
-          fit = finite_preds,
-          obs = obs_presences,
-          PEplot = FALSE
-        )
-        
-        # compatible with multiple ecospat versions
-        if ("Spearman.cor" %in% names(boyce)) {
-          boyce$Spearman.cor
-        } else if ("cor" %in% names(boyce)) {
-          boyce$cor
-        } else {
-          NA
-        }
-        
-      }, error = function(e) {
-        warning(paste("Boyce calculation failed for model:", m))
-        NA
-      })
-      
-    }
-    # ---- Combine results ----
-    results <- rbind(
-      results,
-      data.frame(
-        Model = m,
-        Threshold = thr,
-        MPS = MPS,
-        FPPS = FPPS,
-        FNR = FNR,
-        CBI = CBI,
-        stringsAsFactors = FALSE
-      )
-    )
+
+
+calc_independent_metrics <- function(data,
+                                obs_col = "obs",
+                                pa_set_col = "pa_set",
+                                model_cols = NULL,
+                                threshold = NULL,
+                                threshold_method = "max_tss",
+                                eps = 1e-15) {
+  if (is.null(model_cols)) {
+    model_cols <- data %>%
+      st_drop_geometry() %>%
+      select(where(is.numeric)) %>%
+      select(-all_of(c(obs_col, pa_set_col))) %>%
+      names()
   }
-  return(results)
+  dat <- data %>%
+    sf::st_drop_geometry() %>%
+    select(all_of(c(obs_col, pa_set_col, model_cols))) %>%
+    mutate(
+      "{obs_col}" := as.integer(.data[[obs_col]])
+    )
+  # presence rows have pa_set = NA, so repeat presences into each pseudoabsence set
+  pa_sets <- sort(unique(dat[[pa_set_col]][!is.na(dat[[pa_set_col]])]))
+  validation_by_set <- purrr::map(
+    pa_sets,
+    function(s) {
+      dat %>%
+        filter(.data[[obs_col]] == 1 | .data[[pa_set_col]] == s) %>%
+        mutate("{pa_set_col}" := s)
+    }
+  ) %>%
+    setNames(pa_sets)
+  metric_results <- purrr::imap_dfr(
+    validation_by_set,
+    function(set_data, set_id) {
+      purrr::map_dfr(
+        model_cols,
+        function(model) {
+          df <- set_data %>%
+            select(all_of(c(obs_col, model))) %>%
+            filter(
+              !is.na(.data[[obs_col]]),
+              !is.na(.data[[model]])
+            ) %>%
+            mutate(
+              obs_num = as.integer(.data[[obs_col]]),
+              pred = pmin(pmax(as.numeric(.data[[model]]), eps), 1 - eps)
+            )
+          if (length(unique(df$obs_num)) < 2) {
+            return(
+              tibble(
+                pa_set = as.integer(set_id),
+                model = model,
+                n = nrow(df),
+                n_presence = sum(df$obs_num == 1),
+                n_absence = sum(df$obs_num == 0),
+                threshold = NA_real_,
+                auc = NA_real_,
+                tjur = NA_real_,
+                brier = NA_real_,
+                logloss = NA_real_,
+                sensitivity = NA_real_,
+                specificity = NA_real_,
+                tss = NA_real_
+              )
+            )
+          }
+          auc_val <- yardstick::roc_auc_vec(
+            truth = factor(df$obs_num, levels = c(0, 1)),
+            estimate = df$pred,
+            event_level = "second"
+          )
+          tjur_val <- mean(df$pred[df$obs_num == 1]) -
+            mean(df$pred[df$obs_num == 0])
+          brier_val <- mean((df$pred - df$obs_num)^2)
+          logloss_val <- -mean(
+            df$obs_num * log(df$pred) +
+              (1 - df$obs_num) * log(1 - df$pred)
+          )
+          if (is.null(threshold)) {
+            if (threshold_method == "max_tss") {
+              threshold_grid <- sort(unique(df$pred))
+              threshold_stats <- purrr::map_dfr(
+                threshold_grid,
+                function(th) {
+                  pred_class <- ifelse(df$pred >= th, 1, 0)
+                  tp <- sum(pred_class == 1 & df$obs_num == 1)
+                  tn <- sum(pred_class == 0 & df$obs_num == 0)
+                  fp <- sum(pred_class == 1 & df$obs_num == 0)
+                  fn <- sum(pred_class == 0 & df$obs_num == 1)
+                  sensitivity <- ifelse(
+                    tp + fn > 0,
+                    tp / (tp + fn),
+                    NA_real_
+                  )
+                  specificity <- ifelse(
+                    tn + fp > 0,
+                    tn / (tn + fp),
+                    NA_real_
+                  )
+                  tibble(
+                    threshold = th,
+                    sensitivity = sensitivity,
+                    specificity = specificity,
+                    tss = sensitivity + specificity - 1
+                  )
+                }
+              )
+              best_row <- threshold_stats %>%
+                filter(tss == max(tss, na.rm = TRUE)) %>%
+                arrange(desc(sensitivity), desc(specificity), threshold) %>%
+                slice(1)
+              threshold_use <- best_row$threshold
+              sensitivity_val <- best_row$sensitivity
+              specificity_val <- best_row$specificity
+              tss_val <- best_row$tss
+            } else {
+              stop("Currently supported threshold_method: 'max_tss'.")
+            }
+          } else {
+            if (length(threshold) == 1) {
+              threshold_use <- threshold
+            } else {
+              threshold_use <- threshold[[model]]
+            }
+            pred_class <- ifelse(df$pred >= threshold_use, 1, 0)
+            tp <- sum(pred_class == 1 & df$obs_num == 1)
+            tn <- sum(pred_class == 0 & df$obs_num == 0)
+            fp <- sum(pred_class == 1 & df$obs_num == 0)
+            fn <- sum(pred_class == 0 & df$obs_num == 1)
+            sensitivity_val <- ifelse(
+              tp + fn > 0,
+              tp / (tp + fn),
+              NA_real_
+            )
+            specificity_val <- ifelse(
+              tn + fp > 0,
+              tn / (tn + fp),
+              NA_real_
+            )
+            tss_val <- sensitivity_val + specificity_val - 1
+          }
+          tibble(
+            pa_set = as.integer(set_id),
+            model = model,
+            n = nrow(df),
+            n_presence = sum(df$obs_num == 1),
+            n_absence = sum(df$obs_num == 0),
+            threshold = threshold_use,
+            auc = auc_val,
+            tjur = tjur_val,
+            brier = brier_val,
+            logloss = logloss_val,
+            sensitivity = sensitivity_val,
+            specificity = specificity_val,
+            tss = tss_val
+          )
+        }
+      )
+    }
+  )
+  metric_results
 }
 
 
 
 
-generate_pseudoabsences <- function(domain_rast,
-                                    exclusion_rast,
-                                    n_pa,
-                                    buffer_cells = 5, #100 m
-                                    seed = 123) {
-  set.seed(seed)
+make_pseudoabsence_candidate_rast <- function(domain_rast,
+                                              exclusion_rast,
+                                              buffer_m = 100,
+                                              filename = "",
+                                              overwrite = TRUE) {
   # make sure rasters align
   if (!terra::compareGeom(domain_rast, exclusion_rast, stopOnError = FALSE)) {
     stop("domain_rast and exclusion_rast do not have the same geometry.")
   }
-  # expand exclusion area by neighborhood buffer
-  if (buffer_cells > 0) {
-    exclusion_buffer <- terra::focal(
-      terra::ifel(!is.na(exclusion_rast), 1, NA),
-      w = matrix(1, nrow = 2 * buffer_cells + 1, ncol = 2 * buffer_cells + 1),
-      fun = "max",
-      na.policy = "omit",
-      fillvalue = NA
+  # cells with mapped / observed / suspected eelgrass
+  exclusion_binary <- terra::ifel(!is.na(exclusion_rast), 1, NA)
+  # buffer exclusion cells by distance in map units
+  # For EPSG:3005, map units are metres.
+  if (buffer_m > 0) {
+    exclusion_distance <- terra::distance(exclusion_binary)
+    exclusion_buffer <- terra::ifel(
+      exclusion_distance <= buffer_m,
+      1,
+      NA
     )
   } else {
-    exclusion_buffer <- terra::ifel(!is.na(exclusion_rast), 1, NA)
+    exclusion_buffer <- exclusion_binary
   }
-  # candidate cells = valid domain cells not in exclusion buffer
+  # candidate cells = valid eelgrass-domain cells not inside exclusion buffer
   candidate_rast <- terra::ifel(
     !is.na(domain_rast) & is.na(exclusion_buffer),
     1,
-    NA
+    NA,
+    filename = filename,
+    overwrite = overwrite
   )
+  candidate_rast
+}
+
+sample_pseudoabsences_min_dist <- function(candidate_rast,
+                                           n_pa,
+                                           min_dist_m = 100,
+                                           seed = 123,
+                                           oversample_factor = 20,
+                                           max_iter = 20) {
+  set.seed(seed)
+  
   candidate_cells <- which(!is.na(terra::values(candidate_rast)))
-  if (length(candidate_cells) < n_pa) {
+  candidate_n <- length(candidate_cells)
+  
+  if (candidate_n < n_pa) {
     stop(
       paste0(
-        "Not enough candidate cells. Requested ", n_pa,
-        ", but only ", length(candidate_cells), " available."
+        "Only ", candidate_n,
+        " candidate cells available, but ", n_pa,
+        " pseudoabsences requested."
       )
     )
   }
-  sampled_cells <- sample(candidate_cells, size = n_pa, replace = FALSE)
-  sampled_xy <- terra::xyFromCell(candidate_rast, sampled_cells)
-  # raster of pseudo-absence cells
-  pa_rast <- domain_rast
-  terra::values(pa_rast) <- NA
-  pa_rast[sampled_cells] <- 1
-  # data frame
+  
+  selected_cells <- integer(0)
+  selected_xy <- matrix(numeric(0), ncol = 2)
+  
+  remaining_cells <- candidate_cells
+  
+  for (iter in seq_len(max_iter)) {
+    n_needed <- n_pa - length(selected_cells)
+    
+    if (n_needed <= 0) {
+      break
+    }
+    
+    sample_size <- min(
+      length(remaining_cells),
+      max(n_needed * oversample_factor, n_needed)
+    )
+    
+    sampled_cells <- sample(remaining_cells, sample_size)
+    sampled_xy <- terra::xyFromCell(candidate_rast, sampled_cells)
+    
+    sampled_order <- sample(seq_along(sampled_cells))
+    
+    for (j in sampled_order) {
+      this_cell <- sampled_cells[j]
+      this_xy <- sampled_xy[j, , drop = FALSE]
+      
+      if (length(selected_cells) == 0) {
+        keep <- TRUE
+      } else {
+        d <- sqrt(
+          (selected_xy[, 1] - this_xy[1, 1])^2 +
+            (selected_xy[, 2] - this_xy[1, 2])^2
+        )
+        
+        keep <- all(d >= min_dist_m)
+      }
+      
+      if (keep) {
+        selected_cells <- c(selected_cells, this_cell)
+        selected_xy <- rbind(selected_xy, this_xy)
+      }
+      
+      if (length(selected_cells) >= n_pa) {
+        break
+      }
+    }
+    
+    remaining_cells <- setdiff(remaining_cells, selected_cells)
+  }
+  
+  if (length(selected_cells) < n_pa) {
+    stop(
+      paste0(
+        "Only selected ", length(selected_cells),
+        " pseudoabsences with minimum distance of ", min_dist_m,
+        " m, but ", n_pa,
+        " were requested. Try reducing n_pa, reducing min_dist_m, ",
+        "or increasing the candidate area."
+      )
+    )
+  }
+  
+  selected_cells <- selected_cells[seq_len(n_pa)]
+  selected_xy <- selected_xy[seq_len(n_pa), , drop = FALSE]
+  
   pa_df <- data.frame(
-    cell = sampled_cells,
-    x = sampled_xy[, 1],
-    y = sampled_xy[, 2],
+    cell = selected_cells,
+    x = selected_xy[, 1],
+    y = selected_xy[, 2],
     obs = 0
   )
-  # sf points
-  pa_sf <- sf::st_as_sf(pa_df, coords = c("x", "y"), crs = terra::crs(domain_rast))
+  
+  pa_sf <- sf::st_as_sf(
+    pa_df,
+    coords = c("x", "y"),
+    crs = terra::crs(candidate_rast)
+  )
+  
   list(
-    pa_rast = pa_rast,
     pa_df = pa_df,
     pa_sf = pa_sf,
-    candidate_rast = candidate_rast,
-    candidate_n = length(candidate_cells)
+    candidate_n = candidate_n
   )
 }
