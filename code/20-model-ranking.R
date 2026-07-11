@@ -8,12 +8,14 @@
 # Objective:
 # ---------
 # rank all models to find best model
-# max min make it so difficult to compare across full grid
-#z scores might not be great when only comparing a small number of models and might be unsable
+# create plot of all metrics in on 0-1
 ###############################################################################
-
-load("./code/output_data/model_results/combined_metrics_eelgrass_4_validations.RData")
-load("./code/output_data/model_results/combined_metrics_surfgrass_4_validations.RData")
+# AUC, Tjur, Specificity, Sensitivity range 0-1 with higher values better
+# Brier ranges 0-1 with low values better
+# Logloss ranges 0- infinity with low values better and values >1 very poor or highly overconfident incorrect predictions (will cap 0-1)
+# TSS ranges from -1 to 1 but values <0 are worse than random so can cap it at 0-1
+load("code/output_data/model_results/metrics_eelgrass.RData")
+#load("./code/output_data/model_results/combined_metrics_surfgrass_4_validations.RData")
 
 library(dplyr)
 library(fmsb)
@@ -26,573 +28,340 @@ library(grid)
 library(tidyr)
 library(ggplot2)
 library(tibble)
+library(tidyverse)
+
+
+# # ---------- Percentile rank functions ----------
+# # Higher = better
+pr_pos <- function(x) {
+  rank(x, ties.method = "average") / length(x)
+}
+
+pr_neg <- function(x) {
+  rank(-x, ties.method = "average") / length(x)
+}
 
 my_cols <- colorRampPalette(rev(brewer.pal(7, "RdYlBu")))(100)
 breaks <- seq(0, 1, length.out = 101)
 
 # ---- Colors ----
 model_cols <- c(
-  "GLMM_bccm" = "#66C2A5",
-  "GLMM_spatial_bccm" = "#FC8D62",
+  "GLM_bccm" = "#66C2A5",
+  "GLMM_bccm" = "#FC8D62",
   "GBM_bccm" = "#8DA0CB",
-  "XGB_bccm" = "#E78AC3",
-  "GLMM_nep" = "#A6D854",
-  "GLMM_spatial_nep" = "#FFD92F",
+  "XGBoost_bccm" = "#E78AC3",
+  "GLM_nep" = "#A6D854",
+  "GLMM_nep" = "#FFD92F",
   "GBM_nep" = "#E5C494",
-  "XGB_nep" = "#B3B3B3"
+  "XGBoost_nep" = "#B3B3B3"
 )
 
 model_order <- c(
-  "GLMM_bccm", "GLMM_spatial_bccm", "GBM_bccm", "XGB_bccm",
-  "GLMM_nep", "GLMM_spatial_nep", "GBM_nep", "XGB_nep"
+  "GLM_bccm", "GLMM_bccm", "GBM_bccm", "XGBoost_bccm",
+  "GLM_nep", "GLMM_nep", "GBM_nep", "XGBoost_nep"
 )
 
-# ---------- Percentile rank functions ----------
-# Higher = better
-pr_pos <- function(x) {
-  percent_rank(x)
-}
-
-# Lower = better
-pr_neg <- function(x) {
-  1 - percent_rank(x)
-}
-
-
-# z_pos <- function(x) {
-#   s <- sd(x, na.rm = TRUE)
-#   if (is.na(s) || s == 0) return(rep(0, length(x)))
-#   (x - mean(x, na.rm = TRUE)) / s
-# }
-# 
-# z_neg <- function(x) {
-#   s <- sd(x, na.rm = TRUE)
-#   if (is.na(s) || s == 0) return(rep(0, length(x)))
-#   (mean(x, na.rm = TRUE) - x) / s
-# }
-
-
 ###eelgrass
-rank_table <- combined_metrics_all_eelgrass %>%
-  select(-threshold_spatial, -threshold_field, -sensitivity_field, - specificity_field) %>%  # Exclude all columns with 'threshold' in their names
+rank_table <- combined_metrics_eelgrass %>%
+  select(-threshold_spatial, -threshold_field, -threshold_temporal, -threshold_independent) %>%  # Exclude all columns with 'threshold' in their names
   rename(Model = model, 
          AUC_Spatial = auc_spatial,
          Tjur_Spatial = tjur_spatial,
-         RMSE_Spatial = rmse_spatial,
+         Brier_Spatial = brier_spatial,
+         Logloss_Spatial = logloss_spatial,
+         Sensitivity_Spatial = sensitivity_spatial,
+         Specificity_Spatial = specificity_spatial,
          TSS_Spatial = tss_spatial,
          AUC_Temporal = auc_temporal,
          Tjur_Temporal = tjur_temporal,
-         RMSE_Temporal = rmse_temporal,
+         Brier_Temporal = brier_temporal,
+         Logloss_Temporal = logloss_temporal,
+         Sensitivity_Temporal = sensitivity_temporal,
+         Specificity_Temporal = specificity_temporal,
          TSS_Temporal = tss_temporal,
-         MPS = mps_independent,
-         FPPS = fpps_independent,
-         FNR = fnr_independent,
-         CBI = cbi_independent,
-         AUC_Field = auc_field,
-         Tjur_Field = tjur_r2_field,
-         RMSE_Field = rmse_field,
-         TSS_Field = TSS_field,
-         Sensitivity_FieldCV = sensitivity_field_cv,
-         Specificity_FieldCV = specificity_field_cv,
-         TSS_FieldCV = TSS_field_cv,
-         Cliffs_delta = cliffs_delta_field) 
-# Normalize metrics
-# norm_pos <- function(x) {
-#   rng <- max(x, na.rm = TRUE) - min(x, na.rm = TRUE)
-#   if (rng == 0) return(rep(0.5, length(x)))
-#   (x - min(x, na.rm = TRUE)) / rng
-# }
-# norm_neg <- function(x) {
-#   rng <- max(x, na.rm = TRUE) - min(x, na.rm = TRUE)
-#   if (rng == 0) return(rep(0.5, length(x)))
-#   (max(x, na.rm = TRUE) - x) / rng
-# }
-# # Scale metrics and create a final composite score
-# rank_table_scaled <- rank_table %>%
-#   mutate(
-#     CV_AUC = norm_pos(AUC_Spatial),
-#     CV_Tjur = norm_pos(Tjur_Spatial),
-#     CV_RMSE = norm_neg(RMSE_Spatial),
-#     CV_TSS = norm_pos(TSS_Spatial),
-#     
-#     TEMP_AUC = norm_pos(AUC_Temporal),
-#     TEMP_Tjur = norm_pos(Tjur_Temporal),
-#     TEMP_RMSE = norm_neg(RMSE_Temporal),
-#     TEMP_TSS = norm_pos(TSS_Temporal),
-#     
-#     INDEP_MPS = norm_pos(MPS),
-#     INDEP_FPPS = norm_pos(FPPS),
-#     INDEP_FNR = norm_neg(FNR),
-#     INDEP_CBI = norm_pos(CBI),
-#     
-#     FIELD_AUC = norm_pos(AUC_Field),
-#     FIELD_Tjur = norm_pos(Tjur_Field),
-#     FIELD_RMSE = norm_neg(RMSE_Field),
-#     FIELD_TSS = norm_pos(TSS_Field),
-#     #FIELD_SenCV = norm_pos(Sensitivity_FieldCV),
-#     #FIELD_SpeCV = norm_pos(Specificity_FieldCV),
-#     FIELD_TSSCV = norm_pos(TSS_FieldCV)
-#     #FIELD_CliffsD = norm_pos(Cliffs_delta)
-#   )
-# # Compute final composite score
-# rank_table_scaled$FinalScore <- rowMeans(rank_table_scaled %>%
-#                                            select(CV_AUC, CV_Tjur, CV_RMSE, CV_TSS,
-#                                                   TEMP_AUC, TEMP_Tjur, TEMP_RMSE, TEMP_TSS,
-#                                                   INDEP_MPS, INDEP_FPPS, INDEP_FNR, INDEP_CBI, 
-#                                                   FIELD_AUC, FIELD_Tjur, FIELD_RMSE, FIELD_TSSCV),
-#                                          na.rm = TRUE)
-# # Rank models based on the final score
-# final_rank <- rank_table_scaled %>%
-#   arrange(desc(FinalScore)) %>%
-#   select(Model, FinalScore)
-
+         AUC_Independent = auc_independent,
+         Tjur_Independent = tjur_independent,
+         Brier_Independent = brier_independent,
+         Logloss_Independent = logloss_independent,
+         Sensitivity_Independent = sensitivity_independent,
+         Specificity_Independent = specificity_independent,
+         TSS_Independent = tss_independent,
+         AUC_Targeted = auc_field,
+         Tjur_Targeted = tjur_field,
+         Brier_Targeted = brier_field,
+         Logloss_Targeted = logloss_field,
+         Sensitivity_Targeted = sensitivity_field,
+         Specificity_Targeted = specificity_field,
+         TSS_Targeted = tss_field) 
 
 #maybe better to have as percentile ranks to compare more broadly across whole grid
 rank_table_pr <- rank_table %>%
   mutate(
     
-    # ----- Spatial -----
-    CV_AUC   = pr_pos(AUC_Spatial),
-    CV_Tjur  = pr_pos(Tjur_Spatial),
-    CV_RMSE  = pr_neg(RMSE_Spatial),
-    CV_TSS   = pr_pos(TSS_Spatial),
+    # Spatial
+    Spatial_AUC = pr_pos(AUC_Spatial),
+    Spatial_Tjur = pr_pos(Tjur_Spatial),
+    Spatial_Brier = pr_neg(Brier_Spatial),
+    Spatial_Logloss = pr_neg(Logloss_Spatial),
+    Spatial_Sensitivity = pr_pos(Sensitivity_Spatial),
+    Spatial_Specificity = pr_pos(Specificity_Spatial),
+    Spatial_TSS = pr_pos(TSS_Spatial),
     
-    # ----- Temporal -----
-    TEMP_AUC   = pr_pos(AUC_Temporal),
-    TEMP_Tjur  = pr_pos(Tjur_Temporal),
-    TEMP_RMSE  = pr_neg(RMSE_Temporal),
-    TEMP_TSS   = pr_pos(TSS_Temporal),
+    # Temporal
+    Temporal_AUC = pr_pos(AUC_Temporal),
+    Temporal_Tjur = pr_pos(Tjur_Temporal),
+    Temporal_Brier = pr_neg(Brier_Temporal),
+    Temporal_Logloss = pr_neg(Logloss_Temporal),
+    Temporal_Sensitivity = pr_pos(Sensitivity_Temporal),
+    Temporal_Specificity = pr_pos(Specificity_Temporal),
+    Temporal_TSS = pr_pos(TSS_Temporal),
     
-    # ----- Independent -----
-    INDEP_MPS  = pr_pos(MPS),
-    INDEP_FPPS = pr_pos(FPPS),
-    INDEP_FNR  = pr_neg(FNR),
-    INDEP_CBI  = pr_pos(CBI),
+    # Independent
+    Independent_AUC = pr_pos(AUC_Independent),
+    Independent_Tjur = pr_pos(Tjur_Independent),
+    Independent_Brier = pr_neg(Brier_Independent),
+    Independent_Logloss = pr_neg(Logloss_Independent),
+    Independent_Sensitivity = pr_pos(Sensitivity_Independent),
+    Independent_Specificity = pr_pos(Specificity_Independent),
+    Independent_TSS = pr_pos(TSS_Independent),
     
-    # ----- Field -----
-    FIELD_AUC    = pr_pos(AUC_Field),
-    FIELD_Tjur   = pr_pos(Tjur_Field),
-    FIELD_RMSE   = pr_neg(RMSE_Field),
-    FIELD_TSSCV  = pr_pos(TSS_FieldCV)
-  )
-
-
-rank_table_pr <- rank_table_pr %>%
-  mutate(
-    FinalScore = rowMeans(
-      select(.,
-             CV_AUC, CV_Tjur, CV_RMSE, CV_TSS,
-             TEMP_AUC, TEMP_Tjur, TEMP_RMSE, TEMP_TSS,
-             INDEP_MPS, INDEP_FPPS, INDEP_FNR, INDEP_CBI,
-             FIELD_AUC, FIELD_Tjur, FIELD_RMSE, FIELD_TSSCV
-      ),
-      na.rm = TRUE
-    )
+    # Targeted
+    Targeted_AUC = pr_pos(AUC_Targeted),
+    Targeted_Tjur = pr_pos(Tjur_Targeted),
+    Targeted_Brier = pr_neg(Brier_Targeted),
+    Targeted_Logloss = pr_neg(Logloss_Targeted),
+    Targeted_Sensitivity = pr_pos(Sensitivity_Targeted),
+    Targeted_Specificity = pr_pos(Specificity_Targeted),
+    Targeted_TSS = pr_pos(TSS_Targeted)
   )
 
 rank_table_pr <- rank_table_pr %>%
   mutate(
     Spatial = rowMeans(
-      select(., CV_AUC, CV_Tjur, CV_RMSE, CV_TSS),
+      select(., starts_with("Spatial_")),
       na.rm = TRUE
     ),
     
     Temporal = rowMeans(
-      select(., TEMP_AUC, TEMP_Tjur, TEMP_RMSE, TEMP_TSS),
+      select(., starts_with("Temporal_")),
       na.rm = TRUE
     ),
     
     Independent = rowMeans(
-      select(., INDEP_MPS, INDEP_FPPS, INDEP_FNR, INDEP_CBI),
+      select(., starts_with("Independent_")),
       na.rm = TRUE
     ),
     
-    Field = rowMeans(
-      select(., FIELD_AUC, FIELD_Tjur, FIELD_RMSE, FIELD_TSSCV),
+    Targeted = rowMeans(
+      select(., starts_with("Targeted_")),
+      na.rm = TRUE
+    ),
+    
+    FinalScore = rowMeans(
+      select(., 
+             starts_with("Spatial_"),
+             starts_with("Temporal_"),
+             starts_with("Independent_"),
+             starts_with("Targeted_")),
       na.rm = TRUE
     )
   )
 
-# # ---------- Final ranking ----------
-# final_rank <- rank_table_pr %>%
-#   arrange(desc(FinalScore)) %>%
-#   select(Model, Spatial, Temporal, Independent, Field, FinalScore)
-# 
-# print(final_rank)
-
-
-
-# rank_table_z <- rank_table %>%
-#   mutate(
-#     CV_AUC = z_pos(AUC_Spatial),
-#     CV_Tjur = z_pos(Tjur_Spatial),
-#     CV_RMSE = z_neg(RMSE_Spatial),
-#     CV_TSS = z_pos(TSS_Spatial),
-#     
-#     TEMP_AUC = z_pos(AUC_Temporal),
-#     TEMP_Tjur = z_pos(Tjur_Temporal),
-#     TEMP_RMSE = z_neg(RMSE_Temporal),
-#     TEMP_TSS = z_pos(TSS_Temporal),
-#     
-#     INDEP_MPS = z_pos(MPS),
-#     INDEP_FPPS = z_pos(FPPS),
-#     INDEP_FNR = z_neg(FNR),
-#     INDEP_CBI = z_pos(CBI),
-#     
-#     FIELD_AUC = z_pos(AUC_Field),
-#     FIELD_Tjur = z_pos(Tjur_Field),
-#     FIELD_RMSE = z_neg(RMSE_Field),
-#     FIELD_TSSCV = z_pos(TSS_FieldCV)
-#   )
-# 
-# 
-# rank_table_z$FinalScore <- rowMeans(rank_table_z %>%
-#                                         select(CV_AUC, CV_Tjur, CV_RMSE, CV_TSS,
-#                                                TEMP_AUC, TEMP_Tjur, TEMP_RMSE, TEMP_TSS,
-#                                                INDEP_MPS, INDEP_FPPS, INDEP_FNR, INDEP_CBI, 
-#                                                FIELD_AUC, FIELD_Tjur, FIELD_RMSE, FIELD_TSSCV),
-#                                       na.rm = TRUE)
-# # Rank models based on the final score
-# final_rank_z <- rank_table_z %>%
-#   arrange(desc(FinalScore)) %>%
-#   select(Model, FinalScore)
-
-
 # ---- Build grouped dataset with spacers ----
-rank_table_pr <- rank_table_pr %>%
-  mutate(Model = recode(Model,
-                        "bccm_nospatial" = "GLMM_bccm",
-                        "bccm_spatial" = "GLMM_spatial_bccm",
-                        "GBM_bccm" = "GBM_bccm",
-                        "XGBOOST_bccm" = "XGB_bccm",
-                        "nep_nospatial" = "GLMM_nep",
-                        "nep_spatial" = "GLMM_spatial_nep",
-                        "GBM_nep" = "GBM_nep",
-                        "XGBOOST_nep" = "XGB_nep" ))
+# rank_table_pr <- rank_table_pr %>%
+#   mutate(Model = factor(Model, levels = model_order)) %>%
+#   arrange(Model)
 
-rank_table_pr <- rank_table_pr %>%
-  mutate(Model = factor(Model, levels = model_order)) %>%
-  arrange(Model)
 
-radar_df <- rank_table_pr %>%
-  select(Model,
-         CV_AUC, CV_Tjur, CV_RMSE, CV_TSS,
-         TEMP_AUC, TEMP_Tjur, TEMP_RMSE, TEMP_TSS,
-         INDEP_MPS, INDEP_FPPS, INDEP_FNR, INDEP_CBI,
-         FIELD_AUC, FIELD_Tjur, FIELD_RMSE, FIELD_TSSCV) %>%
-  mutate(
-    spacer1 = NA,
-    spacer2 = NA,
-    spacer3 = NA,
-    spacer4 = NA
+
+
+plot_df <- rank_table %>%
+  select(-matches("_sd_")) %>%
+  pivot_longer(
+    cols = -Model,
+    names_to = c("Metric", "Validation"),
+    names_pattern = "(.+)_(Spatial|Temporal|Independent|Targeted)",
+    values_to = "Value"
+  )
+
+
+plot_sd <- rank_table %>%
+  select(Model, matches("_sd_")) %>%
+  pivot_longer(
+    cols = -Model,
+    names_to = c("Metric", "Validation"),
+    names_pattern = "^(.*)_sd_(.*)$",
+    values_to = "SD"
   ) %>%
-  select(Model,
-         CV_AUC, CV_Tjur, CV_RMSE, CV_TSS, spacer1,
-         TEMP_AUC, TEMP_Tjur, TEMP_RMSE, TEMP_TSS, spacer2,
-         INDEP_MPS, INDEP_FPPS, INDEP_FNR, INDEP_CBI, spacer3,
-         FIELD_AUC, FIELD_Tjur, FIELD_RMSE, FIELD_TSSCV, spacer4)
+  mutate(
+    Metric = str_to_title(Metric),
+    Metric = recode(
+      Metric,
+      Auc = "AUC",
+      Tss = "TSS",
+      Tjur = "Tjur",
+      Logloss = "Logloss"
+    ),
+    Validation = str_to_title(Validation)
+  )
 
-# Replace spacers with 0
-radar_df[is.na(radar_df)] <- 0
 
-# ---- Labels ----
-colnames(radar_df) <- c(
-  "Model",
-  "AUC", "Tjur", "RMSE", "TSS", " ",
-  "AUC ", "Tjur ", "RMSE ", "TSS ", "  ",
-  "MPS", "FPPS", "FNR", "CBI", "   ",
-  "AUC  ", "Tjur  ", "RMSE  ",
-  "TSS  ", "    "
+# combine means + SD
+plot_df <- plot_df %>%
+  left_join(
+    plot_sd,
+    by = c("Model", "Metric", "Validation")
+  ) %>%
+  mutate(
+    # transform metrics so higher = better
+    PlotValue = case_when(
+      Metric == "Brier"   ~ pmax(1 - Value, 0),
+      Metric == "Logloss" ~ pmax(1 - Value, 0),
+      Metric == "TSS"     ~ pmax(Value, 0),
+      TRUE                ~ Value
+    ),
+    
+    # SD does not change for 1-x transformations
+    SD_plot = SD,
+    
+    xmin = pmax(PlotValue - SD_plot, 0),
+    xmax = pmin(PlotValue + SD_plot, 1),
+    
+    Metric = factor(
+      Metric,
+      levels = c(
+        "Brier",
+        "Logloss",
+        "TSS",
+        "Specificity",
+        "Sensitivity",
+        "Tjur",
+        "AUC"
+      ),
+      labels = c(
+        "1 - Brier",
+        "1 - Log Loss",
+        "TSS",
+        "Specificity",
+        "Sensitivity",
+        "Tjur R²",
+        "AUC"
+      )
+    ),
+    
+    Validation = factor(
+      Validation,
+      levels = c("Spatial", "Temporal", "Independent", "Targeted")
+    ),
+    
+    Model = factor(Model, levels = model_order)
+  )
+
+metric_plot_eelgrass <- ggplot(
+  plot_df,
+  aes(x = PlotValue, y = Metric, colour = Model)
+) +
+  geom_errorbar(
+    aes(xmin = xmin, xmax = xmax),
+    linewidth = 1,
+    alpha = 0.7,
+    na.rm = TRUE,
+    position = position_dodge(width = 0.65)
+  ) +
+  geom_point(
+    shape = 16,      # solid circle
+    size = 2.5,
+    alpha = 0.85,
+    position = position_dodge(width = 0.65)
+  ) +
+  facet_wrap(~Validation, nrow = 2) +
+  scale_colour_manual(
+    values = model_cols,
+    breaks = model_order
+  ) +
+  scale_x_continuous(
+    limits = c(0, 1),
+    breaks = seq(0, 1, 0.2),
+    expand = expansion(mult = c(0.01, 0.01))
+  ) +
+  labs(
+    x = "Metric value",
+    y = NULL,
+    colour = "Model"
+  ) +
+  theme_bw(base_size = 13) +
+  theme(
+    panel.grid.major.y = element_line(colour = "grey85", linewidth = 0.4),
+    panel.grid.major.x = element_line(colour = "grey92", linewidth = 0.25),
+    panel.grid.minor = element_blank(),
+    strip.background = element_blank(),
+    strip.text = element_text(face = "bold", size = 12),
+    legend.position = "bottom",
+    legend.title = element_text(face = "bold"),
+    legend.text = element_text(size = 10),
+    legend.spacing.x = unit(0.5, "cm")
+  ) +
+  guides(
+    colour = guide_legend(
+      nrow = 2,
+      byrow = TRUE
+    )
+  )
+metric_plot_eelgrass
+# Extract model legend BEFORE removing it
+model_leg <- cowplot::get_legend(
+  metric_plot_eelgrass +
+    theme(legend.position = "bottom")
 )
 
-# ---- Radar format ----
-radar_ready <- rbind(
-  rep(1, ncol(radar_df) - 1),
-  rep(0, ncol(radar_df) - 1),
-  radar_df[, -1]
-)
-
-rownames(radar_ready) <- c("max", "min", radar_df$Model)
-plot_cols <- unname(model_cols[as.character(radar_df$Model)])
-
-
-# ---- Plot ----
-par(mar = c(2, 2, 3, 2))
+# Remove legend from the plot used in the figure
+metric_plot_eelgrass_noleg <- metric_plot_eelgrass +
+  theme(legend.position = "none")
 
 
 # Also test if we make a score based on each of the 4 validaitons. 
-  
-  # # Compute final composite scores for each category
-  # rank_table_scaled_cat <- rank_table_scaled %>%
-  #   mutate(
-  #     Spatial = rowMeans(select(., CV_AUC, CV_Tjur, CV_RMSE, CV_TSS), na.rm = TRUE),
-  #     Temporal = rowMeans(select(., TEMP_AUC, TEMP_Tjur, TEMP_RMSE, TEMP_TSS), na.rm = TRUE),
-  #     Independent = rowMeans(select(., INDEP_MPS, INDEP_FPPS, INDEP_FNR, INDEP_CBI), na.rm = TRUE),
-  #     Field = rowMeans(select(., FIELD_AUC, FIELD_Tjur, FIELD_RMSE, FIELD_TSSCV), na.rm = TRUE)
-  #   )
-  # Rank models based on the final score for each category
-  # final_rank_cat <- rank_table_scaled_cat %>%
-  #   arrange(desc(Spatial)) %>%
-  #   select(Model, Spatial, Temporal, Independent, Field)
-  
   # Heat map
   heat_df_cat <- rank_table_pr %>%
-    select(Model, Model, Spatial, Temporal, Independent, Field, FinalScore) %>%
+    select(Model, Model, Spatial, Temporal, Independent, Targeted, FinalScore) %>%
     arrange(desc(FinalScore)) %>%
     select(-FinalScore) %>%
     tibble::column_to_rownames("Model")
   
-  
-  
-
-  
- 
-  
-  
-  
-  
-  ###surfgrass
-  rank_table_surf <- combined_metrics_all_surfgrass %>%
-    select(-threshold_spatial, -threshold_field, -sensitivity_field, - specificity_field) %>%  # Exclude all columns with 'threshold' in their names
-    rename(Model = model, 
-           AUC_Spatial = auc_spatial,
-           Tjur_Spatial = tjur_spatial,
-           RMSE_Spatial = rmse_spatial,
-           TSS_Spatial = tss_spatial,
-           AUC_Temporal = auc_temporal,
-           Tjur_Temporal = tjur_temporal,
-           RMSE_Temporal = rmse_temporal,
-           TSS_Temporal = tss_temporal,
-           MPS = mps_independent,
-           FPPS = fpps_independent,
-           FNR = fnr_independent,
-           CBI = cbi_independent,
-           AUC_Field = auc_field,
-           Tjur_Field = tjur_r2_field,
-           RMSE_Field = rmse_field,
-           TSS_Field = TSS_field,
-           Sensitivity_FieldCV = sensitivity_field_cv,
-           Specificity_FieldCV = specificity_field_cv,
-           TSS_FieldCV = TSS_field_cv,
-           Cliffs_delta = cliffs_delta_field) 
-  # Normalize metrics
-  norm_pos <- function(x) (x - min(x)) / (max(x) - min(x))
-  norm_neg <- function(x) (max(x) - x) / (max(x) - min(x))
- 
-   # Scale metrics and create a final composite score
-  rank_table_scaled_surf <- rank_table_surf %>%
-    mutate(
-      CV_AUC = norm_pos(AUC_Spatial),
-      CV_Tjur = norm_pos(Tjur_Spatial),
-      CV_RMSE = norm_neg(RMSE_Spatial),
-      CV_TSS = norm_pos(TSS_Spatial),
-      
-      TEMP_AUC = norm_pos(AUC_Temporal),
-      TEMP_Tjur = norm_pos(Tjur_Temporal),
-      TEMP_RMSE = norm_neg(RMSE_Temporal),
-      TEMP_TSS = norm_pos(TSS_Temporal),
-      
-      INDEP_MPS = norm_pos(MPS),
-      INDEP_FPPS = norm_pos(FPPS),
-      INDEP_FNR = norm_neg(FNR),
-      INDEP_CBI = norm_pos(CBI),
-      
-      FIELD_AUC = norm_pos(AUC_Field),
-      FIELD_Tjur = norm_pos(Tjur_Field),
-      FIELD_RMSE = norm_neg(RMSE_Field),
-      FIELD_TSS = norm_pos(TSS_Field),
-      #FIELD_SenCV = norm_pos(Sensitivity_FieldCV),
-      #FIELD_SpeCV = norm_pos(Specificity_FieldCV),
-      FIELD_TSSCV = norm_pos(TSS_FieldCV)
-      #FIELD_CliffsD = norm_pos(Cliffs_delta)
+  # Rebuild heatmap legend (continuous percentile scale)
+  heat_leg_plot <- ggplot(
+    data.frame(
+      x = seq(0, 1, length.out = 100),
+      y = 1,
+      val = seq(0, 1, length.out = 100)
+    ),
+    aes(x = x, y = y, fill = val)
+  ) +
+    geom_tile() +
+    scale_fill_gradientn(
+      colours = my_cols,
+      limits = c(0, 1),
+      name = "Relative performance percentile",
+      guide = guide_colorbar(
+        direction = "horizontal",
+        title.position = "top",
+        title.hjust = 0.5,
+        barwidth = unit(5.5, "cm"),
+        barheight = unit(0.35, "cm"),
+        ticks = TRUE
+      )
+    ) +
+    scale_x_continuous(
+      breaks = c(0, 0.25, 0.5, 0.75, 1),
+      labels = c("0", "0.25", "0.50", "0.75", "1")
+    ) +
+    theme_void() +
+    theme(
+      legend.position = "bottom",
+      legend.title = element_text(size = 10),
+      legend.text = element_text(size = 9)
     )
-  # Compute final composite score
-  rank_table_scaled_surf$FinalScore <- rowMeans(rank_table_scaled_surf %>%
-                                             select(CV_AUC, CV_Tjur, CV_RMSE, CV_TSS,
-                                                    TEMP_AUC, TEMP_Tjur, TEMP_RMSE, TEMP_TSS,
-                                                    INDEP_MPS, INDEP_FPPS, INDEP_FNR, INDEP_CBI, 
-                                                    FIELD_AUC, FIELD_Tjur, FIELD_RMSE, FIELD_TSSCV),
-                                           na.rm = TRUE)
-  # Rank models based on the final score
-  final_rank <- rank_table_scaled_surf %>%
-    arrange(desc(FinalScore)) %>%
-    select(Model, FinalScore)
   
-  # ---- Build grouped dataset with spacers ----
-  rank_table_scaled_surf <- rank_table_scaled_surf %>%
-    mutate(Model = recode(Model,
-                          "bccm_nospatial" = "GLMM_bccm",
-                          "bccm_spatial" = "GLMM_spatial_bccm",
-                          "GBM_bccm" = "GBM_bccm",
-                          "XGBOOST_bccm" = "XGB_bccm",
-                          "nep_nospatial" = "GLMM_nep",
-                          "nep_spatial" = "GLMM_spatial_nep",
-                          "GBM_nep" = "GBM_nep",
-                          "XGBOOST_nep" = "XGB_nep" ))
-  
-  rank_table_scaled_surf <- rank_table_scaled_surf %>%
-    mutate(Model = factor(Model, levels = model_order)) %>%
-    arrange(Model)
-  
-  
-  radar_df_surf <- rank_table_scaled_surf %>%
-    select(Model,
-           CV_AUC, CV_Tjur, CV_RMSE, CV_TSS,
-           TEMP_AUC, TEMP_Tjur, TEMP_RMSE, TEMP_TSS,
-           INDEP_MPS, INDEP_FPPS, INDEP_FNR, INDEP_CBI,
-           FIELD_AUC, FIELD_Tjur, FIELD_RMSE, FIELD_TSSCV) %>%
-    mutate(
-      spacer1 = NA,
-      spacer2 = NA,
-      spacer3 = NA,
-      spacer4 = NA
-    ) %>%
-    select(Model,
-           CV_AUC, CV_Tjur, CV_RMSE, CV_TSS, spacer1,
-           TEMP_AUC, TEMP_Tjur, TEMP_RMSE, TEMP_TSS, spacer2,
-           INDEP_MPS, INDEP_FPPS, INDEP_FNR, INDEP_CBI, spacer3,
-           FIELD_AUC, FIELD_Tjur, FIELD_RMSE, FIELD_TSSCV, spacer4)
-  
-  # Replace spacers with 0
-  radar_df_surf[is.na(radar_df_surf)] <- 0
-  
-  # ---- Labels ----
-  colnames(radar_df_surf) <- c(
-    "Model",
-    "AUC", "Tjur", "RMSE", "TSS", " ",
-    "AUC ", "Tjur ", "RMSE ", "TSS ", "  ",
-    "MPS", "FPPS", "FNR", "CBI", "   ",
-    "AUC  ", "Tjur  ", "RMSE  ",
-    "TSS  ", "    "
-  )
-  
-  # ---- Radar format ----
-  radar_ready_surf <- rbind(
-    rep(1, ncol(radar_df_surf) - 1),
-    rep(0, ncol(radar_df_surf) - 1),
-    radar_df_surf[, -1]
-  )
-  
-  rownames(radar_ready_surf) <- c("max", "min", radar_df_surf$Model)
-  plot_cols_surf <- unname(model_cols[as.character(radar_df_surf$Model)])
-  # ---- Colors ----
-  #cols <- brewer.pal(n = nrow(radar_df_surf), name = "Set2")
-  
-  # ---- Plot ----
-  par(mar = c(2, 2, 3, 2))
-  
-  # Also test if we make a score based on each of the 4 validaitons. 
-  
-  # Compute final composite scores for each category
-  rank_table_scaled_cat_surf <- rank_table_scaled_surf %>%
-    mutate(
-      Spatial = rowMeans(select(., CV_AUC, CV_Tjur, CV_RMSE, CV_TSS), na.rm = TRUE),
-      Temporal = rowMeans(select(., TEMP_AUC, TEMP_Tjur, TEMP_RMSE, TEMP_TSS), na.rm = TRUE),
-      Independent = rowMeans(select(., INDEP_MPS, INDEP_FPPS, INDEP_FNR, INDEP_CBI), na.rm = TRUE),
-      Field = rowMeans(select(., FIELD_AUC, FIELD_Tjur, FIELD_RMSE, FIELD_TSSCV), na.rm = TRUE)
-    )
-  # Rank models based on the final score for each category
-  final_rank_cat_surf <- rank_table_scaled_cat_surf %>%
-    arrange(desc(Spatial)) %>%
-    select(Model, Spatial, Temporal, Independent, Field)
-  
-  # Heat map
-  heat_df_cat_surf <- rank_table_scaled_cat_surf %>%
-    select(Model, Model, Spatial, Temporal, Independent, Field, FinalScore) %>%
-    arrange(desc(FinalScore)) %>%
-    select(-FinalScore) %>%
-    tibble::column_to_rownames("Model")
-  
-
-  
-  #updated radar maps
-  radar_plot_eelgrass <- as.ggplot(function() {
-    par(
-      mar = c(2.5, 2.5, 2.5, 2.5),  # much tighter
-      oma = c(2, 2, 2, 2),
-      xpd = NA
-    )
-    # par(
-    #   mar = c(6, 6, 6, 6),
-    #   oma = c(2, 2, 2, 2),
-    #   xpd = NA
-    # )
-    radarchart(
-      radar_ready,
-      axistype = 0,
-      caxislabels = NULL,
-      pcol = plot_cols,
-      plwd = 2,
-      plty = 1,
-      cglcol = "grey85",
-      cglty = 1,
-      cglwd = 0.8,
-      vlcex = 0.6
-    )
-
-    n_axes <- ncol(radar_ready) - 1
-    angles <- seq(pi/2, 2*pi + pi/2, length.out = n_axes + 1)[-(n_axes + 1)]
-    
-    group_pos <- list(
-      Spatial = mean(angles[1:4]),
-      Temporal = mean(angles[6:9]),
-      Independent = mean(angles[11:14]),
-      Field = mean(angles[16:19])
-    )
-    
-    r <- 1.7
-    
-    text(r * cos(group_pos$Spatial), r * sin(group_pos$Spatial), "Spatial", font = 2, cex = 0.9)
-    text(r * cos(group_pos$Temporal), r * sin(group_pos$Temporal), "Temporal", font = 2, cex = 0.9)
-    text(r * cos(group_pos$Independent), r * sin(group_pos$Independent), "Independent", font = 2, cex = 0.9)
-    text(r * cos(group_pos$Field), r * sin(group_pos$Field), "Field", font = 2, cex = 0.9)
-  }) + ggplot2::coord_fixed()
-  radar_plot_eelgrass
-  
-  
-  radar_plot_surfgrass <- as.ggplot(function() {
-    par(
-      mar = c(2.5, 2.5, 2.5, 2.5),  # much tighter
-      oma = c(2, 2, 2, 2),
-      xpd = NA
-    )
-    # par(
-    #   mar = c(6, 6, 6, 6),
-    #   oma = c(2, 2, 2, 2),
-    #   xpd = NA
-    # )
-    radarchart(
-      radar_ready_surf,
-      axistype = 0,
-      caxislabels = NULL,
-      pcol = plot_cols_surf,
-      plwd = 2,
-      plty = 1,
-      cglcol = "grey85",
-      cglty = 1,
-      cglwd = 0.8,
-      vlcex = 0.6
-    )
-    
-    n_axes <- ncol(radar_ready_surf) - 1
-    angles <- seq(pi/2, 2*pi + pi/2, length.out = n_axes + 1)[-(n_axes + 1)]
-    
-    group_pos <- list(
-      Spatial = mean(angles[1:4]),
-      Temporal = mean(angles[6:9]),
-      Independent = mean(angles[11:14]),
-      Field = mean(angles[16:19])
-    )
-    
-    r <- 1.7
-    
-    text(r * cos(group_pos$Spatial), r * sin(group_pos$Spatial), "Spatial", font = 2, cex = 0.9)
-    text(r * cos(group_pos$Temporal), r * sin(group_pos$Temporal), "Temporal", font = 2, cex = 0.9)
-    text(r * cos(group_pos$Independent), r * sin(group_pos$Independent), "Independent", font = 2, cex = 0.9)
-    text(r * cos(group_pos$Field), r * sin(group_pos$Field), "Field", font = 2, cex = 0.9)
-  }) + coord_fixed()
-  radar_plot_surfgrass
-  
+  heat_leg <- cowplot::get_legend(heat_leg_plot)
   
   # Create heatmaps
   heat_plot_eelgrass <- as.ggplot(function() {
@@ -606,136 +375,40 @@ par(mar = c(2, 2, 3, 2))
       legend = FALSE,
       color = my_cols,
       breaks = breaks,
-      cellwidth = 40,
-      cellheight = 24,
-      fontsize = 10,
-      fontsize_row = 9,
-      fontsize_col = 10
+      cellwidth = 70,
+      cellheight = 35,
+      fontsize = 12,
+      fontsize_row = 11,
+      fontsize_col = 12
     )
   })
-  
-    heat_plot_surfgrass <- as.ggplot(function() {
-      pheatmap(
-        heat_df_cat_surf,
-        cluster_rows = FALSE,
-        cluster_cols = FALSE,
-        show_rownames = TRUE,
-        treeheight_row = 0,
-        treeheight_col = 0,
-        legend = FALSE,
-        color = my_cols,
-        breaks = breaks,
-        cellwidth = 40,
-        cellheight = 24,
-        fontsize = 10,
-        fontsize_row = 9,
-        fontsize_col = 10
-      )
-    })
-  
-    
-    radar_plot_eelgrass  <- radar_plot_eelgrass  + theme(plot.margin = margin(1, 1, 1, 1))
-    radar_plot_surfgrass <- radar_plot_surfgrass + theme(plot.margin = margin(1, 1, 1, 1))
-    heat_plot_eelgrass  <- heat_plot_eelgrass  + theme(plot.margin = margin(1, 1, 1, 1))
-    heat_plot_surfgrass <- heat_plot_surfgrass + theme(plot.margin = margin(1, 1, 1, 1))
-    # Add species labels as separate title panels
-    eelgrass_title <- ggdraw() +
-      draw_label("Eelgrass", fontface = "bold", size = 14, x = 0, hjust = 0)
-    surfgrass_title <- ggdraw() +
-      draw_label("Surfgrass", fontface = "bold", size = 14, x = 0, hjust = 0)
-    # Row 1: eelgrass radar + heatmap
-    eelgrass_row <- plot_grid(
-      radar_plot_eelgrass,
-      heat_plot_eelgrass,
-      ncol = 2,
-      rel_widths = c(1.25, 1),
-      align = "h"
-    )
-    # Row 2: surfgrass radar + heatmap
-    surfgrass_row <- plot_grid(
-      radar_plot_surfgrass,
-      heat_plot_surfgrass,
-      ncol = 2,
-      rel_widths = c(1.25, 1),
-      align = "h"
-    )
-    # Rebuild radar legend
-    radar_leg_plot <- ggplot(
-      data.frame(Model = model_order),
-      aes(x = Model, y = 1, color = Model)
-    ) +
-      geom_point(size = 3) +
-      scale_color_manual(
-        values = model_cols,
-        name = "Model",
-        guide = guide_legend(ncol = 4, byrow = TRUE)
-      ) +
-      theme_void() +
-      theme(
-        legend.position = "bottom",
-        legend.title = element_text(size = 10),
-        legend.text = element_text(size = 9)
-      )
-    radar_leg <- cowplot::get_legend(radar_leg_plot)
-    # Rebuild heatmap legend
-    heat_leg_plot <- ggplot(
-      data.frame(
-        x = seq(0, 1, length.out = 100),
-        y = 1,
-        val = seq(0, 1, length.out = 100)
-      ),
-      aes(x = x, y = y, fill = val)
-    ) +
-      geom_tile() +
-      scale_fill_gradientn(
-        colours = my_cols,
-        limits = c(0, 1),
-        name = "Relative performance",
-        guide = guide_colorbar(
-          direction = "horizontal",
-          title.position = "top",
-          barwidth = unit(5.5, "cm"),
-          barheight = unit(0.35, "cm")
-        )
-      ) +
-      theme_void() +
-      theme(
-        legend.position = "bottom",
-        legend.title = element_text(size = 10),
-        legend.text = element_text(size = 9)
-      )
-    heat_leg <- cowplot::get_legend(heat_leg_plot)
-    legend_row <- plot_grid(
-      radar_leg,
-      heat_leg,
-      ncol = 2,
-      rel_widths = c(1.4, 0.75)
-    )
-    # Final figure
-    final_plot <- plot_grid(
-      eelgrass_title,
-      eelgrass_row,
-      surfgrass_title,
-      surfgrass_row,
-      legend_row,
-      ncol = 1,
-      rel_heights = c(0.05, 1, 0.05, 1, 0.18)
-    )
-    final_plot
-    
-    
-    ggsave(
-      filename = "figures/model_ranking_radar_heatmap.png",
-      plot = final_plot,
-      width = 8.6,
-      height = 9,
-      dpi = 300,
-      bg = "white"
-    )
-    
-    
-   
-  # For eelgrass probably pick XGBOOST NEP, even thought it doesn't do well temporally but should do well for predicting rpeent day eelgrass.  
-  #For surfgrass pick bccm spatial, it does good in every validation type. XGBOOST nep does best in field , but bccm_spatial is not horrible
+
+ 
+  # ---- Combine the two legends ----
+  legend_row <- plot_grid(
+    model_leg,
+    heat_leg,
+    ncol = 2,
+    rel_widths = c(1.4, 0.8)
+  )
   
   
+  # Combine plot + heatmap
+  combined_plot_eelgrass <- metric_plot_eelgrass_noleg + heat_plot_eelgrass +
+    plot_layout(
+      widths = c(3, 1.5)
+    )
+  
+  
+  # ---- Final figure with legends underneath ----
+  final_plot_eelgrass <- plot_grid(
+    combined_plot_eelgrass,
+    legend_row,
+    ncol = 1,
+    rel_heights = c(1, 0.15)
+  )
+  
+  final_plot_eelgrass
+  
+  # For eelgrass  pick XGBOOST NEP
+ 

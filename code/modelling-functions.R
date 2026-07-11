@@ -2595,3 +2595,168 @@ sample_pseudoabsences_min_dist <- function(candidate_rast,
     candidate_n = candidate_n
   )
 }
+
+calc_field_metrics <- function(
+    data,
+    obs_col,
+    model_cols = NULL,
+    threshold = NULL,
+    threshold_method = "max_tss",
+    eps = 1e-15
+){
+  
+  if (is.null(model_cols)) {
+    model_cols <- names(data)[grepl("_pred$", names(data))]
+  }
+  
+  dat <- data |>
+    sf::st_drop_geometry() |>
+    dplyr::mutate(
+      obs = as.integer(.data[[obs_col]])
+    )
+  
+  purrr::map_dfr(
+    model_cols,
+    function(model){
+      
+      df <- dat |>
+        dplyr::select(obs, all_of(model)) |>
+        dplyr::filter(
+          !is.na(obs),
+          !is.na(.data[[model]])
+        ) |>
+        dplyr::mutate(
+          pred = pmin(
+            pmax(as.numeric(.data[[model]]), eps),
+            1 - eps
+          )
+        )
+      
+      if(length(unique(df$obs)) < 2){
+        
+        return(
+          tibble::tibble(
+            model = model,
+            n = nrow(df),
+            n_presence = sum(df$obs == 1),
+            n_absence = sum(df$obs == 0),
+            threshold = NA_real_,
+            auc = NA_real_,
+            tjur = NA_real_,
+            brier = NA_real_,
+            logloss = NA_real_,
+            sensitivity = NA_real_,
+            specificity = NA_real_,
+            tss = NA_real_
+          )
+        )
+        
+      }
+      
+      auc_val <- yardstick::roc_auc_vec(
+        truth = factor(df$obs, levels = c(0,1)),
+        estimate = df$pred,
+        event_level = "second"
+      )
+      
+      tjur_val <-
+        mean(df$pred[df$obs == 1]) -
+        mean(df$pred[df$obs == 0])
+      
+      brier_val <-
+        mean((df$pred - df$obs)^2)
+      
+      logloss_val <-
+        -mean(
+          df$obs * log(df$pred) +
+            (1 - df$obs) * log(1 - df$pred)
+        )
+      
+      if(is.null(threshold)){
+        
+        threshold_grid <- sort(unique(df$pred))
+        
+        threshold_stats <- purrr::map_dfr(
+          threshold_grid,
+          function(th){
+            
+            pred_class <- ifelse(df$pred >= th,1,0)
+            
+            tp <- sum(pred_class == 1 & df$obs == 1)
+            tn <- sum(pred_class == 0 & df$obs == 0)
+            fp <- sum(pred_class == 1 & df$obs == 0)
+            fn <- sum(pred_class == 0 & df$obs == 1)
+            
+            sensitivity <-
+              ifelse(tp + fn > 0,
+                     tp/(tp+fn),
+                     NA_real_)
+            
+            specificity <-
+              ifelse(tn + fp > 0,
+                     tn/(tn+fp),
+                     NA_real_)
+            
+            tibble::tibble(
+              threshold = th,
+              sensitivity = sensitivity,
+              specificity = specificity,
+              tss = sensitivity + specificity - 1
+            )
+            
+          }
+        )
+        
+        best <- threshold_stats |>
+          dplyr::filter(
+            tss == max(tss, na.rm = TRUE)
+          ) |>
+          dplyr::arrange(
+            desc(sensitivity),
+            desc(specificity),
+            threshold
+          ) |>
+          dplyr::slice(1)
+        
+      } else {
+        
+        th <- if(length(threshold) == 1)
+          threshold
+        else
+          threshold[[model]]
+        
+        pred_class <- ifelse(df$pred >= th,1,0)
+        
+        tp <- sum(pred_class == 1 & df$obs == 1)
+        tn <- sum(pred_class == 0 & df$obs == 0)
+        fp <- sum(pred_class == 1 & df$obs == 0)
+        fn <- sum(pred_class == 0 & df$obs == 1)
+        
+        best <- tibble::tibble(
+          threshold = th,
+          sensitivity = tp/(tp+fn),
+          specificity = tn/(tn+fp),
+          tss = tp/(tp+fn) + tn/(tn+fp) - 1
+        )
+        
+      }
+      
+      tibble::tibble(
+        model = model,
+        n = nrow(df),
+        n_presence = sum(df$obs == 1),
+        n_absence = sum(df$obs == 0),
+        threshold = best$threshold,
+        auc = auc_val,
+        tjur = tjur_val,
+        brier = brier_val,
+        logloss = logloss_val,
+        sensitivity = best$sensitivity,
+        specificity = best$specificity,
+        tss = best$tss
+      )
+      
+    }
+  )
+  
+}

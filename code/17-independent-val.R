@@ -154,50 +154,34 @@ validation_metrics
 eelgrass_indep_metrics_summary <- validation_metrics %>%
   group_by(model) %>%
   summarise(
-    across(
-      c(
-        auc,
-        tjur_r2,
-        brier,
-        logloss,
-        sensitivity,
-        specificity,
-        tss,
-        threshold
-      ),
-      ~ mean(.x, na.rm = TRUE),
-      .names = "{.col}_mean"
-    ),
-    n_presence = mean(n_presence, na.rm = TRUE),
-    n_absence = mean(n_absence, na.rm = TRUE),
+    auc_sd = sd(auc, na.rm = TRUE),
+    auc = mean(auc, na.rm = TRUE),
+    tjur_sd = sd(tjur_r2, na.rm = TRUE),
+    tjur = mean(tjur_r2, na.rm = TRUE),
+    brier_sd = sd(brier, na.rm = TRUE),
+    brier = mean(brier, na.rm = TRUE),
+    logloss_sd = sd(logloss, na.rm = TRUE),
+    logloss = mean(logloss, na.rm = TRUE),
+    sensitivity_sd = sd(sensitivity, na.rm = TRUE),
+    sensitivity = mean(sensitivity, na.rm = TRUE),
+    specificity_sd = sd(specificity, na.rm = TRUE),
+    specificity = mean(specificity, na.rm = TRUE),
+    tss_sd = sd(tss, na.rm = TRUE),
+    tss = mean(tss, na.rm = TRUE),
+    threshold = mean(threshold, na.rm = TRUE),
+    n = n(),
     .groups = "drop"
-  )
+  ) %>%
+  select (model, auc, tjur, brier, logloss, sensitivity, specificity, tss, threshold, auc_sd, tjur_sd, brier_sd, logloss_sd, sensitivity_sd, specificity_sd, tss_sd)
 eelgrass_indep_metrics_summary
 # log loss values are high becasue there are many psuedoabsences in areas predicted suitable for eelgrass
 
-eelgrass_indep_metrics_summary <- eelgrass_indep_metrics_summary %>%
-  rename(
-    auc = auc_mean,
-    tjur = tjur_r2_mean,
-    tss = tss_mean,
-    brier = brier_mean,
-    logloss = logloss_mean,
-    threshold = threshold_mean,
-    sensitivity = sensitivity_mean,
-    specificity = specificity_mean
-  ) %>%
-  mutate (validation = "Independent") %>%
-  select(model, validation, auc, tjur, brier, logloss, sensitivity, specificity, tss, threshold)
-
 independent_metrics_eelgrass <- eelgrass_indep_metrics_summary %>%
-  select(model, auc, tjur, brier, logloss, sensitivity, specificity, tss, threshold) %>%
   rename_with(~ paste0(., "_independent"), -model)
 
-load("code/output_data/model_results/internal_metrics_eelgrass.RData")
 
 combined_metrics_eelgrass <- full_join(combined_metrics_eelgrass, independent_metrics_eelgrass, by = "model")
 
-combined_metrics_eelgrass <- combined_metrics_eelgrass %>% select(-validation_temporal)
 save(combined_metrics_eelgrass, file = "code/output_data/model_results/metrics_eelgrass.RData")
 
 
