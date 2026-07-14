@@ -116,10 +116,25 @@ eelgrass_field_metrics_summary <- zm_metrics %>%
   select(model, auc, tjur, brier, logloss, sensitivity, specificity, tss, threshold) %>%
   rename_with(~ paste0(., "_field"), -model)
 
-combined_metrics_eelgrass <- full_join(combined_metrics_eelgrass, eelgrass_field_metrics_summary, by = "model")
-save(combined_metrics_eelgrass, file = "code/output_data/model_results/metrics_eelgrass.RData")
+final_metrics_eelgrass <- full_join(combined_metrics_eelgrass, eelgrass_field_metrics_summary, by = "model")
+save(final_metrics_eelgrass, file = "code/output_data/model_results/final_metrics_eelgrass.RData")
 
 
+eelgrass_field_metrics_summary_nointertidal <- zm_metrics_nointertidal %>%
+  mutate(model = recode(model,
+                        "zo_bccm_nospatial_pred" = "GLM_bccm",
+                        "zo_bccm_spatial_pred" = "GLMM_bccm",
+                        "zo_nep_nospatial_pred" = "GLM_nep",
+                        "zo_nep_spatial_pred" = "GLMM_nep",
+                        "zo_XGBOOST_nep_pred" = "XGBoost_nep",
+                        "zo_XGBOOST_bccm_pred" = "XGBoost_bccm",
+                        "zo_GBM_nep_pred" = "GBM_nep",
+                        "zo_GBM_bccm_pred" = "GBM_bccm"))%>%
+  select(model, auc, tjur, brier, logloss, sensitivity, specificity, tss, threshold) %>%
+  rename_with(~ paste0(., "_field"), -model)
+
+final_metrics_eelgrass_nointertidal <- full_join(combined_metrics_eelgrass, eelgrass_field_metrics_summary_nointertidal, by = "model")
+save(final_metrics_eelgrass_nointertidal, file = "code/output_data/model_results/final_metrics_eelgrass_fieldnointertidal.RData")
 
 
 

@@ -358,7 +358,7 @@ glm_ffs <- function(data, NumFolds){
 
 
 #### nested spatial cross validation to select best smoothing terms 
-
+# eelgrass
 nested_sdmTMB_cv <- function(
     data,
     mesh,
@@ -663,6 +663,310 @@ nested_sdmTMB_cv <- function(
   )
 }
 
+
+nested_sdmTMB_cv_surf <- function(
+    data,
+    mesh,
+    spatial_setting = FALSE,
+    ocean_model = c("bccm", "nep"),
+    outer_fold_col = "fold",
+    inner_fold_col = "inner_fold",
+    depth_k_values = list(
+      "linear" = NULL,
+      "2" = 2,
+      "3" = 3,
+      "4" = 4
+    ),
+    rei_sqrt_k_values = list(
+      "linear" = NULL,
+      "2" = 2,
+      "3" = 3,
+      "4" = 4
+    ),
+    priors = sdmTMBpriors(b = normal(0, 1)),
+    family = binomial(link = "logit")
+) {
+  
+  library(dplyr)
+  library(sdmTMB)
+  library(pROC)
+  
+  ocean_model <- match.arg(ocean_model)
+  
+  #-------------------------------------------
+  # choose oceanographic predictors
+  #-------------------------------------------
+  ocean_terms <- switch(
+    ocean_model,
+    bccm = "saltmean_bccm_stnd + tempmean_bccm_stnd + surftempcv_bccm_stnd",
+    nep  = "saltmean_nep_stnd + tempmean_nep_stnd + surftempcv_nep_stnd"
+  )
+  
+  #-------------------------------------------
+  # formula builder
+  #-------------------------------------------
+  build_formula <- function(depth_k, rei_k, ocean_terms) {
+    depth_term <-
+      if (is.null(depth_k))
+        "depth_stnd"
+    else
+      paste0("s(depth_stnd, k=", depth_k, ")")
+    
+    rei_term <-
+      if (is.null(rei_k))
+        "rei_sqrt_stnd"
+    else
+      paste0("s(rei_sqrt_stnd, k=", rei_k, ")")
+    
+    as.formula(
+      paste(
+        "presence ~",
+        depth_term,
+        "+ substrate + tidal_sqrt_stnd +",
+        rei_term,
+        "+ airtempcv_stnd + prmean_stnd + rsdsmin_stnd +",
+        ocean_terms,
+        "+ Survey"
+      )
+    )
+  }
+  
+  
+  #-------------------------------------------
+  # helper metrics
+  #-------------------------------------------
+  calc_logloss <- function(actual, prob) {
+    eps <- 1e-15
+    prob_clip <- pmin(pmax(prob, eps), 1 - eps)
+    -mean(actual * log(prob_clip) + (1 - actual) * log(1 - prob_clip), na.rm = TRUE)
+  }
+  
+  calc_tjur <- function(actual, prob) {
+    mean(prob[actual == 1], na.rm = TRUE) - mean(prob[actual == 0], na.rm = TRUE)
+  }
+  
+  calc_brier <- function(actual, prob) {
+    mean((prob - actual)^2, na.rm = TRUE)
+  }
+  
+  calc_best_tss <- function(actual, prob) {
+    thresholds <- sort(unique(prob))
+    
+    if (length(thresholds) == 0) {
+      return(list(
+        tss = NA_real_,
+        sensitivity = NA_real_,
+        specificity = NA_real_,
+        threshold = NA_real_
+      ))
+    }
+    
+    tss_scores <- numeric(length(thresholds))
+    sens_vals <- numeric(length(thresholds))
+    spec_vals <- numeric(length(thresholds))
+    
+    for (j in seq_along(thresholds)) {
+      th <- thresholds[j]
+      pred_class <- as.integer(prob >= th)
+      
+      sens <- if (sum(actual == 1) > 0) {
+        sum(pred_class == 1 & actual == 1) / sum(actual == 1)
+      } else {
+        NA_real_
+      }
+      
+      spec <- if (sum(actual == 0) > 0) {
+        sum(pred_class == 0 & actual == 0) / sum(actual == 0)
+      } else {
+        NA_real_
+      }
+      
+      tss_scores[j] <- sens + spec - 1
+      sens_vals[j] <- sens
+      spec_vals[j] <- spec
+    }
+    
+    best_j <- which.max(tss_scores)
+    
+    list(
+      tss = tss_scores[best_j],
+      sensitivity = sens_vals[best_j],
+      specificity = spec_vals[best_j],
+      threshold = thresholds[best_j]
+    )
+  }
+  
+  safe_auc <- function(actual, prob) {
+    tryCatch(as.numeric(pROC::auc(actual, prob)), error = function(e) NA_real_)
+  }
+  
+  #-------------------------------------------
+  # checks
+  #-------------------------------------------
+  if (!outer_fold_col %in% names(data)) {
+    stop("Outer fold column not found: ", outer_fold_col)
+  }
+  if (!inner_fold_col %in% names(data)) {
+    stop("Inner fold column not found: ", inner_fold_col)
+  }
+  
+  results <- list()
+  
+  for (outer_fold in sort(unique(data[[outer_fold_col]]))) {
+    cat("Outer Fold:", outer_fold, "\n")
+    
+    test_data <- data[data[[outer_fold_col]] == outer_fold, ]
+    train_data <- data[data[[outer_fold_col]] != outer_fold, ]
+    
+    param_grid <- expand.grid(
+      depth_k = names(depth_k_values),
+      rei_k = names(rei_sqrt_k_values),
+      stringsAsFactors = FALSE
+    )
+    
+    inner_res <- list()
+    
+    for (i in seq_len(nrow(param_grid))) {
+      params <- param_grid[i, , drop = FALSE]
+      aucs <- c()
+      loglosses <- c()
+      
+      for (inner_fold in sort(unique(train_data[[inner_fold_col]]))) {
+        valid <- train_data[train_data[[inner_fold_col]] == inner_fold, ]
+        train <- train_data[train_data[[inner_fold_col]] != inner_fold, ]
+        
+        depth_k <- depth_k_values[[params$depth_k]]
+        rei_k <- rei_sqrt_k_values[[params$rei_k]]
+        
+        formula <- build_formula(depth_k, rei_k, ocean_terms)
+        
+        fit <- try(
+          sdmTMB(
+            formula = formula,
+            mesh = mesh,
+            family = family,
+            priors = priors,
+            spatial = spatial_setting,
+            data = train,
+            silent = TRUE
+          ),
+          silent = TRUE
+        )
+        
+        if (!inherits(fit, "try-error")) {
+          pred <- predict(fit, newdata = valid)
+          prob <- plogis(pred$est)
+          
+          auc_val <- try(pROC::auc(valid$presence, prob), silent = TRUE)
+          if (!inherits(auc_val, "try-error")) {
+            aucs <- c(aucs, as.numeric(auc_val))
+          }
+          
+          ll <- calc_logloss(valid$presence, prob)
+          loglosses <- c(loglosses, ll)
+        }
+      }
+      
+      inner_res[[i]] <- data.frame(
+        depth_k = params$depth_k,
+        rei_k = params$rei_k,
+        mean_auc = mean(aucs, na.rm = TRUE),
+        mean_logloss = mean(loglosses, na.rm = TRUE)
+      )
+    }
+    
+    inner_df <- dplyr::bind_rows(inner_res)
+    
+    if (all(is.na(inner_df$mean_logloss))) {
+      best_params <- data.frame(
+        depth_k = NA_character_,
+        rei_k = NA_character_,
+        mean_auc = NA_real_,
+        mean_logloss = NA_real_
+      )
+    } else {
+      best_i <- which.min(inner_df$mean_logloss)
+      best_params <- inner_df[best_i, ]
+    }
+    
+    cat("Best inner params for outer fold", outer_fold, ":\n")
+    print(best_params)
+    
+    best_depth_k <- depth_k_values[[best_params$depth_k]]
+    best_rei_k <- rei_sqrt_k_values[[best_params$rei_k]]
+    
+    formula <- build_formula(
+      best_depth_k,
+      best_rei_k,
+      ocean_terms
+    )
+    
+    fit <- try(
+      sdmTMB(
+        formula = formula,
+        mesh = mesh,
+        family = family,
+        priors = priors,
+        spatial = spatial_setting,
+        data = train_data,
+        silent = TRUE
+      ),
+      silent = TRUE
+    )
+    
+    if (!inherits(fit, "try-error")) {
+      pred <- predict(fit, newdata = test_data)
+      prob <- plogis(pred$est)
+      actual <- test_data$presence
+      
+      tss_out <- calc_best_tss(actual, prob)
+      auc <- safe_auc(actual, prob)
+      tjur_r2 <- calc_tjur(actual, prob)
+      brier_score <- calc_brier(actual, prob)
+      logloss <- calc_logloss(actual, prob)
+    } else {
+      auc <- tjur_r2 <- brier_score <- logloss <- NA_real_
+      tss_out <- list(
+        tss = NA_real_,
+        sensitivity = NA_real_,
+        specificity = NA_real_,
+        threshold = NA_real_
+      )
+    }
+    
+    results[[as.character(outer_fold)]] <- data.frame(
+      outer_fold = outer_fold,
+      ocean_model = ocean_model,
+      spatial = spatial_setting,
+      depth_k = best_params$depth_k,
+      rei_k = best_params$rei_k,
+      test_auc = auc,
+      tjur_r2 = tjur_r2,
+      brier_score = brier_score,
+      sensitivity = tss_out$sensitivity,
+      specificity = tss_out$specificity,
+      tss = tss_out$tss,
+      logloss = logloss,
+      tss_threshold = tss_out$threshold
+    )
+  }
+  
+  final_results <- dplyr::bind_rows(results)
+  
+  summary_results <- final_results %>%
+    summarise(
+      mean_auc = mean(test_auc, na.rm = TRUE),
+      mean_tjur = mean(tjur_r2, na.rm = TRUE),
+      mean_brier = mean(brier_score, na.rm = TRUE),
+      mean_tss = mean(tss, na.rm = TRUE),
+      mean_logloss = mean(logloss, na.rm = TRUE)
+    )
+  
+  list(
+    fold_results = final_results,
+    summary_results = summary_results
+  )
+}
 
 # Variable importance
 # Method from SDMtune R package: 

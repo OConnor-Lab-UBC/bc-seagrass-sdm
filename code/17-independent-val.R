@@ -156,8 +156,8 @@ eelgrass_indep_metrics_summary <- validation_metrics %>%
   summarise(
     auc_sd = sd(auc, na.rm = TRUE),
     auc = mean(auc, na.rm = TRUE),
-    tjur_sd = sd(tjur_r2, na.rm = TRUE),
-    tjur = mean(tjur_r2, na.rm = TRUE),
+    tjur_sd = sd(tjur, na.rm = TRUE),
+    tjur = mean(tjur, na.rm = TRUE),
     brier_sd = sd(brier, na.rm = TRUE),
     brier = mean(brier, na.rm = TRUE),
     logloss_sd = sd(logloss, na.rm = TRUE),

@@ -59,7 +59,7 @@ data %>%
 
 # Parameters to set
 survey_type <- c("BHM")
-model_name<- "nep_spatial"
+model_name<- "bccm_spatial"
 species <- "eelgrass"
 model <- get(paste0("fmodel_e_", model_name))
 #model <- get(paste0("fmodel_s_", model_name))
@@ -72,8 +72,8 @@ PredictSDM_bySurvey(
   species = species,
   model_name  = model_name
 )
-
-load()
+load("~/PhD/Chapters/Chapter-1-BC-Seagrass-Distribution/bc-seagrass-sdm/code/output_data/seagrass_predictions/survey/eelgrass/nep_spatial/Prediction_eelgrass_nep_spatial_BHM.RData")
+#load()
 # #mean predictions across all surveys
 # mean_pred <- AverageSurveyPredictions(
 #   species    = species,

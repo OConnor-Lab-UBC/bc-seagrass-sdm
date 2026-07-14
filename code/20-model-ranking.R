@@ -14,7 +14,8 @@
 # Brier ranges 0-1 with low values better
 # Logloss ranges 0- infinity with low values better and values >1 very poor or highly overconfident incorrect predictions (will cap 0-1)
 # TSS ranges from -1 to 1 but values <0 are worse than random so can cap it at 0-1
-load("code/output_data/model_results/metrics_eelgrass.RData")
+load("code/output_data/model_results/final_metrics_eelgrass.RData")
+load("code/output_data/model_results/final_metrics_eelgrass_fieldnointertidal.RData")
 #load("./code/output_data/model_results/combined_metrics_surfgrass_4_validations.RData")
 
 library(dplyr)
@@ -34,11 +35,11 @@ library(tidyverse)
 # # ---------- Percentile rank functions ----------
 # # Higher = better
 pr_pos <- function(x) {
-  rank(x, ties.method = "average") / length(x)
+  (rank(x, ties.method = "average") - 1) / (sum(!is.na(x)) - 1)
 }
 
 pr_neg <- function(x) {
-  rank(-x, ties.method = "average") / length(x)
+  (rank(-x, ties.method = "average") - 1) / (sum(!is.na(x)) - 1)
 }
 
 my_cols <- colorRampPalette(rev(brewer.pal(7, "RdYlBu")))(100)
@@ -62,7 +63,7 @@ model_order <- c(
 )
 
 ###eelgrass
-rank_table <- combined_metrics_eelgrass %>%
+rank_table <- final_metrics_eelgrass %>%
   select(-threshold_spatial, -threshold_field, -threshold_temporal, -threshold_independent) %>%  # Exclude all columns with 'threshold' in their names
   rename(Model = model, 
          AUC_Spatial = auc_spatial,
