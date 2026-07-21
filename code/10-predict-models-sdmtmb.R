@@ -21,8 +21,8 @@ UsePackages(c("sdmTMB", "sdmTMBextra", "tidyverse", "sf", "future", "terra", "fu
 ####load prediction data####
 load("code/output_data/prediction_model_inputs.RData")
 load("code/output_data/seagrass_model_inputs.RData")
-load("code/output_data/model_results/final_eelgrass_model.RData")
-#load("code/output_data/model_results/final_surfgrass_model.RData")
+#load("code/output_data/model_results/final_eelgrass_model.RData")
+load("code/output_data/model_results/final_surfgrass_model.RData")
 unique(data$Survey)
 # choosing which survey to use to make predictions, 
 # eelgrass
@@ -59,10 +59,10 @@ data %>%
 
 # Parameters to set
 survey_type <- c("BHM")
-model_name<- "bccm_spatial"
-species <- "eelgrass"
-model <- get(paste0("fmodel_e_", model_name))
-#model <- get(paste0("fmodel_s_", model_name))
+model_name<- "nep_spatial"
+species <- "surfgrass"
+#model <- get(paste0("fmodel_e_", model_name))
+model <- get(paste0("fmodel_s_", model_name))
 
 #Predict for each survey
 PredictSDM_bySurvey(
@@ -72,7 +72,7 @@ PredictSDM_bySurvey(
   species = species,
   model_name  = model_name
 )
-load("~/PhD/Chapters/Chapter-1-BC-Seagrass-Distribution/bc-seagrass-sdm/code/output_data/seagrass_predictions/survey/eelgrass/nep_spatial/Prediction_eelgrass_nep_spatial_BHM.RData")
+load("~/PhD/Chapters/Chapter-1-BC-Seagrass-Distribution/bc-seagrass-sdm/code/output_data/seagrass_predictions/survey/surfgrass/nep_spatial/Prediction_surfgrass_nep_spatial_BHM.RData")
 #load()
 # #mean predictions across all surveys
 # mean_pred <- AverageSurveyPredictions(

@@ -678,13 +678,12 @@ save(res_nep_nospatial, file = "code/output_data/model_results/surfgrass_eval_cv
 tss_thresh_nep_nospatial<- mean(res_nep_nospatial[["fold_results"]]$tss_threshold)
 # threshold 0.019, linear on rei (7 linear, 2 were 2 and 1 was 4) and k = 4 on depth (9 were 4 and 1 was linear)
 
-# having issues with overdispersion on keeping rei k = 4 for the bccm models, 
-#to keep it similar between the two we will make rei k=2 for both bccm and nep models to split the difference and account for too high mdoel complexity
+# having issues with overdispersion on keeping rei k = 4 for the bccm models, and the temporal forecast not working. rei needs to be linear to work
 
 # NO3 was significant but after reviewing variable between SSC and BCCM there was no good distribution between borders
 
 # no spatial 
-m_s_1 <- sdmTMB_cv(formula = presence ~ s(depth_stnd, k = 4) + s(rei_sqrt_stnd, k = 2) + substrate + tidal_sqrt_stnd + 
+m_s_1 <- sdmTMB_cv(formula = presence ~ s(depth_stnd, k = 4) + rei_sqrt_stnd + substrate + tidal_sqrt_stnd + 
                      airtempcv_stnd + prmean_stnd + rsdsmin_stnd + #chelsa variables
                      saltmean_bccm_stnd + tempmean_bccm_stnd + surftempcv_bccm_stnd + #bccm variables
                      Survey,  #fixed effect
@@ -693,7 +692,7 @@ eval_cv_bccm_nospatial <- evalStats( folds=1:numFolds,m=m_s_1,CV=cv_list_seagras
 eval_cv_bccm_nospatial
 
 # bccm model with spatial
-m_s_2 <- sdmTMB_cv(formula = presence ~ s(depth_stnd, k = 4) + s(rei_sqrt_stnd, k = 2) + substrate + tidal_sqrt_stnd + 
+m_s_2 <- sdmTMB_cv(formula = presence ~ s(depth_stnd, k = 4) + rei_sqrt_stnd + substrate + tidal_sqrt_stnd + 
                      airtempcv_stnd + prmean_stnd + rsdsmin_stnd + #chelsa variables
                      saltmean_bccm_stnd + tempmean_bccm_stnd + surftempcv_bccm_stnd + #bccm variables
                      Survey,  #fixed effect
@@ -702,7 +701,7 @@ eval_cv_bccm_spatial <- evalStats( folds=1:numFolds,m=m_s_2,CV=cv_list_seagrass$
 eval_cv_bccm_spatial
 
 # nep model no spatial
-m_s_3 <- sdmTMB_cv(formula = presence ~ s(depth_stnd, k = 4) + s(rei_sqrt_stnd, k = 2) + substrate + tidal_sqrt_stnd +  
+m_s_3 <- sdmTMB_cv(formula = presence ~ s(depth_stnd, k = 4) + rei_sqrt_stnd + substrate + tidal_sqrt_stnd +  
                      airtempcv_stnd + prmean_stnd + rsdsmin_stnd + #chelsa variables
                      saltmean_nep_stnd + tempmean_nep_stnd + surftempcv_nep_stnd + #nep variables
                      Survey,  #fixed effect
@@ -711,7 +710,7 @@ eval_cv_nep_nospatial <- evalStats( folds=1:numFolds,m=m_s_3,CV=cv_list_seagrass
 eval_cv_nep_nospatial
 
 # nep model spatial 
-m_s_4 <- sdmTMB_cv(formula = presence ~ s(depth_stnd, k = 4) + s(rei_sqrt_stnd, k = 2) + substrate + tidal_sqrt_stnd +  
+m_s_4 <- sdmTMB_cv(formula = presence ~ s(depth_stnd, k = 4) + rei_sqrt_stnd + substrate + tidal_sqrt_stnd +  
                      airtempcv_stnd + prmean_stnd + rsdsmin_stnd + #chelsa variables
                      saltmean_nep_stnd + tempmean_nep_stnd + surftempcv_nep_stnd + #nep variables
                      Survey,  #fixed effect
@@ -723,7 +722,6 @@ eval_cv_nep_spatial
 eval_cv_list_surfgrass <- list(eval_cv_bccm_nospatial, eval_cv_bccm_spatial, eval_cv_nep_nospatial, eval_cv_nep_spatial)
 save(eval_cv_list_surfgrass, file = "code/output_data/model_results/eval_cv_surfgrass.RData")
 
-#HAVING ISSUES FAILING HERE!
 #### test forecasting
 # left a few years gap 2010-2012 #trained model with 1993-2009
 # model does better if you don't include oceanographic or atmospheric data. which makes sense, becasue there are no differences between past and present as geomorphic are  static
@@ -738,13 +736,14 @@ unique(data_pre2013$Survey)
 test_set <- data %>% filter(Year > 2012)
 obs_test <- test_set$presence
 
-formula_bccm <- presence ~ s(depth_stnd, k = 4) + s(rei_sqrt_stnd, k = 2) + substrate + tidal_sqrt_stnd + 
+formula_bccm <- presence ~ s(depth_stnd, k = 4) + rei_sqrt_stnd + substrate + tidal_sqrt_stnd + 
   airtempcv_stnd + prmean_stnd + rsdsmin_stnd +
   saltmean_bccm_stnd + tempmean_bccm_stnd + surftempcv_bccm_stnd
-formula_nep <- presence ~ s(depth_stnd, k = 4) + s(rei_sqrt_stnd, k = 2) + substrate + tidal_sqrt_stnd +  
+formula_nep <- presence ~ s(depth_stnd, k = 4) + rei_sqrt_stnd + substrate + tidal_sqrt_stnd +  
   airtempcv_stnd + prmean_stnd + rsdsmin_stnd +
   saltmean_nep_stnd + tempmean_nep_stnd + surftempcv_nep_stnd
 
+#having issues with this model
 cv_thr_bccm <- get_global_cv_threshold_sdmTMB(
   data_train = data_pre2013,
   formula = formula_bccm,
@@ -899,7 +898,7 @@ save(forecast_predict_surfgrass, forecast_by_model, file = "code/output_data/mod
 
 
 #fit full model
-fmodel_s_bccm_nospatial <- sdmTMB(formula = presence ~ s(depth_stnd, k = 4) + s(rei_sqrt_stnd, k = 2) + substrate + tidal_sqrt_stnd + 
+fmodel_s_bccm_nospatial <- sdmTMB(formula = presence ~ s(depth_stnd, k = 4) + rei_sqrt_stnd + substrate + tidal_sqrt_stnd + 
                                     airtempcv_stnd + prmean_stnd + rsdsmin_stnd + #chelsa variables
                                     saltmean_bccm_stnd + tempmean_bccm_stnd + surftempcv_bccm_stnd + #bccm variables
                                     Survey,  #fixed effect
@@ -907,7 +906,7 @@ fmodel_s_bccm_nospatial <- sdmTMB(formula = presence ~ s(depth_stnd, k = 4) + s(
                                 family = binomial(link = "logit"), priors = sdmTMBpriors(b = normal(0, 1)),
                                 spatial = FALSE, 
                                 data = data)
-fmodel_s_bccm_spatial <- sdmTMB(formula =  presence ~ s(depth_stnd, k = 4) + s(rei_sqrt_stnd, k = 2) + substrate + tidal_sqrt_stnd +  
+fmodel_s_bccm_spatial <- sdmTMB(formula =  presence ~ s(depth_stnd, k = 4) + rei_sqrt_stnd + substrate + tidal_sqrt_stnd +  
                                   airtempcv_stnd + prmean_stnd + rsdsmin_stnd + #chelsa variables
                                   saltmean_bccm_stnd + tempmean_bccm_stnd + surftempcv_bccm_stnd + #bccm variables
                                   Survey,  #fixed effect
@@ -916,7 +915,7 @@ fmodel_s_bccm_spatial <- sdmTMB(formula =  presence ~ s(depth_stnd, k = 4) + s(r
                                 spatial = TRUE, 
                                 data = data)
 
-fmodel_s_nep_nospatial <- sdmTMB(formula = presence ~ s(depth_stnd, k = 4) + s(rei_sqrt_stnd, k = 2) + substrate + tidal_sqrt_stnd +  
+fmodel_s_nep_nospatial <- sdmTMB(formula = presence ~ s(depth_stnd, k = 4) + rei_sqrt_stnd + substrate + tidal_sqrt_stnd +  
                                    airtempcv_stnd + prmean_stnd + rsdsmin_stnd + #chelsa variables
                                    saltmean_nep_stnd + tempmean_nep_stnd + surftempcv_nep_stnd + #nep variables
                                    Survey,  #fixed effect
@@ -925,7 +924,7 @@ fmodel_s_nep_nospatial <- sdmTMB(formula = presence ~ s(depth_stnd, k = 4) + s(r
                                   spatial = FALSE, 
                                   data = data)
 
-fmodel_s_nep_spatial <- sdmTMB(formula = presence ~ s(depth_stnd, k = 4) + s(rei_sqrt_stnd, k = 2) + substrate + tidal_sqrt_stnd +  
+fmodel_s_nep_spatial <- sdmTMB(formula = presence ~ s(depth_stnd, k = 4) + rei_sqrt_stnd + substrate + tidal_sqrt_stnd +  
                                  airtempcv_stnd + prmean_stnd + rsdsmin_stnd + #chelsa variables
                                  saltmean_nep_stnd + tempmean_nep_stnd + surftempcv_nep_stnd + #nep variables
                                  Survey,  #fixed effect

@@ -40,8 +40,11 @@ load("code/output_data/seagrass_sf_file.RData")
 
 jewel_cb_10 <- c(
   "#0F766E", "#3B5BA5", "#7A5195", "#C0567D", "#DD6B20",
-  "#2F855A", "#4C6A92", "#9C4221", "#6B46C1", "#B7791F"
-)
+  "#2F855A", "#4C6A92", "#9C4221", "#6B46C1", "#B7791F")
+
+okabe_ito_10 <- c(
+  "#E69F00", "#56B4E9", "#009E73","#F0E442","#0072B2", 
+  "#D55E00", "#CC79A7", "#000000", "#999999", "#882255" )
 
 base_map_theme <- theme_bw() +
   theme(
@@ -60,10 +63,10 @@ map_extent <- coord_sf(
 
 plot_data <- bind_rows(
   spatialised_sf %>%
-    mutate(species = "Eelgrass (1993–2023)",
+    mutate(species = "Eelgrass dataset (1993–2023)\n10 spatial folds",
            fold = factor(fold_eelgrass)),
   spatialised_sf %>%
-    mutate(species = "Surfgrass (1993–2023)",
+    mutate(species = "Surfgrass dataset (1993–2023)\n10 spatial folds",
            fold = factor(fold_seagrass))
 )
 
@@ -87,7 +90,7 @@ spatial_fold <- ggplot() +
     panel.grid = element_blank(),
     strip.background = element_blank(),
     strip.text = element_text(face = "bold"),
-    legend.position = "right"
+    legend.position = "none"
   )
 
 ggsave(
@@ -127,13 +130,13 @@ for (i in seq_along(folds$splits)) {
 # Add panel labels
 data_pre2013 <- data_pre2013 %>%
   mutate(
-    panel = "Training dataset (1993–2009)\n10 random folds",
+    panel = "Eelgrass training dataset (1993–2009)\n10 random folds",
     plot_group = factor(tempfold)
   )
 
 data_post2013 <- data_post2013 %>%
   mutate(
-    panel = "Testing dataset (2013–2023)",
+    panel = "Eelgrass and surfgrass\ntesting dataset (2013–2023)",
     plot_group = "Testing"
   )
 
@@ -155,7 +158,7 @@ temp_fold <- ggplot() +
           colour = "#F58518",
           size = 1.2) +
   facet_wrap(~panel) +
-  scale_colour_brewer(palette = "Set3", name = "Random fold")+
+  scale_colour_manual(values = okabe_ito_10, name = "Random fold")+
   coord_sf(
     xlim = c(530000, 1228000),
     ylim = c(366000, 1101000),
@@ -165,7 +168,8 @@ temp_fold <- ggplot() +
   theme(
     panel.grid = element_blank(),
     strip.background = element_blank(),
-    strip.text = element_text(face = "bold")
+    strip.text = element_text(face = "bold"),
+    legend.position = "none"
   )
 
 ggsave(
@@ -180,7 +184,321 @@ ggsave(
 
 
 
+# make plots of eelgrass independent dataset 
+load("code/output_data/model_results/eelgrass_independent_eval.RData")
 
+# Separate into the two panels
+obs_plot <- eelgrass_sf %>%
+  filter(obs == 1) %>%
+  mutate(
+    panel = factor(
+      "Eelgrass areal observations\n(2013–2023)",
+      levels = c(
+        "Eelgrass areal observations\n(2013–2023)",
+        "Eelgrass\n10 pseudo-absence datasets")))
+
+pa_plot <- eelgrass_sf %>%
+  filter(obs == 0) %>%
+  mutate(
+    panel = factor(
+      "Eelgrass\n10 pseudo-absence datasets",
+      levels = c(
+        "Eelgrass areal observations\n(2013–2023)",
+        "Eelgrass\n10 pseudo-absence datasets")))
+
+pa_plot <- pa_plot %>%
+  slice_sample(prop = 1)
+
+pa_plot_jitter <- pa_plot %>%
+  mutate(
+    geometry = st_jitter(geometry, amount = 40)  # 40 m
+  )
+
+indep_map_eel <- ggplot() +
+  geom_sf(
+    data = coastline,
+    fill = "grey96",
+    colour = "grey60",
+    linewidth = 0.3
+  ) +
+  geom_sf(
+    data = obs_plot,
+    colour = "#009E73",
+    size = 1
+  ) +
+  geom_sf(
+    data = pa_plot_jitter,
+    aes(colour = factor(pa_set)),
+    size = 1,
+    alpha = 0.6
+  ) +
+  facet_wrap(~panel) +
+  scale_colour_manual(values = okabe_ito_10,
+    name = "Pseudoabsence set"
+  ) +
+  coord_sf(
+    xlim = c(530000, 1228000),
+    ylim = c(366000, 1101000),
+    expand = FALSE
+  ) +
+  theme_bw() +
+  theme(
+    panel.grid = element_blank(),
+    strip.background = element_blank(),
+    strip.text = element_text(face = "bold"),
+    plot.title = element_text(face = "bold", hjust = 0.5),
+    legend.position = "none"
+  )
+
+
+ggsave(
+  filename = "figures/independent_eel.png",
+  indep_map_eel,
+  width = 10,
+  height = 6,
+  dpi = 300,
+  bg = "white"
+)
+
+
+# make plots of surfgrass independent dataset 
+load("code/output_data/model_results/surfgrass_independent_eval.RData")
+
+# Separate into the two panels
+obs_plot_surf <- surfgrass_sf %>%
+  filter(obs == 1) %>%
+  mutate(
+    panel = factor(
+      "Surfgrass areal observations\n(2013–2024)",
+      levels = c(
+        "Surfgrass areal observations\n(2013–2024)",
+        "Surfgrass\n10 pseudo-absence datasets")))
+
+pa_plot_surf <- surfgrass_sf %>%
+  filter(obs == 0) %>%
+  mutate(
+    panel = factor(
+      "Surfgrass\n10 pseudo-absence datasets",
+      levels = c(
+        "Surfgrass areal observations\n(2013–2023)",
+        "Surfgrass\n10 pseudo-absence datasets")))
+
+pa_plot_surf <- pa_plot_surf %>%
+  slice_sample(prop = 1)
+
+pa_plot_jitter_surf <- pa_plot_surf %>%
+  mutate(
+    geometry = st_jitter(geometry, amount = 40)  # 40 m
+  )
+
+indep_map_surf <- ggplot() +
+  geom_sf(
+    data = coastline,
+    fill = "grey96",
+    colour = "grey60",
+    linewidth = 0.3
+  ) +
+  geom_sf(
+    data = obs_plot_surf,
+    colour = "#B22222",
+    size = 1
+  ) +
+  geom_sf(
+    data = pa_plot_jitter_surf,
+    aes(colour = factor(pa_set)),
+    size = 1,
+    alpha = 0.6
+  ) +
+  facet_wrap(~panel) +
+  scale_colour_manual(values = okabe_ito_10,
+                      name = "Pseudoabsence set"
+  ) +
+  coord_sf(
+    xlim = c(530000, 1228000),
+    ylim = c(366000, 1101000),
+    expand = FALSE
+  ) +
+  theme_bw() +
+  theme(
+    panel.grid = element_blank(),
+    strip.background = element_blank(),
+    strip.text = element_text(face = "bold"),
+    plot.title = element_text(face = "bold", hjust = 0.5),
+    legend.position = "none"
+  )
+
+
+ggsave(
+  filename = "figures/independent_surf.png",
+  indep_map_surf,
+  width = 10,
+  height = 6,
+  dpi = 300,
+  bg = "white"
+)
+
+surfgrass_sf %>%
+  summarise(n_presences = sum(obs == 1, na.rm = TRUE))
+eelgrass_sf %>%
+  summarise(n_presences = sum(obs == 1, na.rm = TRUE))
+
+surfgrass_sf %>%
+  count(pa_set, .drop = FALSE)
+
+eelgrass_sf %>%
+  count(pa_set, .drop = FALSE)
+
+
+# make plot of field validation
+load("code/output_data/field_validation/validation_dataset.RData")
+validation_sf <- validation_sf %>%
+  relocate(PH_freq, PH, ZM_freq, ZM, .after = PC_PH)
+
+# need to also drop sites that after reviewing the database should not have been included as they were aborted or vis was too bad to see species
+validation_sf <- validation_sf %>%
+  filter(!HKey %in% c(74, 84, 85, 161))
+
+training_plot <- spatialised_sf %>%
+  mutate(
+    panel = "SDM training dataset\nwith targeted validation sites",
+    plot_group = "Training"
+  )
+
+validation_overlay <- validation_sf %>%
+  mutate(
+    panel = "SDM training dataset\nwith targeted validation sites",
+    plot_group = "Validation"
+  )
+
+
+validation_class <- validation_sf %>%
+  mutate(
+    habitat = case_when(
+      ZM == 1 & PH == 1 ~ "Both",
+      ZM == 1 ~ "Eelgrass",
+      PH == 1 ~ "Surfgrass",
+      TRUE ~ "Neither"
+    ),
+    panel = "Targeted validation sites\nby observed genus"
+  ) %>%
+  mutate(
+    habitat = factor(
+      habitat,
+      levels = c(
+        "Neither",
+        "Eelgrass",
+        "Surfgrass",
+        "Both"
+      )
+    )
+  ) %>%
+  arrange(habitat)
+
+p1 <- ggplot() +
+  geom_sf(
+    data = coastline,
+    fill = "grey96",
+    colour = "grey60",
+    linewidth = 0.3
+  ) +
+  geom_sf(
+    data = training_plot,
+    aes(colour = "Training data"),
+    size = 1
+  ) +
+  geom_sf(
+    data = validation_overlay,
+    aes(colour = "Targeted sites"),
+    size = 1
+  ) +
+  scale_colour_manual(
+    values = c(
+      "Training data" = "grey75",
+      "Targeted sites" = "#0072B2"
+    ),
+    name = NULL
+  ) +
+  facet_wrap(~panel) +
+  coord_sf(
+    xlim = c(530000, 1228000),
+    ylim = c(366000, 1101000),
+    expand = FALSE
+  ) +
+  theme_bw() +
+  theme(
+    panel.grid = element_blank(),
+    strip.background = element_blank(),
+    strip.text = element_text(face = "bold"),
+    legend.position = c(0.82, 0.82),
+    legend.background = element_rect(fill = "transparent", colour = NA),
+    legend.key = element_rect(fill = "transparent", colour = NA)
+  )
+
+
+# -------------------------------
+# Plot 2: Validation classifications
+# -------------------------------
+
+p2 <- ggplot() +
+  geom_sf(
+    data = coastline,
+    fill = "grey96",
+    colour = "grey60",
+    linewidth = 0.3
+  ) +
+  geom_sf(
+    data = validation_class,
+    aes(colour = habitat),
+    size = 1
+  ) +
+  facet_wrap(~panel) +
+  scale_colour_manual(
+    values = c(
+      "Eelgrass" = "#009E73",
+      "Surfgrass" = "#D55E00",
+      "Both" = "#882255",
+      "Neither" = "grey40"
+    ),
+    name = NULL
+  ) +
+  coord_sf(
+    xlim = c(530000, 1228000),
+    ylim = c(366000, 1101000),
+    expand = FALSE
+  ) +
+  theme_bw() +
+  theme(
+    panel.grid = element_blank(),
+    strip.background = element_blank(),
+    strip.text = element_text(face = "bold"),
+    legend.position = c(0.82, 0.82),   
+    legend.background = element_rect(fill = "transparent", colour = NA),
+    legend.key = element_rect(fill = "transparent", colour = NA)
+  )
+
+p2 <- p2 +
+  theme(
+    axis.text.y = element_blank(),
+    axis.ticks.y = element_blank(),
+    axis.title.y = element_blank(),
+    plot.margin = margin(5.5, 5.5, 5.5, 0)
+  )
+
+# Combine panels
+validation_map <- p1 + p2 +
+  plot_layout(widths = c(1, 1))
+
+
+validation_map
+
+ggsave(
+  filename = "figures/targeted.png",
+  validation_map,
+  width = 10,
+  height = 6,
+  dpi = 300,
+  bg = "white"
+)
 
 
 
@@ -198,22 +516,26 @@ load("~/PhD/Chapters/Chapter-1-BC-Seagrass-Distribution/bc-seagrass-sdm/code/out
 glmm_varimp_bccm_eelgrass <- relimp_e_bccm_nospatial[[2]]
 glmm_varimp_bccm_eelgrass <- glmm_varimp_bccm_eelgrass %>%
   rename(variable = term)%>%
-  mutate(model = "GLMM_bccm")
+  select(-mean_permuted_auc, -importance) %>%
+  mutate(model = "GLM_bccm")
 
 glmmspatial_varimp_bccm_eelgrass <- relimp_e_bccm_spatial[[2]]
 glmmspatial_varimp_bccm_eelgrass <- glmmspatial_varimp_bccm_eelgrass %>%
   rename(variable = term) %>%
-  mutate(model = "GLMM_spatial_bccm")
+  select(-mean_permuted_auc, -importance) %>%
+  mutate(model = "GLMM_bccm")
 
 glmm_varimp_nep_eelgrass <- relimp_e_nep_nospatial[[2]]
 glmm_varimp_nep_eelgrass <- glmm_varimp_nep_eelgrass %>%
   rename(variable = term) %>%
-  mutate(model = "GLMM_nep")
+  select(-mean_permuted_auc, -importance) %>%
+  mutate(model = "GLM_nep")
 
 glmmspatial_varimp_nep_eelgrass <- relimp_e_nep_spatial[[2]]
 glmmspatial_varimp_nep_eelgrass <- glmmspatial_varimp_nep_eelgrass %>%
   rename(variable = term) %>%
-  mutate(model = "GLMM_spatial_nep")
+  select(-mean_permuted_auc, -importance) %>%
+  mutate(model = "GLMM_nep")
 
 gbm_varimp_bccm_eelgrass <- gbm_varimp_bccm_eelgrass %>%
   rename(variable = var,
@@ -229,13 +551,13 @@ xgb_varimp_bccm_eelgrass <- xgb_varimp_bccm_eelgrass %>%
   select(Feature, RelImportance) %>%
   rename(variable = Feature, 
          relimp = RelImportance) %>%
-  mutate(model = "XGB_bccm")
+  mutate(model = "XGBoost_bccm")
 
 xgb_varimp_nep_eelgrass <- xgb_varimp_nep_eelgrass %>%
   select(Feature, RelImportance) %>%
   rename(variable = Feature, 
          relimp = RelImportance) %>%
-  mutate(model = "XGB_nep")
+  mutate(model = "XGBoost_nep")
 
 eelgrass_relimp <- rbind(glmm_varimp_bccm_eelgrass, glmmspatial_varimp_bccm_eelgrass, glmm_varimp_nep_eelgrass, glmmspatial_varimp_nep_eelgrass,
                          gbm_varimp_bccm_eelgrass, gbm_varimp_nep_eelgrass, xgb_varimp_bccm_eelgrass, xgb_varimp_nep_eelgrass)
@@ -244,7 +566,7 @@ eelgrass_relimp <- rbind(glmm_varimp_bccm_eelgrass, glmmspatial_varimp_bccm_eelg
 library(viridis)
 eelgrass_relimp$model <- factor(
   eelgrass_relimp$model,
-  levels = c("GLMM_bccm", "GLMM_spatial_bccm", "GBM_bccm", "XGB_bccm", "GLMM_nep",  "GLMM_spatial_nep", "GBM_nep", "XGB_nep")   
+  levels = c("GLM_bccm", "GLMM_bccm", "GBM_bccm", "XGBoost_bccm", "GLM_nep",  "GLMM_nep", "GBM_nep", "XGBoost_nep")   
 )
 
 eelgrass_relimp <- eelgrass_relimp %>%
@@ -259,7 +581,9 @@ eelgrass_relimp <- eelgrass_relimp %>%
                            "saltcv_bccm_stnd" = "Subsurface salinity variability",
                            "rei_stnd" = "Exposure",
                            "tempcv_nep_stnd" = "Subsurface temperature variability",
+                           "tempcv_bccm_stnd" = "Subsurface temperature variability",
                            "NH4_bccm_stnd" = "Ammonium",
+                           "NH4_nep_stnd" = "Ammonium",
                            "tempmin_bccm_stnd" = "Min subsurface temperature",
                            "Survey" = "Survey"
   ))
@@ -274,7 +598,7 @@ eelrelimp<-ggplot(eelgrass_relimp, aes(x = model, y = variable, fill = relimp)) 
   geom_tile(color = "black", linewidth = 0.3) +
   scale_fill_viridis_c(
     option = "viridis",
-    trans = "log1p",
+    trans = "sqrt",
     name = "Relative importance"
   ) +
   scale_x_discrete(expand = c(0, 0), position = "top") +
@@ -289,7 +613,7 @@ eelrelimp<-ggplot(eelgrass_relimp, aes(x = model, y = variable, fill = relimp)) 
     axis.text.x.bottom = element_blank(),
     axis.ticks = element_blank()
   )
-
+eelrelimp
 
 
 #surfgrass
@@ -305,22 +629,26 @@ load("~/PhD/Chapters/Chapter-1-BC-Seagrass-Distribution/bc-seagrass-sdm/code/out
 glmm_varimp_bccm_surfgrass <- relimp_s_bccm_nospatial[[2]]
 glmm_varimp_bccm_surfgrass <- glmm_varimp_bccm_surfgrass %>%
   rename(variable = term)%>%
-  mutate(model = "GLMM_bccm")
+  select(-mean_permuted_auc, -importance) %>%
+  mutate(model = "GLM_bccm")
 
 glmmspatial_varimp_bccm_surfgrass <- relimp_s_bccm_spatial[[2]]
 glmmspatial_varimp_bccm_surfgrass <- glmmspatial_varimp_bccm_surfgrass %>%
   rename(variable = term) %>%
-  mutate(model = "GLMM_spatial_bccm")
+  select(-mean_permuted_auc, -importance) %>%
+  mutate(model = "GLMM_bccm")
 
 glmm_varimp_nep_surfgrass <- relimp_s_nep_nospatial[[2]]
 glmm_varimp_nep_surfgrass <- glmm_varimp_nep_surfgrass %>%
   rename(variable = term) %>%
-  mutate(model = "GLMM_nep")
+  select(-mean_permuted_auc, -importance) %>%
+  mutate(model = "GLM_nep")
 
 glmmspatial_varimp_nep_surfgrass <- relimp_s_nep_spatial[[2]]
 glmmspatial_varimp_nep_surfgrass <- glmmspatial_varimp_nep_surfgrass %>%
   rename(variable = term) %>%
-  mutate(model = "GLMM_spatial_nep")
+  select(-mean_permuted_auc, -importance) %>%
+  mutate(model = "GLMM_nep")
 
 gbm_varimp_bccm_surfgrass <- gbm_varimp_bccm_surfgrass %>%
   rename(variable = var,
@@ -336,13 +664,14 @@ xgb_varimp_bccm_surfgrass <- xgb_varimp_bccm_surfgrass %>%
   select(Feature, RelImportance) %>%
   rename(variable = Feature, 
          relimp = RelImportance) %>%
-  mutate(model = "XGB_bccm")
+  mutate(model = "XGBoost_bccm")
 
 xgb_varimp_nep_surfgrass <- xgb_varimp_nep_surfgrass %>%
   select(Feature, RelImportance) %>%
   rename(variable = Feature, 
          relimp = RelImportance) %>%
-  mutate(model = "XGB_nep")
+  mutate(model = "XGBoost_nep")
+
 
 surfgrass_relimp <- rbind(glmm_varimp_bccm_surfgrass, glmmspatial_varimp_bccm_surfgrass, glmm_varimp_nep_surfgrass, glmmspatial_varimp_nep_surfgrass,
                          gbm_varimp_bccm_surfgrass, gbm_varimp_nep_surfgrass, xgb_varimp_bccm_surfgrass, xgb_varimp_nep_surfgrass)
@@ -351,7 +680,7 @@ surfgrass_relimp <- rbind(glmm_varimp_bccm_surfgrass, glmmspatial_varimp_bccm_su
 library(viridis)
 surfgrass_relimp$model <- factor(
   surfgrass_relimp$model,
-  levels = c("GLMM_bccm", "GLMM_spatial_bccm", "GBM_bccm", "XGB_bccm", "GLMM_nep",  "GLMM_spatial_nep", "GBM_nep", "XGB_nep")   
+  levels = c("GLM_bccm", "GLMM_bccm", "GBM_bccm", "XGBoost_bccm", "GLM_nep",  "GLMM_nep", "GBM_nep", "XGBoost_nep")    
 )
 
 surfgrass_relimp <- surfgrass_relimp %>%
@@ -359,19 +688,16 @@ surfgrass_relimp <- surfgrass_relimp %>%
                            "depth_stnd" = "Depth",
                            "substrate" = "Substrate",
                            "tidal_sqrt_stnd" = "Tidal current",
-                           "cul_eff_stnd" = "Cumulative impact",
                            "prmean_stnd" = "Precipitation",
-                           "saltcv_nep_stnd" = "Subsurface salinity variability",
                            "saltmean_nep_stnd" = "Subsurface salinity",
+                           "saltmean_bccm_stnd" = "Subsurface salinity",
                            "airtempcv_stnd" = "Air temperature variability",
                            "rsdsmin_stnd" = "Min surface downwelling shortwave flux",
-                           "saltcv_bccm_stnd" = "Subsurface salinity variability",
                            "rei_sqrt_stnd" = "Exposure",
-                           "tempcv_nep_stnd" = "Subsurface temperature variability",
                            "tempmean_nep_stnd" = "Subsurface temperature",
-                           "tempmin_bccm_stnd" = "Min subsurface temperature",
-                           "surftempcv_bccm_stnd" = "Surface temperature CV",
-                           "surftempcv_nep_stnd" = "Surface temperature CV",
+                           "tempmean_bccm_stnd" = "Subsurface temperature",
+                           "surftempcv_bccm_stnd" = "Surface temperature variability",
+                           "surftempcv_nep_stnd" = "Surface temperature variability",
                            "Survey" = "Survey"
   ))
 
@@ -429,7 +755,7 @@ relimp<- (eelrelimp / surfrelimp) +
     legend.position = "right",
     plot.tag = element_text(size = 12, face = "bold")
   )
-
+relimp
 ggsave("figures/figure_relimp.png", plot = relimp, width = 8, height = 6, dpi = 300)
 
 
@@ -438,706 +764,739 @@ ggsave("figures/figure_relimp.png", plot = relimp, width = 8, height = 6, dpi = 
 
 
 ##### Independent validation figures
-load("code/output_data/model_results/eelgrass_independent_dataframe.RData")
-load("code/output_data/model_results/surfgrass_independent_dataframe.RData")
-load("code/output_data/model_results/eelgrass_independent_eval.RData")
-
-
-# Model columns in the order you want shown
-model_labels <- c(
-  "bccm_nospatial" = "GLMM_bccm",
-  "bccm_spatial"   = "GLMM_spatial_bccm",
-  "GBM_bccm"       = "GBM_bccm",
-  "XGBOOST_bccm"   = "XGB_bccm",
-  "nep_nospatial"  = "GLMM_nep",
-  "nep_spatial"    = "GLMM_spatial_nep",
-  "GBM_nep"        = "GBM_nep",
-  "XGBOOST_nep"    = "XGB_nep"
-)
-
-
-eelgrass_long <- eelgrass_df %>%
-  #select(all_of(model_names)) %>%
-  pivot_longer(
-    cols = -c(obs, ID, substrate, rock_group),
-    names_to = "model",
-    values_to = "predicted_suitability"
-  ) %>%
-  mutate(species = "Eelgrass")
-
-eelgrass_long <- eelgrass_long %>%
-  mutate(model = recode(as.character(model), !!!model_labels),
-         model = factor(model, levels = model_labels))
-
-surfgrass_long <- surfgrass_df %>%
-  select(-bathy) %>%
-  pivot_longer(
-    cols = -c(obs, ID, substrate, rock_group),
-    names_to = "model",
-    values_to = "predicted_suitability"
-  ) %>%
-  mutate(species = "Surfgrass")
-
-surfgrass_long <- surfgrass_long %>%
-  mutate(model = recode(as.character(model), !!!model_labels),
-         model = factor(model, levels = model_labels))
-
-# plot_df <- bind_rows(eelgrass_long, surfgrass_long) %>%
+# load("code/output_data/model_results/eelgrass_independent_dataframe.RData")
+# load("code/output_data/model_results/surfgrass_independent_dataframe.RData")
+# load("code/output_data/model_results/eelgrass_independent_eval.RData")
+# 
+# 
+# # Model columns in the order you want shown
+# model_labels <- c(
+#   "bccm_nospatial" = "GLMM_bccm",
+#   "bccm_spatial"   = "GLMM_spatial_bccm",
+#   "GBM_bccm"       = "GBM_bccm",
+#   "XGBOOST_bccm"   = "XGB_bccm",
+#   "nep_nospatial"  = "GLMM_nep",
+#   "nep_spatial"    = "GLMM_spatial_nep",
+#   "GBM_nep"        = "GBM_nep",
+#   "XGBOOST_nep"    = "XGB_nep"
+# )
+# 
+# 
+# eelgrass_long <- eelgrass_df %>%
+#   #select(all_of(model_names)) %>%
+#   pivot_longer(
+#     cols = -c(obs, ID, substrate, rock_group),
+#     names_to = "model",
+#     values_to = "predicted_suitability"
+#   ) %>%
+#   mutate(species = "Eelgrass")
+# 
+# eelgrass_long <- eelgrass_long %>%
+#   mutate(model = recode(as.character(model), !!!model_labels),
+#          model = factor(model, levels = model_labels))
+# 
+# surfgrass_long <- surfgrass_df %>%
+#   select(-bathy) %>%
+#   pivot_longer(
+#     cols = -c(obs, ID, substrate, rock_group),
+#     names_to = "model",
+#     values_to = "predicted_suitability"
+#   ) %>%
+#   mutate(species = "Surfgrass")
+# 
+# surfgrass_long <- surfgrass_long %>%
+#   mutate(model = recode(as.character(model), !!!model_labels),
+#          model = factor(model, levels = model_labels))
+# 
+# eelgrass_subset <- eelgrass_long %>% filter (model == "XGB_nep" | model == "GLMM_spatial_nep")
+# 
+# model_levels <- c("Lowest-performing model", "Highest-performing model")
+# 
+# thresholds <- tibble(
+#   model = c("GLMM_spatial_nep", "XGB_nep"),
+#   threshold = c(0.037, 0.031)   
+# )
+# 
+# summary_df <- eelgrass_subset %>%
+#   left_join(thresholds, by = "model") %>%
+#   group_by(model) %>%
+#   summarise(
+#     FPPS = mean(predicted_suitability >= threshold, na.rm = TRUE),
+#     FNR  = mean(predicted_suitability < threshold, na.rm = TRUE),
+#     .groups = "drop"
+#   ) %>%
 #   mutate(
-#     model = factor(model, levels = model_labels)
+#     model_label = recode(
+#       model,
+#       "GLMM_spatial_nep" = "Lowest-performing model",
+#       "XGB_nep" = "Highest-performing model"
+#     ),
+#     model_label = factor(model_label, levels = model_levels)
+#   ) %>%
+#   pivot_longer(
+#     cols = c(FPPS, FNR),
+#     names_to = "metric",
+#     values_to = "value"
 #   )
-
-# independent <- ggplot(plot_df, aes(x = model, y = predicted_suitability, fill = species)) +
+# 
+# mps_df <- eelgrass_subset %>%
+#   mutate(
+#     model_label = recode(
+#       model,
+#       "GLMM_spatial_nep" = "Lowest-performing model",
+#       "XGB_nep" = "Highest-performing model"
+#     ),
+#     model_label = factor(model_label, levels = model_levels),
+#     value = predicted_suitability
+#   ) %>%
+#   select(model_label, value)
+# 
+# 
+# 
+# 
+# p1 <- ggplot(
+#   mps_df,
+#   aes(x = model_label, y = value, fill = model_label)
+# ) +
+#   geom_violin(
+#     alpha = 0.5,
+#     colour = NA,
+#     width = 0.9
+#   ) +
 #   geom_boxplot(
-#     outlier.alpha = 0.15,
-#     width = 0.7,
-#     colour = "black",
-#     linewidth = 0.3
+#     width = 0.15,
+#     outlier.alpha = 0.1,
+#     colour = "black"
 #   ) +
 #   stat_summary(
 #     fun = median,
 #     geom = "point",
-#     size = 1.8,
+#     size = 2,
 #     colour = "black"
 #   ) +
-#   facet_wrap(~ species, ncol = 1, scales = "fixed") +
-#   
 #   scale_fill_manual(values = c(
-#     "Eelgrass" = "grey",
-#     "Surfgrass" = "grey"
+#     "Highest-performing model" = "#8C6BB1",
+#     "Lowest-performing model" = "#4D4D4D"
 #   )) +
-#   
-#   scale_y_continuous(limits = c(0,1), expand = c(0, 0)) +
-#   
+#   scale_x_discrete(limits = model_levels) +
 #   labs(
-#     x = NULL,
-#     y = "Relative probability of occurrence"
+#     y = "Relative probability of occurrence",
+#     x = NULL
 #   ) +
-#   geom_hline(yintercept = 0, linewidth = 0.4) +
+#   scale_y_continuous(expand = expansion(mult = c(0.02, 0.02))) +
 #   theme_classic(base_size = 12) +
 #   theme(
-#     # --- facet labels (move left, remove box) ---
-#     strip.background = element_blank(),
-#     strip.placement = "outside",
-#     strip.text = element_text(
-#       face = "bold",
-#       hjust = 0   # left-align text
-#     ),
-#     
-#     # --- axes styling ---
-#     axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1),
-#     axis.title.y = element_text(margin = margin(r = 10)),
-#     
-#     # --- remove legend ---
 #     legend.position = "none",
-#     
-#     # --- spacing ---
-#     panel.spacing = unit(0.8, "lines")
+#     axis.text.x = element_blank(),
+#     axis.ticks.x = element_blank(),
+#     plot.margin = margin(3, 3, 3, 3),
+#     axis.ticks.length = unit(2, "pt"),
+#     plot.background = element_rect(fill = "white", colour = NA)
 #   )
 # 
+# 
+# p2 <- ggplot(
+#   summary_df,
+#   aes(
+#     x = model_label,
+#     y = value,
+#     shape = metric
+#   )
+# ) +
+#   geom_point(
+#     aes(colour = model_label),
+#     size = 3.5,
+#     position = position_dodge(width = 0.1)
+#   ) +
+#   
+#   scale_colour_manual(values = c(
+#     "Highest-performing model" = "#8C6BB1",
+#     "Lowest-performing model" = "#4D4D4D"
+#   )) +
+#   
+#   scale_shape_manual(values = c(
+#     "FPPS" = 17,
+#     "FNR" = 15
+#   )) +
+#   
+#   scale_y_continuous(
+#     limits = c(0, 1),
+#     expand = expansion(mult = c(0.02, 0.02))
+#   ) +
+#   
+#   labs(
+#     y = "Proportion",
+#     x = NULL,
+#     shape = "Metric"
+#   ) +
+#   
+#   guides(
+#     colour = "none",
+#     shape = guide_legend(
+#       order = 1,
+#       nrow = 1
+#     )
+#   ) +
+#   
+#   theme_classic(base_size = 12) +
+#   theme(
+#     axis.text.x = element_text(),
+#     
+#     legend.position = "bottom",
+#     legend.direction = "horizontal",
+#     
+#     legend.background = element_rect(
+#       fill = scales::alpha("white", 0.85),
+#       colour = NA
+#     ),
+#     
+#     plot.margin = margin(3, 3, 3, 3),
+#     axis.ticks.length = unit(2, "pt"),
+#     plot.background = element_rect(fill = "white", colour = NA)
+#   )
+# 
+# 
+# 
+# 
+# surfgrass_subset <- surfgrass_long %>% filter (model == "GLMM_spatial_bccm" | model == "GLMM_nep")
+# 
+# model_levels <- c("Lowest-performing model", "Highest-performing model")
+# 
+# thresholds <- tibble(
+#   model = c("GLMM_nep", "GLMM_spatial_bccm"),
+#   threshold = c(0.014, 0.014)   
+# )
+# 
+# summary_df_surf <- surfgrass_subset %>%
+#   left_join(thresholds, by = "model") %>%
+#   group_by(model) %>%
+#   summarise(
+#     FPPS = mean(predicted_suitability >= threshold, na.rm = TRUE),
+#     FNR  = mean(predicted_suitability < threshold, na.rm = TRUE),
+#     .groups = "drop"
+#   ) %>%
+#   mutate(
+#     model_label = recode(
+#       model,
+#       "GLMM_nep" = "Lowest-performing model",
+#       "GLMM_spatial_bccm" = "Highest-performing model"
+#     ),
+#     model_label = factor(model_label, levels = model_levels)
+#   ) %>%
+#   pivot_longer(
+#     cols = c(FPPS, FNR),
+#     names_to = "metric",
+#     values_to = "value"
+#   )
+# 
+# mps_df_surf <- surfgrass_subset %>%
+#   mutate(
+#     model_label = recode(
+#       model,
+#       "GLMM_nep" = "Lowest-performing model",
+#       "GLMM_spatial_bccm" = "Highest-performing model"
+#     ),
+#     model_label = factor(model_label, levels = model_levels),
+#     value = predicted_suitability
+#   ) %>%
+#   select(model_label, value)
+# 
+# 
+# p4 <- ggplot(
+#   mps_df_surf,
+#   aes(x = model_label, y = value, fill = model_label)
+# ) +
+#   geom_violin(
+#     alpha = 0.5,
+#     colour = NA,
+#     width = 0.9
+#   ) +
+#   geom_boxplot(
+#     width = 0.15,
+#     outlier.alpha = 0.1,
+#     colour = "black"
+#   ) +
+#   stat_summary(
+#     fun = median,
+#     geom = "point",
+#     size = 2,
+#     colour = "black"
+#   ) +
+#   scale_fill_manual(values = c(
+#     "Highest-performing model" = "#8C6BB1",
+#     "Lowest-performing model" = "#4D4D4D"
+#   )) +
+#   scale_x_discrete(limits = model_levels) +
+#   labs(
+#     y = "Relative probability of occurrence",
+#     x = NULL
+#   ) +
+#   scale_y_continuous(expand = expansion(mult = c(0.02, 0.02))) +
+#   theme_classic(base_size = 12) +
+#   theme(
+#     legend.position = "none",
+#     axis.text.x = element_blank(),
+#     axis.ticks.x = element_blank(),
+#     plot.margin = margin(3, 3, 3, 3),
+#     axis.ticks.length = unit(2, "pt"),
+#     plot.background = element_rect(fill = "white", colour = NA)
+#   )
+# 
+# 
+# p5 <- ggplot(
+#   summary_df_surf,
+#   aes(
+#     x = model_label,
+#     y = value,
+#     shape = metric
+#   )
+# ) +
+#   geom_point(
+#     aes(colour = model_label),
+#     size = 3.5,
+#     position = position_dodge(width = 0.1)
+#   ) +
+#   
+#   scale_colour_manual(values = c(
+#     "Highest-performing model" = "#8C6BB1",
+#     "Lowest-performing model" = "#4D4D4D"
+#   )) +
+#   
+#   scale_shape_manual(values = c(
+#     "FPPS" = 17,
+#     "FNR" = 15
+#   )) +
+#   
+#   scale_y_continuous(
+#     limits = c(0, 1),
+#     expand = expansion(mult = c(0.02, 0.02))
+#   ) +
+#   
+#   labs(
+#     y = "Proportion",
+#     x = NULL,
+#     shape = "Metric"
+#   ) +
+#   
+#   guides(
+#     colour = "none",
+#     shape = "none"
+#   ) +
+#   
+#   theme_classic(base_size = 12) +
+#   theme(
+#     axis.text.x = element_text(),
+#     
+#     legend.position = "none",
+#     
+#     plot.margin = margin(3, 3, 3, 3),
+#     axis.ticks.length = unit(2, "pt"),
+#     plot.background = element_rect(fill = "white", colour = NA)
+#   )
+# 
+# 
+# 
+# 
+# 
+# 
+# 
+# #make map of individuals
+# #eelgrass
+# eelgrass_indep <- rast(c("code/output_data/independent_validation/BCeelgrass_netforce_2013_2023.tif"))
+# eel_bin_xgb_nep <-rast("raster/eelgrass/eelgrass_predictions_xgb_nep_binary_notmasked.tif")
+# eel_bin_nepspatial<-rast("raster/eelgrass/eelgrass_predictions_nepspatial_binary_notmasked.tif")
+# values(eelgrass_indep)[values(eelgrass_indep) >= 1] <- 1
+# 
+# eelgrass_indep <- resample(eelgrass_indep, eel_bin_xgb_nep, method = "near")
+# 
+# # make sure rasters align
+# stopifnot(compareGeom(eelgrass_indep, eel_bin_xgb_nep, eel_bin_nepspatial))
+# 
+# # create output raster
+# out <- ifel(eelgrass_indep == 1 & eel_bin_xgb_nep == 1 & eel_bin_nepspatial == 1, 4,
+#             ifel(eelgrass_indep == 1 & eel_bin_xgb_nep == 1 & eel_bin_nepspatial == 0, 3,
+#                  ifel(eelgrass_indep == 1 & eel_bin_xgb_nep == 0 & eel_bin_nepspatial == 1, 2,
+#                       ifel(eelgrass_indep == 1 & eel_bin_xgb_nep == 0 & eel_bin_nepspatial == 0, 1, NA))))
+# 
+# # write result
+# writeRaster(out, "raster/eelgrass/eelgrass_good&badmodel_overlayindependent.tif", overwrite = TRUE)
+# # looked in arc for best example areas to showcase and clipped it
+# 
+# 
+# eelgrass_indep_val_clipped <- rast(c("raster/independent_figue.tif"))
+# 
+# eelgrass_cat <- as.factor(eelgrass_indep_val_clipped)
+# levels(eelgrass_cat) <- data.frame(
+#   value = c(1, 2, 3, 4),
+#   category = c(
+#     "Observed only",
+#     "Observed + lowest-performing \nmodel",
+#     "Observed + highest-performing \nmodel",
+#     "Observed + both models"
+#   )
+# )
+# 
+# r_ext <- terra::ext(eelgrass_cat)
+# 
+# p3 <- ggplot() +
+#   geom_spatraster(data = eelgrass_cat) +
+#   geom_sf(data = coastline, fill = "grey85", color = "black", linewidth = 0.2) +
+#   
+#   scale_fill_manual(
+#     name = "Agreement category",
+#     values = c(
+#       "Observed only" = "#D73027",
+#       "Observed + lowest-performing \nmodel" = "#FC8D59",
+#       "Observed + highest-performing \nmodel" = "#91BFDB",
+#       "Observed + both models" = "#1A9850"
+#     ),
+#     na.value = "white",
+#     na.translate = FALSE,
+#     drop = FALSE,
+#     guide = guide_legend(ncol = 2)
+#   ) +
+#   
+#   coord_sf(
+#     xlim = c(r_ext$xmin, r_ext$xmax),
+#     ylim = c(r_ext$ymin, r_ext$ymax),
+#     expand = FALSE
+#   ) +
+#   
+#   theme_minimal() +
+#   
+#   theme(
+#     panel.background = element_rect(fill = "white", color = NA),
+#     plot.background  = element_rect(fill = "white", color = NA),
+#     panel.border = element_rect(color = "black", fill = NA, linewidth = 0.6),
+#     
+#     legend.position = "bottom",
+#     legend.direction = "horizontal",
+#     legend.box = "horizontal",
+#     
+#     legend.background = element_rect(
+#       fill = scales::alpha("white", 0.8),
+#       color = NA
+#     ),
+#     
+#     legend.key = element_rect(fill = NA, color = NA),
+#     
+#     plot.margin = margin(3, 3, 3, 3)
+#   )
+# p3
+# 
+# surfgrass_indep <- rast(c("code/output_data/independent_validation/surfgrass_validation_raster_2013_2024.tif"))
+# surf_bin_bccmspatial <-rast("raster/surfgrass/surfgrass_predictions_bccmspatial_binary_notmasked.tif")
+# surf_bin_nepnospatial<-rast("raster/surfgrass/surfgrass_predictions_nepnospatial_binary_notmasked.tif")
+# values(surfgrass_indep)[values(surfgrass_indep) >= 1] <- 1
+# 
+# surfgrass_indep <- resample(surfgrass_indep, surf_bin_bccmspatial, method = "near")
+# 
+# # make sure rasters align
+# stopifnot(compareGeom(surfgrass_indep, surf_bin_bccmspatial, surf_bin_nepnospatial))
+# 
+# # create output raster
+# out <- ifel(surfgrass_indep == 1 & surf_bin_bccmspatial == 1 & surf_bin_nepnospatial == 1, 4,
+#             ifel(surfgrass_indep == 1 & surf_bin_bccmspatial == 1 & surf_bin_nepnospatial == 0, 3,
+#                  ifel(surfgrass_indep == 1 & surf_bin_bccmspatial == 0 & surf_bin_nepnospatial == 1, 2,
+#                       ifel(surfgrass_indep == 1 & surf_bin_bccmspatial == 0 & surf_bin_nepnospatial == 0, 1, NA))))
+# 
+# # write result
+# writeRaster(out, "raster/surfgrass/surfgrass_good&badmodel_overlayindependent.tif", overwrite = TRUE)
+# # looked in arc for best example areas to showcase and clipped it
+# 
+# surfgrass_indep_val_clipped <- rast(c("raster/independent_figue_surfgrass.tif"))
+# 
+# surfgrass_cat <- as.factor(surfgrass_indep_val_clipped)
+# levels(surfgrass_cat) <- data.frame(
+#   value = c(1, 2, 3, 4),
+#   category = c(
+#     "Observed only",
+#     "Observed + lowest-performing model",
+#     "Observed + highest-performing model",
+#     "Observed + both models"
+#   )
+# )
+# 
+# r_ext_surf <- terra::ext(surfgrass_cat)
+# 
+# levels(surfgrass_cat) <- data.frame(
+#   value = 1:4,
+#   category = c(
+#     "Observed only",
+#     "Observed + lowest-performing model",
+#     "Observed + highest-performing model",
+#     "Observed + both models"
+#   )
+# )
+# 
+# #surfgrass_cat <- as.factor(surfgrass_cat)
+# 
+# legend_levels <- c(
+#   "Observed only",
+#   "Observed + lowest-performing model",
+#   "Observed + highest-performing model",
+#   "Observed + both models"
+# )
+# 
+# p6 <-ggplot() +
+#   geom_spatraster(data = surfgrass_cat) +
+#   geom_sf(data = coastline, fill = "grey85", color = "black", linewidth = 0.2) +
+#   scale_fill_manual(
+#     name = "Agreement category",
+#     values = c(
+#       "Observed only" = "#D73027",
+#       "Observed + lowest-performing model" = "#FC8D59",
+#       "Observed + highest-performing model" = "#91BFDB",
+#       "Observed + both models" = "#1A9850"
+#     ),
+#     limits = legend_levels,  
+#     na.value = "white",
+#     na.translate = FALSE,
+#     drop = FALSE
+#   ) +
+#   coord_sf(
+#     xlim = c(r_ext_surf$xmin, r_ext_surf$xmax),
+#     ylim = c(r_ext_surf$ymin, r_ext_surf$ymax),
+#     expand = FALSE
+#   ) +
+#   theme_minimal() +
+#   theme(
+#     panel.background = element_rect(fill = "white", color = NA),
+#     plot.background  = element_rect(fill = "white", color = NA),
+#     panel.border = element_rect(color = "black", fill = NA, linewidth = 0.6),
+#     legend.position = "none",
+#     plot.margin = margin(3, 3, 3, 3)
+#   )  
+# 
+# p6
+# 
+# 
+# 
+# 
+# 
+# 
+# # COMBINE ------------------------------------------------------------
+# # p1 <- p1 + theme(plot.margin = margin(5,5,5,5))
+# # p2 <- p2 + theme(plot.margin = margin(5,5,5,5))
+# # p3 <- p3 + theme(plot.margin = margin(5,5,5,5))
+# 
+# p1 <- p1 +
+#   annotate(
+#     "text",
+#     x = -Inf, y = Inf,
+#     label = "Eelgrass",
+#     hjust = -0.1, vjust = 1.2,
+#     fontface = "bold"
+#   )
+# 
+# p4 <- p4 +
+#   annotate(
+#     "text",
+#     x = -Inf, y = Inf,
+#     label = "Surfgrass",
+#     hjust = -0.1, vjust = 1.2,
+#     fontface = "bold"
+#   )
+# 
+# 
+# indep_plot_eel <- (p1 / p2) | p3
+# indep_plot_surf <- (p4 / p5) | p6
+# 
+# indep_plot = indep_plot_eel/indep_plot_surf
+#  
 # ggsave(
 #   filename = "figures/independent_validation.png",
-#   plot = independent,
-#   width = 6,
-#   height = 6,
+#   plot = indep_plot,
+#   width = 12,
+#   height = 11,
 #   dpi = 300,
 #   bg = "white"
 # )
 
 
-eelgrass_subset <- eelgrass_long %>% filter (model == "XGB_nep" | model == "GLMM_spatial_nep")
 
-model_levels <- c("Lowest-performing model", "Highest-performing model")
 
-thresholds <- tibble(
-  model = c("GLMM_spatial_nep", "XGB_nep"),
-  threshold = c(0.037, 0.031)   
+
+# probability of occurence compared to test sites, independent data, and field validation data with all thresholds
+# just do best and worst models for figure
+# eelgrass best model is XGBoost_nep and worst is BGM_nep
+# surfgrass best model is and worse is
+load("~/PhD/Chapters/Chapter-1-BC-Seagrass-Distribution/bc-seagrass-sdm/code/output_data/model_results/final_metrics_eelgrass.RData")
+load("~/PhD/Chapters/Chapter-1-BC-Seagrass-Distribution/bc-seagrass-sdm/code/output_data/model_results/final_metrics_surfgrass.RData")
+
+seagrass_data %>%
+  count(Month)
+
+seagrass_data %>%
+  summarise(
+    pct_may_sep = 100 * mean(Month %in% 5:9)
+  )
+#need to extract predictions from the 2013-2023 test data
+load("code/output_data/seagrass_model_inputs.RData")
+seagrass_data <- seagrass_data %>% filter (Year >= 2013) 
+seagrass_data_sf <- sf::st_as_sf(seagrass_data, coords = c("X_m", "Y_m"), crs = 3005) 
+
+eelgrass_xgb_nep <- terra::vrt(c("raster/eelgrass/xgb_nep/eelgrass_predictions_hg_xgb_nep.tif", "raster/eelgrass/xgb_nep/eelgrass_predictions_ncc_xgb_nep.tif", "raster/eelgrass/xgb_nep/eelgrass_predictions_qcs_xgb_nep.tif", "raster/eelgrass/xgb_nep/eelgrass_predictions_ss_xgb_nep.tif", "raster/eelgrass/xgb_nep/eelgrass_predictions_wcvi_xgb_nep.tif"), "eelgrass_xgb_nep.vrt", overwrite=T)   # values 0–1
+eelgrass_gbm_nep <- terra::vrt(c("raster/eelgrass/gbm_nep/eelgrass_predictions_hg_gbm_nep.tif", "raster/eelgrass/gbm_nep/eelgrass_predictions_ncc_gbm_nep.tif", "raster/eelgrass/gbm_nep/eelgrass_predictions_qcs_gbm_nep.tif", "raster/eelgrass/gbm_nep/eelgrass_predictions_ss_gbm_nep.tif", "raster/eelgrass/gbm_nep/eelgrass_predictions_wcvi_gbm_nep.tif"), "eelgrass_gbm_nep.vrt", overwrite=T)   # values 0–1
+surfgrass_xgb_nep <- terra::vrt(c("raster/surfgrass/xgb_nep/surfgrass_predictions_hg_xgb_nep.tif", "raster/surfgrass/xgb_nep/surfgrass_predictions_ncc_xgb_nep.tif", "raster/surfgrass/xgb_nep/surfgrass_predictions_qcs_xgb_nep.tif", "raster/surfgrass/xgb_nep/surfgrass_predictions_ss_xgb_nep.tif", "raster/surfgrass/xgb_nep/surfgrass_predictions_wcvi_xgb_nep.tif"), "surfgrass_xgb_nep.vrt", overwrite=T)   # values 0–1
+surfgrass_gbm_bccm <- terra::vrt(c("raster/surfgrass/gbm_bccm/surfgrass_predictions_hg_gbm_bccm.tif", "raster/surfgrass/gbm_bccm/surfgrass_predictions_ncc_gbm_bccm.tif", "raster/surfgrass/gbm_bccm/surfgrass_predictions_qcs_gbm_bccm.tif", "raster/surfgrass/gbm_bccm/surfgrass_predictions_ss_gbm_bccm.tif", "raster/surfgrass/gbm_bccm/surfgrass_predictions_wcvi_gbm_bccm.tif"), "surfgrass_gbm_bccm.vrt", overwrite=T)   # values 0–1
+
+pred_stack <- c(
+  eelgrass_xgb_nep,
+  eelgrass_gbm_nep,
+  surfgrass_xgb_nep,
+  surfgrass_gbm_bccm
 )
 
-summary_df <- eelgrass_subset %>%
-  left_join(thresholds, by = "model") %>%
-  group_by(model) %>%
-  summarise(
-    FPPS = mean(predicted_suitability >= threshold, na.rm = TRUE),
-    FNR  = mean(predicted_suitability < threshold, na.rm = TRUE),
-    .groups = "drop"
-  ) %>%
+names(pred_stack) <- c(
+  "XGBoost_nep_eel",
+  "GBM_nep_eel",
+  "XGBoost_nep_surf",
+  "GBM_bccm_surf")
+
+prediction_extract <- terra::extract(
+  pred_stack,
+  terra::vect(seagrass_data_sf)
+) %>%
+  select(-ID)
+
+seagrass_data_sf <- seagrass_data_sf %>%
+  bind_cols(prediction_extract) %>%
+  filter(if_all(all_of(names(pred_stack)), ~ !is.na(.)))
+summary(seagrass_data_sf)
+
+seagrass_data_sf <- seagrass_data_sf %>%
   mutate(
-    model_label = recode(
-      model,
-      "GLMM_spatial_nep" = "Lowest-performing model",
-      "XGB_nep" = "Highest-performing model"
-    ),
-    model_label = factor(model_label, levels = model_levels)
+    Tidal_zone = if_else(depth > -1, "Subtidal", "Intertidal"),
+    Tidal_zone = factor(Tidal_zone, levels = c("Subtidal", "Intertidal"))
+  )
+
+test_eel_pa_long <- seagrass_data_sf %>%
+  sf::st_drop_geometry() %>%
+  mutate(
+    Presence = factor(ifelse(ZO == 0, "Absent", "Present"),
+                      levels = c("Absent", "Present"))
+  ) %>%
+  select(
+    Presence,
+    Tidal_zone,
+    XGBoost_nep_eel,
+    GBM_nep_eel
   ) %>%
   pivot_longer(
-    cols = c(FPPS, FNR),
-    names_to = "metric",
-    values_to = "value"
-  )
-
-mps_df <- eelgrass_subset %>%
-  mutate(
-    model_label = recode(
-      model,
-      "GLMM_spatial_nep" = "Lowest-performing model",
-      "XGB_nep" = "Highest-performing model"
-    ),
-    model_label = factor(model_label, levels = model_levels),
-    value = predicted_suitability
-  ) %>%
-  select(model_label, value)
-
-
-
-
-p1 <- ggplot(
-  mps_df,
-  aes(x = model_label, y = value, fill = model_label)
-) +
-  geom_violin(
-    alpha = 0.5,
-    colour = NA,
-    width = 0.9
-  ) +
-  geom_boxplot(
-    width = 0.15,
-    outlier.alpha = 0.1,
-    colour = "black"
-  ) +
-  stat_summary(
-    fun = median,
-    geom = "point",
-    size = 2,
-    colour = "black"
-  ) +
-  scale_fill_manual(values = c(
-    "Highest-performing model" = "#8C6BB1",
-    "Lowest-performing model" = "#4D4D4D"
-  )) +
-  scale_x_discrete(limits = model_levels) +
-  labs(
-    y = "Relative probability of occurrence",
-    x = NULL
-  ) +
-  scale_y_continuous(expand = expansion(mult = c(0.02, 0.02))) +
-  theme_classic(base_size = 12) +
-  theme(
-    legend.position = "none",
-    axis.text.x = element_blank(),
-    axis.ticks.x = element_blank(),
-    plot.margin = margin(3, 3, 3, 3),
-    axis.ticks.length = unit(2, "pt"),
-    plot.background = element_rect(fill = "white", colour = NA)
-  )
-
-
-p2 <- ggplot(
-  summary_df,
-  aes(
-    x = model_label,
-    y = value,
-    shape = metric
-  )
-) +
-  geom_point(
-    aes(colour = model_label),
-    size = 3.5,
-    position = position_dodge(width = 0.1)
-  ) +
-  
-  scale_colour_manual(values = c(
-    "Highest-performing model" = "#8C6BB1",
-    "Lowest-performing model" = "#4D4D4D"
-  )) +
-  
-  scale_shape_manual(values = c(
-    "FPPS" = 17,
-    "FNR" = 15
-  )) +
-  
-  scale_y_continuous(
-    limits = c(0, 1),
-    expand = expansion(mult = c(0.02, 0.02))
-  ) +
-  
-  labs(
-    y = "Proportion",
-    x = NULL,
-    shape = "Metric"
-  ) +
-  
-  guides(
-    colour = "none",
-    shape = guide_legend(
-      order = 1,
-      nrow = 1
-    )
-  ) +
-  
-  theme_classic(base_size = 12) +
-  theme(
-    axis.text.x = element_text(),
-    
-    legend.position = "bottom",
-    legend.direction = "horizontal",
-    
-    legend.background = element_rect(
-      fill = scales::alpha("white", 0.85),
-      colour = NA
-    ),
-    
-    plot.margin = margin(3, 3, 3, 3),
-    axis.ticks.length = unit(2, "pt"),
-    plot.background = element_rect(fill = "white", colour = NA)
-  )
-
-
-
-
-surfgrass_subset <- surfgrass_long %>% filter (model == "GLMM_spatial_bccm" | model == "GLMM_nep")
-
-model_levels <- c("Lowest-performing model", "Highest-performing model")
-
-thresholds <- tibble(
-  model = c("GLMM_nep", "GLMM_spatial_bccm"),
-  threshold = c(0.014, 0.014)   
-)
-
-summary_df_surf <- surfgrass_subset %>%
-  left_join(thresholds, by = "model") %>%
-  group_by(model) %>%
-  summarise(
-    FPPS = mean(predicted_suitability >= threshold, na.rm = TRUE),
-    FNR  = mean(predicted_suitability < threshold, na.rm = TRUE),
-    .groups = "drop"
+    cols = -c(Presence, Tidal_zone),
+    names_to = "model",
+    values_to = "predicted_suitability"
   ) %>%
   mutate(
-    model_label = recode(
+    model = recode(
       model,
-      "GLMM_nep" = "Lowest-performing model",
-      "GLMM_spatial_bccm" = "Highest-performing model"
-    ),
-    model_label = factor(model_label, levels = model_levels)
+      "XGBoost_nep_eel"    = "XGBoost_nep",
+      "GBM_nep_eel"        = "GBM_nep"  )
+  )
+
+test_surf_pa_long <- seagrass_data_sf %>%
+  sf::st_drop_geometry() %>%
+  mutate(
+    Presence = factor(ifelse(PH == 0, "Absent", "Present"),
+                      levels = c("Absent", "Present"))
+  ) %>%
+  select(
+    Presence,
+    Tidal_zone,
+    XGBoost_nep_surf,
+    GBM_bccm_surf
+    
   ) %>%
   pivot_longer(
-    cols = c(FPPS, FNR),
-    names_to = "metric",
-    values_to = "value"
-  )
-
-mps_df_surf <- surfgrass_subset %>%
-  mutate(
-    model_label = recode(
-      model,
-      "GLMM_nep" = "Lowest-performing model",
-      "GLMM_spatial_bccm" = "Highest-performing model"
-    ),
-    model_label = factor(model_label, levels = model_levels),
-    value = predicted_suitability
+    cols = -c(Presence, Tidal_zone),
+    names_to = "model",
+    values_to = "predicted_suitability"
   ) %>%
-  select(model_label, value)
-
-
-p4 <- ggplot(
-  mps_df_surf,
-  aes(x = model_label, y = value, fill = model_label)
-) +
-  geom_violin(
-    alpha = 0.5,
-    colour = NA,
-    width = 0.9
-  ) +
-  geom_boxplot(
-    width = 0.15,
-    outlier.alpha = 0.1,
-    colour = "black"
-  ) +
-  stat_summary(
-    fun = median,
-    geom = "point",
-    size = 2,
-    colour = "black"
-  ) +
-  scale_fill_manual(values = c(
-    "Highest-performing model" = "#8C6BB1",
-    "Lowest-performing model" = "#4D4D4D"
-  )) +
-  scale_x_discrete(limits = model_levels) +
-  labs(
-    y = "Relative probability of occurrence",
-    x = NULL
-  ) +
-  scale_y_continuous(expand = expansion(mult = c(0.02, 0.02))) +
-  theme_classic(base_size = 12) +
-  theme(
-    legend.position = "none",
-    axis.text.x = element_blank(),
-    axis.ticks.x = element_blank(),
-    plot.margin = margin(3, 3, 3, 3),
-    axis.ticks.length = unit(2, "pt"),
-    plot.background = element_rect(fill = "white", colour = NA)
+  mutate(
+    model = recode(
+      model,
+      "XGBoost_nep_surf"    = "XGBoost_nep",
+      "GBM_bccm_surf"        = "GBM_bccm"   )
   )
 
 
-p5 <- ggplot(
-  summary_df_surf,
-  aes(
-    x = model_label,
-    y = value,
-    shape = metric
-  )
-) +
-  geom_point(
-    aes(colour = model_label),
-    size = 3.5,
-    position = position_dodge(width = 0.1)
-  ) +
-  
-  scale_colour_manual(values = c(
-    "Highest-performing model" = "#8C6BB1",
-    "Lowest-performing model" = "#4D4D4D"
-  )) +
-  
-  scale_shape_manual(values = c(
-    "FPPS" = 17,
-    "FNR" = 15
-  )) +
-  
-  scale_y_continuous(
-    limits = c(0, 1),
-    expand = expansion(mult = c(0.02, 0.02))
-  ) +
-  
-  labs(
-    y = "Proportion",
-    x = NULL,
-    shape = "Metric"
-  ) +
-  
-  guides(
-    colour = "none",
-    shape = "none"
-  ) +
-  
-  theme_classic(base_size = 12) +
-  theme(
-    axis.text.x = element_text(),
+#independent
+load("code/output_data/model_results/surfgrass_independent_eval.RData")
+load("code/output_data/model_results/eelgrass_independent_eval.RData")
+#need to add bathy data to independent dataset to be able to classify it by tide height
+
+indep_eelgrass_sf <- eelgrass_sf %>%
+  mutate(
+    Tidal_zone = if_else(bathy > -1, "Subtidal", "Intertidal"),
+    Tidal_zone = factor(Tidal_zone, levels = c("Subtidal", "Intertidal"))
+  ) %>%
+  distinct(obs, geometry, .keep_all = TRUE)
+
+indep_eel_pa_long <- indep_eelgrass_sf %>%  
+  sf::st_drop_geometry() %>%
+  mutate(
+    Presence = factor(ifelse(obs == 0, "Absent", "Present"),
+                      levels = c("Absent", "Present"))
+  ) %>%
+  select(
+    Presence,
+    Tidal_zone,
+    XGBoost_nep,
+    GBM_nep
+  ) %>%
+  pivot_longer(
+    cols = -c(Presence, Tidal_zone),
+    names_to = "model",
+    values_to = "predicted_suitability"
+  ) 
+
+
+indep_surfgrass_sf <- surfgrass_sf %>%
+  mutate(
+    Tidal_zone = if_else(bathy > -1, "Subtidal", "Intertidal"),
+    Tidal_zone = factor(Tidal_zone, levels = c("Subtidal", "Intertidal"))
+  ) %>%
+  distinct(obs, geometry, .keep_all = TRUE)
+
+indep_surf_pa_long <- indep_surfgrass_sf %>%  
+  sf::st_drop_geometry() %>%
+  mutate(
+    Presence = factor(ifelse(obs == 0, "Absent", "Present"),
+                      levels = c("Absent", "Present"))
+  ) %>%
+  select(
+    Presence,
+    Tidal_zone,
+    XGBoost_nep,
+    GBM_bccm
     
-    legend.position = "none",
-    
-    plot.margin = margin(3, 3, 3, 3),
-    axis.ticks.length = unit(2, "pt"),
-    plot.background = element_rect(fill = "white", colour = NA)
-  )
+  ) %>%
+  pivot_longer(
+    cols = -c(Presence, Tidal_zone),
+    names_to = "model",
+    values_to = "predicted_suitability"
+  ) 
 
 
-
-
-
-
-
-#make map of individuals
-#eelgrass
-eelgrass_indep <- rast(c("code/output_data/independent_validation/BCeelgrass_netforce_2013_2023.tif"))
-eel_bin_xgb_nep <-rast("raster/eelgrass/eelgrass_predictions_xgb_nep_binary_notmasked.tif")
-eel_bin_nepspatial<-rast("raster/eelgrass/eelgrass_predictions_nepspatial_binary_notmasked.tif")
-values(eelgrass_indep)[values(eelgrass_indep) >= 1] <- 1
-
-eelgrass_indep <- resample(eelgrass_indep, eel_bin_xgb_nep, method = "near")
-
-# make sure rasters align
-stopifnot(compareGeom(eelgrass_indep, eel_bin_xgb_nep, eel_bin_nepspatial))
-
-# create output raster
-out <- ifel(eelgrass_indep == 1 & eel_bin_xgb_nep == 1 & eel_bin_nepspatial == 1, 4,
-            ifel(eelgrass_indep == 1 & eel_bin_xgb_nep == 1 & eel_bin_nepspatial == 0, 3,
-                 ifel(eelgrass_indep == 1 & eel_bin_xgb_nep == 0 & eel_bin_nepspatial == 1, 2,
-                      ifel(eelgrass_indep == 1 & eel_bin_xgb_nep == 0 & eel_bin_nepspatial == 0, 1, NA))))
-
-# write result
-writeRaster(out, "raster/eelgrass/eelgrass_good&badmodel_overlayindependent.tif", overwrite = TRUE)
-# looked in arc for best example areas to showcase and clipped it
-
-
-eelgrass_indep_val_clipped <- rast(c("raster/independent_figue.tif"))
-
-eelgrass_cat <- as.factor(eelgrass_indep_val_clipped)
-levels(eelgrass_cat) <- data.frame(
-  value = c(1, 2, 3, 4),
-  category = c(
-    "Observed only",
-    "Observed + lowest-performing \nmodel",
-    "Observed + highest-performing \nmodel",
-    "Observed + both models"
-  )
-)
-
-r_ext <- terra::ext(eelgrass_cat)
-
-p3 <- ggplot() +
-  geom_spatraster(data = eelgrass_cat) +
-  geom_sf(data = coastline, fill = "grey85", color = "black", linewidth = 0.2) +
-  
-  scale_fill_manual(
-    name = "Agreement category",
-    values = c(
-      "Observed only" = "#D73027",
-      "Observed + lowest-performing \nmodel" = "#FC8D59",
-      "Observed + highest-performing \nmodel" = "#91BFDB",
-      "Observed + both models" = "#1A9850"
-    ),
-    na.value = "white",
-    na.translate = FALSE,
-    drop = FALSE,
-    guide = guide_legend(ncol = 2)
-  ) +
-  
-  coord_sf(
-    xlim = c(r_ext$xmin, r_ext$xmax),
-    ylim = c(r_ext$ymin, r_ext$ymax),
-    expand = FALSE
-  ) +
-  
-  theme_minimal() +
-  
-  theme(
-    panel.background = element_rect(fill = "white", color = NA),
-    plot.background  = element_rect(fill = "white", color = NA),
-    panel.border = element_rect(color = "black", fill = NA, linewidth = 0.6),
-    
-    legend.position = "bottom",
-    legend.direction = "horizontal",
-    legend.box = "horizontal",
-    
-    legend.background = element_rect(
-      fill = scales::alpha("white", 0.8),
-      color = NA
-    ),
-    
-    legend.key = element_rect(fill = NA, color = NA),
-    
-    plot.margin = margin(3, 3, 3, 3)
-  )
-p3
-
-surfgrass_indep <- rast(c("code/output_data/independent_validation/surfgrass_validation_raster_2013_2024.tif"))
-surf_bin_bccmspatial <-rast("raster/surfgrass/surfgrass_predictions_bccmspatial_binary_notmasked.tif")
-surf_bin_nepnospatial<-rast("raster/surfgrass/surfgrass_predictions_nepnospatial_binary_notmasked.tif")
-values(surfgrass_indep)[values(surfgrass_indep) >= 1] <- 1
-
-surfgrass_indep <- resample(surfgrass_indep, surf_bin_bccmspatial, method = "near")
-
-# make sure rasters align
-stopifnot(compareGeom(surfgrass_indep, surf_bin_bccmspatial, surf_bin_nepnospatial))
-
-# create output raster
-out <- ifel(surfgrass_indep == 1 & surf_bin_bccmspatial == 1 & surf_bin_nepnospatial == 1, 4,
-            ifel(surfgrass_indep == 1 & surf_bin_bccmspatial == 1 & surf_bin_nepnospatial == 0, 3,
-                 ifel(surfgrass_indep == 1 & surf_bin_bccmspatial == 0 & surf_bin_nepnospatial == 1, 2,
-                      ifel(surfgrass_indep == 1 & surf_bin_bccmspatial == 0 & surf_bin_nepnospatial == 0, 1, NA))))
-
-# write result
-writeRaster(out, "raster/surfgrass/surfgrass_good&badmodel_overlayindependent.tif", overwrite = TRUE)
-# looked in arc for best example areas to showcase and clipped it
-
-surfgrass_indep_val_clipped <- rast(c("raster/independent_figue_surfgrass.tif"))
-
-surfgrass_cat <- as.factor(surfgrass_indep_val_clipped)
-levels(surfgrass_cat) <- data.frame(
-  value = c(1, 2, 3, 4),
-  category = c(
-    "Observed only",
-    "Observed + lowest-performing model",
-    "Observed + highest-performing model",
-    "Observed + both models"
-  )
-)
-
-r_ext_surf <- terra::ext(surfgrass_cat)
-
-levels(surfgrass_cat) <- data.frame(
-  value = 1:4,
-  category = c(
-    "Observed only",
-    "Observed + lowest-performing model",
-    "Observed + highest-performing model",
-    "Observed + both models"
-  )
-)
-
-#surfgrass_cat <- as.factor(surfgrass_cat)
-
-legend_levels <- c(
-  "Observed only",
-  "Observed + lowest-performing model",
-  "Observed + highest-performing model",
-  "Observed + both models"
-)
-
-p6 <-ggplot() +
-  geom_spatraster(data = surfgrass_cat) +
-  geom_sf(data = coastline, fill = "grey85", color = "black", linewidth = 0.2) +
-  scale_fill_manual(
-    name = "Agreement category",
-    values = c(
-      "Observed only" = "#D73027",
-      "Observed + lowest-performing model" = "#FC8D59",
-      "Observed + highest-performing model" = "#91BFDB",
-      "Observed + both models" = "#1A9850"
-    ),
-    limits = legend_levels,  
-    na.value = "white",
-    na.translate = FALSE,
-    drop = FALSE
-  ) +
-  coord_sf(
-    xlim = c(r_ext_surf$xmin, r_ext_surf$xmax),
-    ylim = c(r_ext_surf$ymin, r_ext_surf$ymax),
-    expand = FALSE
-  ) +
-  theme_minimal() +
-  theme(
-    panel.background = element_rect(fill = "white", color = NA),
-    plot.background  = element_rect(fill = "white", color = NA),
-    panel.border = element_rect(color = "black", fill = NA, linewidth = 0.6),
-    legend.position = "none",
-    plot.margin = margin(3, 3, 3, 3)
-  )  
-
-p6
-
-
-
-
-
-
-# COMBINE ------------------------------------------------------------
-# p1 <- p1 + theme(plot.margin = margin(5,5,5,5))
-# p2 <- p2 + theme(plot.margin = margin(5,5,5,5))
-# p3 <- p3 + theme(plot.margin = margin(5,5,5,5))
-
-p1 <- p1 +
-  annotate(
-    "text",
-    x = -Inf, y = Inf,
-    label = "Eelgrass",
-    hjust = -0.1, vjust = 1.2,
-    fontface = "bold"
-  )
-
-p4 <- p4 +
-  annotate(
-    "text",
-    x = -Inf, y = Inf,
-    label = "Surfgrass",
-    hjust = -0.1, vjust = 1.2,
-    fontface = "bold"
-  )
-
-
-indep_plot_eel <- (p1 / p2) | p3
-indep_plot_surf <- (p4 / p5) | p6
-
-indep_plot = indep_plot_eel/indep_plot_surf
- 
-ggsave(
-  filename = "figures/independent_validation.png",
-  plot = indep_plot,
-  width = 12,
-  height = 11,
-  dpi = 300,
-  bg = "white"
-)
-
-
-
-
-
-# field validation figures
+#field
 load("code/output_data/field_validation/validation_dataset.RData")
-load("~/PhD/Chapters/Chapter-1-BC-Seagrass-Distribution/bc-seagrass-sdm/code/output_data/model_results/combined_metrics_eelgrass.RData")
-load("~/PhD/Chapters/Chapter-1-BC-Seagrass-Distribution/bc-seagrass-sdm/code/output_data/model_results/combined_metrics_surfgrass.RData")
-threshold_df_eelgrass <- combined_metrics_eelgrass %>%
-  select(model, threshold_spatial) %>%
-  mutate(
-    model = recode(
-      model,
-      "bccm_nospatial" = "GLMM_bccm",
-      "bccm_spatial"   = "GLMM_spatial_bccm",
-      "nep_nospatial"  = "GLMM_nep",
-      "nep_spatial"    = "GLMM_spatial_nep",
-      "XGBOOST_bccm"   = "XGB_bccm",
-      "XGBOOST_nep"    = "XGB_nep",
-      "GBM_bccm"       = "GBM_bccm",
-      "GBM_nep"        = "GBM_nep"  ),
-    model = factor(
-        model,
-        levels = c(
-          "GLMM_bccm",
-          "GLMM_spatial_bccm",
-          "GBM_bccm",
-          "XGB_bccm",
-          "GLMM_nep",
-          "GLMM_spatial_nep",
-          "GBM_nep",
-          "XGB_nep")))
-
-threshold_df_surfgrass <- combined_metrics_surfgrass %>%
-  select(model, threshold_spatial) %>%
-  mutate(
-    model = recode(
-      model,
-      "bccm_nospatial" = "GLMM_bccm",
-      "bccm_spatial"   = "GLMM_spatial_bccm",
-      "nep_nospatial"  = "GLMM_nep",
-      "nep_spatial"    = "GLMM_spatial_nep",
-      "XGBOOST_bccm"   = "XGB_bccm",
-      "XGBOOST_nep"    = "XGB_nep",
-      "GBM_bccm"       = "GBM_bccm",
-      "GBM_nep"        = "GBM_nep"  ),
-    model = factor(
-      model,
-      levels = c(
-        "GLMM_bccm",
-        "GLMM_spatial_bccm",
-        "GBM_bccm",
-        "XGB_bccm",
-        "GLMM_nep",
-        "GLMM_spatial_nep",
-        "GBM_nep",
-        "XGB_nep")))
-
-validation_sf <- validation_sf %>%
-  relocate(PH_freq, PH, ZM_freq, ZM, .after = PC_PH)
 
 # need to also drop sites that after reviewing the database should not have been included as they were aborted or vis was too bad to see species
 validation_sf <- validation_sf %>% sf::st_drop_geometry() %>%
   filter(!HKey %in% c(74, 84, 85, 161))  
 
-# determine difference between observed and modelled environmental layers
-# if either observed or modelled layers were mixed these were always retained as we are just looking at predominant substrate and most sites are actually mixed in reality
-validation_sf <- validation_sf %>%
-  mutate(Depth_diff = abs(bathy_mod - avgCorDepth_obs),
-         Slope_diff = abs(slope_mod - slope_obs),
-         Substrate_diff =
-           if_else(
-             substrate_mod == "Mixed" | substrate_mode_obs == "Mixed", TRUE,
-             substrate_mod == substrate_mode_obs))
-
-validation_sf <- validation_sf %>% select (HKey, Region, Survey, Visibility, High.vegetation, avgCorDepth_obs, bathy_mod,
-                                           Depth_diff, slope_obs, slope_mod, Slope_diff, substrate_mode_obs, 
-                                           substrate_mod, Substrate_diff, 
-                                           ZM, ZM_freq, PC_ZM, zo_bccm_nospatial_pred, zo_bccm_spatial_pred, zo_nep_nospatial_pred, zo_nep_spatial_pred, zo_XGBOOST_bccm_pred, zo_XGBOOST_nep_pred, zo_GBM_bccm_pred, zo_GBM_nep_pred,
-                                           PH, PH_freq, PC_PH, ph_bccm_nospatial_pred, ph_bccm_spatial_pred, ph_nep_nospatial_pred, ph_nep_spatial_pred, ph_XGBOOST_bccm_pred, ph_XGBOOST_nep_pred, ph_GBM_bccm_pred, ph_GBM_nep_pred) # need to add in surfgrass predictions
+validation_sf <- validation_sf %>% select (HKey, Region, Survey, avgCorDepth_obs, bathy_mod,
+                                           ZM,  zo_XGBOOST_nep_pred, zo_GBM_nep_pred,
+                                           PH, ph_XGBOOST_nep_pred, ph_GBM_bccm_pred) 
 validation_sf <- validation_sf %>%
   mutate(
-    Tidal_zone = if_else(Survey == "Intertidal", "Intertidal", "Subtidal"),
+    Tidal_zone = if_else(bathy_mod > -1, "Subtidal", "Intertidal"),
     Tidal_zone = factor(Tidal_zone, levels = c("Subtidal", "Intertidal"))
   )
 
 # Prepare eelgrass validation data
-eelgrass_pa_long <- validation_sf %>%
+field_eelgrass_pa_long <- validation_sf %>%
   mutate(
     Presence = factor(ifelse(ZM == 0, "Absent", "Present"),
                       levels = c("Absent", "Present"))
@@ -1145,13 +1504,7 @@ eelgrass_pa_long <- validation_sf %>%
   select(
     Presence,
     Tidal_zone,
-    zo_bccm_nospatial_pred,
-    zo_bccm_spatial_pred,
-    zo_nep_nospatial_pred,
-    zo_nep_spatial_pred,
-    zo_XGBOOST_bccm_pred,
     zo_XGBOOST_nep_pred,
-    zo_GBM_bccm_pred,
     zo_GBM_nep_pred
   ) %>%
   pivot_longer(
@@ -1162,30 +1515,12 @@ eelgrass_pa_long <- validation_sf %>%
   mutate(
     model = recode(
       model,
-      "zo_bccm_nospatial_pred" = "GLMM_bccm",
-      "zo_bccm_spatial_pred"   = "GLMM_spatial_bccm",
-      "zo_nep_nospatial_pred"  = "GLMM_nep",
-      "zo_nep_spatial_pred"    = "GLMM_spatial_nep",
-      "zo_XGBOOST_bccm_pred"   = "XGB_bccm",
-      "zo_XGBOOST_nep_pred"    = "XGB_nep",
-      "zo_GBM_bccm_pred"       = "GBM_bccm",
-      "zo_GBM_nep_pred"        = "GBM_nep"  ),
-    model = factor(
-      model,
-      levels = c(
-        "GLMM_bccm",
-        "GLMM_spatial_bccm",
-        "GBM_bccm",
-        "XGB_bccm",
-        "GLMM_nep",
-        "GLMM_spatial_nep",
-        "GBM_nep",
-        "XGB_nep"
-      )
+      "zo_XGBOOST_nep_pred"    = "XGBoost_nep",
+      "zo_GBM_nep_pred"        = "GBM_nep"  )
     )
-  )
 
-surfgrass_pa_long <- validation_sf %>%
+
+field_surfgrass_pa_long <- validation_sf %>%
   mutate(
     Presence = factor(ifelse(PH == 0, "Absent", "Present"),
                       levels = c("Absent", "Present"))
@@ -1193,16 +1528,9 @@ surfgrass_pa_long <- validation_sf %>%
   select(
     Presence,
     Tidal_zone,
-    ph_bccm_nospatial_pred,
-    ph_bccm_spatial_pred,
-    ph_nep_nospatial_pred,
-    ph_nep_spatial_pred,
-    ph_XGBOOST_bccm_pred,
     ph_XGBOOST_nep_pred,
-    ph_GBM_bccm_pred,
-    ph_GBM_nep_pred
+    ph_GBM_bccm_pred
   ) %>%
-  sf::st_drop_geometry() %>%
   pivot_longer(
     cols = -c(Presence, Tidal_zone),
     names_to = "model",
@@ -1211,32 +1539,155 @@ surfgrass_pa_long <- validation_sf %>%
   mutate(
     model = recode(
       model,
-      "ph_bccm_nospatial_pred" = "GLMM_bccm",
-      "ph_bccm_spatial_pred"   = "GLMM_spatial_bccm",
-      "ph_nep_nospatial_pred"  = "GLMM_nep",
-      "ph_nep_spatial_pred"    = "GLMM_spatial_nep",
-      "ph_XGBOOST_bccm_pred"   = "XGB_bccm",
-      "ph_XGBOOST_nep_pred"    = "XGB_nep",
-      "ph_GBM_bccm_pred"       = "GBM_bccm",
-      "ph_GBM_nep_pred"        = "GBM_nep"  ),
-    model = factor(
-      model,
-      levels = c(
-        "GLMM_bccm",
-        "GLMM_spatial_bccm",
-        "GBM_bccm",
-        "XGB_bccm",
-        "GLMM_nep",
-        "GLMM_spatial_nep",
-        "GBM_nep",
-        "XGB_nep"
-      )
-    )
+      "ph_XGBOOST_nep_pred"    = "XGBoost_nep",
+      "ph_GBM_bccm_pred"       = "GBM_bccm" )
   )
 
 
-# Plot
-eelgrass_field <- ggplot(eelgrass_pa_long,
+
+best_model <- "XGBoost_nep"
+worst_model <- "GBM_nep"
+
+training <- test_eel_pa_long %>%
+  filter(model == best_model) %>%
+  mutate(
+    Dataset = "SDM building",
+    Algorithm = "Best"
+  )
+
+training_worst <- test_eel_pa_long %>%
+  filter(model == worst_model) %>%
+  mutate(
+    Dataset = "SDM building",
+    Algorithm = "Worst"
+  )
+
+independent <- indep_eel_pa_long %>%
+  filter(model == best_model) %>%
+  mutate(
+    Dataset = "Independent",
+    Algorithm = "Best"
+  )
+
+independent_worst <- indep_eel_pa_long %>%
+  filter(model == worst_model) %>%
+  mutate(
+    Dataset = "Independent",
+    Algorithm = "Worst"
+  )
+
+field <- field_eelgrass_pa_long %>%
+  filter(model == best_model) %>%
+  mutate(
+    Dataset = "Targeted",
+    Algorithm = "Best"
+  )
+
+field_worst <- field_eelgrass_pa_long %>%
+  filter(model == worst_model) %>%
+  mutate(
+    Dataset = "Targeted",
+    Algorithm = "Worst"
+  )
+
+thresholds <- final_metrics_eelgrass %>%
+  filter(model %in% c("XGBoost_nep", "GBM_nep")) %>%
+  select(
+    model,
+    threshold_spatial,
+    threshold_temporal,
+    threshold_independent,
+    threshold_field
+  ) %>%
+  pivot_longer(
+    cols = starts_with("threshold"),
+    names_to = "Threshold_type",
+    values_to = "threshold"
+  ) %>%
+  mutate(
+    Algorithm = ifelse(model == "XGBoost_nep", "Best", "Worst"),
+    Dataset = case_when(
+      Threshold_type %in% c("threshold_spatial",
+                            "threshold_temporal") ~ "SDM building",
+      Threshold_type == "threshold_independent" ~ "Independent",
+      Threshold_type == "threshold_field" ~ "Targeted"
+    ),
+    Threshold_type = case_when(
+      Threshold_type == "threshold_spatial" ~ "Spatial",
+      Threshold_type == "threshold_temporal" ~ "Temporal",
+      Threshold_type == "threshold_independent" ~ "Independent",
+      Threshold_type == "threshold_field" ~ "Targeted"
+    )
+  )
+
+thresholds
+
+thresholds <- thresholds %>%
+  mutate(
+    Dataset = factor(
+      Dataset,
+      levels = c("SDM building", "Independent", "Targeted")
+    )
+  )
+
+plot_dat <-
+  bind_rows(
+    training,
+    independent,
+    field,
+    training_worst,
+    independent_worst,
+    field_worst
+  )
+
+plot_dat <- plot_dat %>%
+  mutate(
+    Group = interaction(Tidal_zone, Presence, sep = "\n"),
+    Dataset = factor(
+      Dataset,
+      levels = c("SDM building","Independent","Targeted")
+    ),
+    Algorithm = factor(
+      Algorithm,
+      levels = c("Best","Worst")
+    )
+  )
+
+n_labels <- bind_rows(
+  test_eel_pa_long %>%
+    filter(model == best_model) %>%
+    mutate(Dataset = "SDM building"),
+  
+  indep_eel_pa_long %>%
+    filter(model == best_model) %>%
+    mutate(Dataset = "Independent"),
+  
+  field_eelgrass_pa_long %>%
+    filter(model == best_model) %>%
+    mutate(Dataset = "Targeted")
+) %>%
+  count(Dataset, Presence, Tidal_zone, name = "n") %>%
+  mutate(
+    Algorithm = "Best",
+    label = paste0("n = ", n),
+    y = 0.75
+  )
+
+n_labels <- n_labels %>%
+  mutate(
+    Dataset = factor(
+      Dataset,
+      levels = c("SDM building", "Independent", "Targeted")
+    ),
+    Algorithm = factor(
+      Algorithm,
+      levels = c("Best", "Worst")
+    )
+  )
+
+pd <- position_dodge(width = 0.9)
+
+eelgrass <- ggplot(plot_dat,
        aes(x = Presence,
            y = predicted_suitability,
            fill = Tidal_zone)) +
@@ -1244,114 +1695,473 @@ eelgrass_field <- ggplot(eelgrass_pa_long,
   geom_boxplot(
     aes(group = interaction(Presence, Tidal_zone)),
     position = position_dodge(width = 0.75),
-    outlier.alpha = 0.3,
+    outlier.shape = NA,
     width = 0.6
   ) +
-  
-  
-  facet_wrap(~ model, ncol = 4) +
-  
   geom_hline(
-    data = threshold_df_eelgrass,
-    aes(yintercept = threshold_spatial),
-    linetype = "dashed",
+    data = thresholds,
+    aes(
+      yintercept = threshold,
+      linetype = Threshold_type
+    ),
+    inherit.aes = FALSE,
     colour = "black",
-    linewidth = 0.8,
-    inherit.aes = FALSE
+    linewidth = 0.5
   ) +
+  facet_grid(
+    Algorithm ~ Dataset
+  ) +
+  geom_text(
+    data = n_labels,
+    aes(
+      x = Presence,
+      y = y,
+      group = Tidal_zone,
+      label = label
+    ),
+    position = position_dodge(width = 0.75),
+    inherit.aes = FALSE,
+    angle = 30,
+    hjust = 0,
+    vjust = 0,
+    size = 2.5
+  ) +
+  
   scale_fill_manual(
-    name = "Tidal zone",
     values = c(
       "Subtidal" = "#0B5D5E",   # dark teal
-      "Intertidal" = "#6EC6C4"  # light teal
+      "Intertidal" = "#6EC6C4"
     )
   ) +
+  scale_linetype_manual(
+    values = c(
+      "Spatial" = "solid",
+      "Temporal" = "dashed",
+      "Independent" = "dotdash",
+      "Targeted" = "twodash"
+    ),
+    name = "Validation threshold"
+  ) +
+  labs(
+    x = NULL,
+    y = "Predicted suitability",
+    fill = "Tidal zone"
+  ) +
   
-  scale_y_continuous(limits = c(0, 1), expand = c(0, 0)) + 
-  #coord_cartesian(ylim = c(0, 1))
+  scale_y_continuous(limits = c(0, 1), expand = c(0, 0)) +
   
   labs(
     title = "Eelgrass",
     x = NULL,
     y = "Relative probability of occurrence"
-  ) +
+  ) + 
   
   theme_bw() +
+  
   theme(
-    panel.grid = element_blank(),   # remove grid lines
-    panel.background = element_rect(fill = "white"),
-    plot.background = element_rect(fill = "white"),
-    legend.position = "none",
-    axis.text.x = element_text(size = 10),
+    strip.background = element_blank(),
+    panel.grid = element_blank(), 
     strip.text = element_text(face = "bold"),
-    plot.title = element_text(hjust = 0, face = "bold"),
-    panel.spacing = unit(0, "lines")  
+    axis.text.x = element_text(size = 10),
+    panel.spacing.y = unit(1, "lines"),
+    legend.position = "none"
   )
 
+  eelgrass
 
-surfgrass_field <- ggplot(surfgrass_pa_long,
-                          aes(x = Presence,
-                              y = predicted_suitability,
-                              fill = Tidal_zone)) +
+
   
-  geom_boxplot(
-    aes(group = interaction(Presence, Tidal_zone)),
-    position = position_dodge(width = 0.75),
-    outlier.alpha = 0.3,
-    width = 0.6
-  ) +
   
-  facet_wrap(~ model, ncol = 4) +
   
-  geom_hline(
-    data = threshold_df_surfgrass,
-    aes(yintercept = threshold_spatial),
-    linetype = "dashed",
-    colour = "black",
-    linewidth = 0.8,
-    inherit.aes = FALSE
-  ) +
   
-  scale_fill_manual(
-    name = "Tidal zone",
-    values = c(
-      "Subtidal" = "#0B5D5E",   # dark teal
-      "Intertidal" = "#6EC6C4"  # light teal
+  best_model_surf <- "XGBoost_nep"
+  worst_model_surf <- "GBM_bccm"
+  
+  training_surf <- test_surf_pa_long %>%
+    filter(model == best_model_surf) %>%
+    mutate(
+      Dataset = "SDM building",
+      Algorithm = "Best"
     )
-  ) +
   
-  scale_y_continuous(limits = c(0, 1), expand = c(0, 0)) + 
-  #coord_cartesian(ylim = c(0, 1))
+  training_worst_surf <- test_surf_pa_long %>%
+    filter(model == worst_model_surf) %>%
+    mutate(
+      Dataset = "SDM building",
+      Algorithm = "Worst"
+    )
   
-  labs(
-    title = "Surfgrass",
-    x = NULL,
-    y = NULL
-  ) +
+  independent_surf <- indep_surf_pa_long %>%
+    filter(model == best_model_surf) %>%
+    mutate(
+      Dataset = "Independent",
+      Algorithm = "Best"
+    )
   
-  theme_bw() +
-  theme(
-    panel.grid = element_blank(),   # remove grid lines
-    panel.background = element_rect(fill = "white"),
-    plot.background = element_rect(fill = "white"),
-    legend.position = "right",
-    axis.text.x = element_text(size = 10),
-    strip.text = element_text(face = "bold"),
-    plot.title = element_text(hjust = 0, face = "bold"),
-    panel.spacing = unit(0, "lines")  
-  )
+  independent_worst_surf <- indep_surf_pa_long %>%
+    filter(model == worst_model_surf) %>%
+    mutate(
+      Dataset = "Independent",
+      Algorithm = "Worst"
+    )
+  
+  field_surf <- field_surfgrass_pa_long %>%
+    filter(model == best_model_surf) %>%
+    mutate(
+      Dataset = "Targeted",
+      Algorithm = "Best"
+    )
+  
+  field_worst_surf <- field_surfgrass_pa_long %>%
+    filter(model == worst_model_surf) %>%
+    mutate(
+      Dataset = "Targeted",
+      Algorithm = "Worst"
+    )
+  
+  thresholds_surf <- final_metrics_surfgrass %>%
+    filter(model %in% c("XGBoost_nep", "GBM_bccm")) %>%
+    select(
+      model,
+      threshold_spatial,
+      threshold_temporal,
+      threshold_independent,
+      threshold_field
+    ) %>%
+    pivot_longer(
+      cols = starts_with("threshold"),
+      names_to = "Threshold_type",
+      values_to = "threshold"
+    ) %>%
+    mutate(
+      Algorithm = ifelse(model == "XGBoost_nep", "Best", "Worst"),
+      Dataset = case_when(
+        Threshold_type %in% c("threshold_spatial",
+                              "threshold_temporal") ~ "SDM building",
+        Threshold_type == "threshold_independent" ~ "Independent",
+        Threshold_type == "threshold_field" ~ "Targeted"
+      ),
+      Threshold_type = case_when(
+        Threshold_type == "threshold_spatial" ~ "Spatial",
+        Threshold_type == "threshold_temporal" ~ "Temporal",
+        Threshold_type == "threshold_independent" ~ "Independent",
+        Threshold_type == "threshold_field" ~ "Targeted"
+      )
+    )
+  
+  thresholds_surf
+  
+  thresholds_surf <- thresholds_surf %>%
+    mutate(
+      Dataset = factor(
+        Dataset,
+        levels = c("SDM building", "Independent", "Targeted")
+      )
+    )
+  
+  plot_dat_surf <-
+    bind_rows(
+      training_surf,
+      independent_surf,
+      field_surf,
+      training_worst_surf,
+      independent_worst_surf,
+      field_worst_surf
+    )
+  
+  plot_dat_surf <- plot_dat_surf %>%
+    mutate(
+      Group = interaction(Tidal_zone, Presence, sep = "\n"),
+      Dataset = factor(
+        Dataset,
+        levels = c("SDM building","Independent","Targeted")
+      ),
+      Algorithm = factor(
+        Algorithm,
+        levels = c("Best","Worst")
+      )
+    )
+  
+  n_labels_surf <- bind_rows(
+    test_surf_pa_long %>%
+      filter(model == best_model_surf) %>%
+      mutate(Dataset = "SDM building"),
+    
+    indep_surf_pa_long %>%
+      filter(model == best_model_surf) %>%
+      mutate(Dataset = "Independent"),
+    
+    field_surfgrass_pa_long %>%
+      filter(model == best_model_surf) %>%
+      mutate(Dataset = "Targeted")
+  ) %>%
+    count(Dataset, Presence, Tidal_zone, name = "n") %>%
+    mutate(
+      Algorithm = "Best",
+      label = paste0("n = ", n),
+      y = 0.75
+    )
+  
+  n_labels_surf <- n_labels_surf %>%
+    mutate(
+      Dataset = factor(
+        Dataset,
+        levels = c("SDM building", "Independent", "Targeted")
+      ),
+      Algorithm = factor(
+        Algorithm,
+        levels = c("Best", "Worst")
+      )
+    )
+  
+  
+  surfgrass <- ggplot(plot_dat_surf,
+                     aes(x = Presence,
+                         y = predicted_suitability,
+                         fill = Tidal_zone)) +
+    
+    geom_boxplot(
+      aes(group = interaction(Presence, Tidal_zone)),
+      position = position_dodge(width = 0.75),
+      outlier.shape = NA,
+      width = 0.6
+    ) +
+    
+    geom_hline(
+      data = thresholds_surf,
+      aes(
+        yintercept = threshold,
+        linetype = Threshold_type
+      ),
+      inherit.aes = FALSE,
+      colour = "black",
+      linewidth = 0.5
+    ) +
+    facet_grid(
+      Algorithm ~ Dataset
+    ) +
+    geom_text(
+      data = n_labels_surf,
+      aes(
+        x = Presence,
+        y = y,
+        group = Tidal_zone,
+        label = label
+      ),
+      position = position_dodge(width = 0.75),
+      inherit.aes = FALSE,
+      angle = 30,
+      hjust = 0,
+      vjust = 0,
+      size = 2.5
+    ) +
+    
+    scale_fill_manual(
+      values = c(
+        "Subtidal" = "#0B5D5E",   # dark teal
+        "Intertidal" = "#6EC6C4"
+      )
+    ) +
+    scale_linetype_manual(
+      values = c(
+        "Spatial" = "solid",
+        "Temporal" = "dashed",
+        "Independent" = "dotdash",
+        "Targeted" = "twodash"
+      ),
+      name = "Validation threshold"
+    ) +
+    labs(
+      x = NULL,
+      y = "Predicted suitability",
+      fill = "Tidal zone"
+    ) +
+    
+    scale_y_continuous(limits = c(0, 1), expand = c(0, 0)) +
+    
+    labs(
+      title = "Surfgrass",
+      x = NULL,
+      y = "Relative probability of occurrence"
+    ) + 
+    
+    theme_bw() +
+    
+    theme(
+      strip.background = element_blank(),
+      panel.grid = element_blank(), 
+      strip.text = element_text(face = "bold"),
+      axis.text.x = element_text(size = 10),
+      panel.spacing.y = unit(1, "lines"),
+      legend.position = "bottom",
+      legend.box = "horizontal"
+    ) +
+    guides(
+      linetype = guide_legend(
+        title = "Validation\nthreshold",
+        nrow = 2,
+        byrow = TRUE
+      )
+    )
+  
+  surfgrass
+  
+  
+  
+ 
+  
+  occurence_plot <- eelgrass / surfgrass +
+    plot_layout(
+      heights = c(3, 3.5))
+  
+      occurence_plot   
+ 
+  ggsave(
+    filename = "figures/occurence_plots.png",
+    plot = occurence_plot,
+    width = 180,
+    height = 210,
+    units = "mm",
+    dpi = 600,
+    bg = "white" )
+  
+  
+  
+  
+  
 
- field_val<-eelgrass_field + surfgrass_field
 
- ggsave(
-   filename = "figures/field_validation.png",
-   plot = field_val,
-   width = 13,
-   height = 12,
-   dpi = 300,
-   bg = "white"
- )
 
+
+
+
+# Plot
+# eelgrass_field <- ggplot(eelgrass_pa_long,
+#        aes(x = Presence,
+#            y = predicted_suitability,
+#            fill = Tidal_zone)) +
+#   
+#   geom_boxplot(
+#     aes(group = interaction(Presence, Tidal_zone)),
+#     position = position_dodge(width = 0.75),
+#     outlier.alpha = 0.3,
+#     width = 0.6
+#   ) +
+#   
+#   
+#   facet_wrap(~ model, ncol = 4) +
+#   
+#   geom_hline(
+#     data = threshold_df_eelgrass,
+#     aes(yintercept = threshold_spatial),
+#     linetype = "dashed",
+#     colour = "black",
+#     linewidth = 0.8,
+#     inherit.aes = FALSE
+#   ) +
+#   scale_fill_manual(
+#     name = "Tidal zone",
+#     values = c(
+#       "Subtidal" = "#0B5D5E",   # dark teal
+#       "Intertidal" = "#6EC6C4"  # light teal
+#     )
+#   ) +
+#   
+#   scale_y_continuous(limits = c(0, 1), expand = c(0, 0)) + 
+#   #coord_cartesian(ylim = c(0, 1))
+#   
+#   labs(
+#     title = "Eelgrass",
+#     x = NULL,
+#     y = "Relative probability of occurrence"
+#   ) +
+#   
+#   theme_bw() +
+#   theme(
+#     panel.grid = element_blank(),   # remove grid lines
+#     panel.background = element_rect(fill = "white"),
+#     plot.background = element_rect(fill = "white"),
+#     legend.position = "none",
+#     axis.text.x = element_text(size = 10),
+#     strip.text = element_text(face = "bold"),
+#     plot.title = element_text(hjust = 0, face = "bold"),
+#     panel.spacing = unit(0, "lines")  
+#   )
+# 
+# 
+# surfgrass_field <- ggplot(surfgrass_pa_long,
+#                           aes(x = Presence,
+#                               y = predicted_suitability,
+#                               fill = Tidal_zone)) +
+#   
+#   geom_boxplot(
+#     aes(group = interaction(Presence, Tidal_zone)),
+#     position = position_dodge(width = 0.75),
+#     outlier.alpha = 0.3,
+#     width = 0.6
+#   ) +
+#   
+#   facet_wrap(~ model, ncol = 4) +
+#   
+#   geom_hline(
+#     data = threshold_df_surfgrass,
+#     aes(yintercept = threshold_spatial),
+#     linetype = "dashed",
+#     colour = "black",
+#     linewidth = 0.8,
+#     inherit.aes = FALSE
+#   ) +
+#   
+#   scale_fill_manual(
+#     name = "Tidal zone",
+#     values = c(
+#       "Subtidal" = "#0B5D5E",   # dark teal
+#       "Intertidal" = "#6EC6C4"  # light teal
+#     )
+#   ) +
+#   
+#   scale_y_continuous(limits = c(0, 1), expand = c(0, 0)) + 
+#   #coord_cartesian(ylim = c(0, 1))
+#   
+#   labs(
+#     title = "Surfgrass",
+#     x = NULL,
+#     y = NULL
+#   ) +
+#   
+#   theme_bw() +
+#   theme(
+#     panel.grid = element_blank(),   # remove grid lines
+#     panel.background = element_rect(fill = "white"),
+#     plot.background = element_rect(fill = "white"),
+#     legend.position = "right",
+#     axis.text.x = element_text(size = 10),
+#     strip.text = element_text(face = "bold"),
+#     plot.title = element_text(hjust = 0, face = "bold"),
+#     panel.spacing = unit(0, "lines")  
+#   )
+# 
+#  field_val<-eelgrass_field + surfgrass_field
+# 
+#  ggsave(
+#    filename = "figures/field_validation.png",
+#    plot = field_val,
+#    width = 13,
+#    height = 12,
+#    dpi = 300,
+#    bg = "white"
+#  )
+# 
+#  
+#  
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
  
  
  

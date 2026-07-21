@@ -713,7 +713,7 @@ writeRaster(raster_qcs, file.path(outdir, paste0("eelgrass_predictions_qcs_se_xg
 
 
 
-#HAVE NOt MODIFIED ANYTHING FOR SURFGRASS YET!!
+
 
 
 #surfgrass models
@@ -723,33 +723,44 @@ numFolds <- length(unique(seagrass_data$fold_seagrass))
 dat2 <- filter(seagrass_data_long, species == sp) %>% rename(fold = fold_seagrass)
 
 
-pred_vars = c("depth_stnd", "rei_sqrt_stnd", "tidal_sqrt_stnd",
-  "substrate", "cul_eff_stnd", "airtempcv_stnd",
-  "rsdsmin_stnd", "prmean_stnd", "saltcv_bccm_stnd",
-  "tempmin_bccm_stnd", "surftempcv_bccm_stnd")
+pred_vars <- c(
+  "depth_stnd", "rei_sqrt_stnd", "substrate", "tidal_sqrt_stnd",
+  "airtempcv_stnd", "rsdsmin_stnd", "prmean_stnd",
+  "saltmean_bccm_stnd", "tempmean_bccm_stnd", "surftempcv_bccm_stnd", "Survey"
+)
+
 
 #BCCM model
-env<- env_20m_all %>% dplyr::select(depth_stnd,  rei_sqrt_stnd, tidal_sqrt_stnd, substrate, cul_eff_stnd, 
-                                    airtempcv_stnd, rsdsmin_stnd, prmean_stnd, saltcv_bccm_stnd,
-                                    tempmin_bccm_stnd, surftempcv_bccm_stnd)
-env$substrate <- as.factor(env$substrate)
+env<- env_20m_all %>% dplyr::select(depth_stnd, rei_sqrt_stnd, substrate, tidal_sqrt_stnd, airtempcv_stnd, rsdsmin_stnd, prmean_stnd, 
+                                    saltmean_bccm_stnd, tempmean_bccm_stnd, surftempcv_bccm_stnd)
 
+env$substrate <- factor(
+  env$substrate,
+  levels = levels(dat2$substrate)
+)
+
+# use BHM survey
+env$Survey <- factor(
+  "BHM",
+  levels = levels(dat2$Survey)
+)
 
 set.seed(123)
-# make a full gbm model without cv
+# make a full gbm model without cv, use hyper parameters determined from nested cv
 gbm_fit <- gbm(
   presence ~ .,
   data = dat2[, c("presence", pred_vars)],
   distribution = "bernoulli",
   n.trees = 5000,
-  interaction.depth = 2, #capture main effects, less risk of overfitting
-  shrinkage = 0.005, # Low values (0.001–0.01) → slower learning, usually better generalization, but requires more trees.
+  interaction.depth = 4, 
+  shrinkage = 0.005, 
   bag.fraction = 0.7,
-  n.minobsinnode = 10,
+  n.minobsinnode = 5,
   train.fraction = 1,
   verbose = FALSE
 )
 
+#variable importance
 gbm_varimp_bccm_surfgrass <- summary(
   gbm_fit,
   n.trees = 5000,
@@ -759,8 +770,7 @@ gbm_varimp_bccm_surfgrass <- summary(
 
 save(gbm_varimp_bccm_surfgrass, file = "code/output_data/model_results/relimp_s_bccm_gbm.RData")
 
-
-
+#predict
 gbm_prob <- predict(
   gbm_fit,
   newdata = env,
@@ -769,7 +779,6 @@ gbm_prob <- predict(
 )
 
 range(gbm_prob)
-
 
 env_20m_all$gbm_bccm_prob <- gbm_prob
 
@@ -873,8 +882,8 @@ xgb_fit <- xgb.train(
   params = list(
     objective = "binary:logistic",
     eval_metric = "auc",
-    max_depth = 5,
-    eta = 0.05,
+    max_depth = 7,
+    eta = 0.01,
     gamma = 1,
     min_child_weight = 5,
     subsample = 0.7,
@@ -882,7 +891,7 @@ xgb_fit <- xgb.train(
     nthread = parallel::detectCores() - 1
   ),
   data = dtrain,
-  nrounds = 1500,
+  nrounds = 1000,
   verbose = 0
 )
 
@@ -892,21 +901,28 @@ xgb_varimp <- xgb.importance(model = xgb_fit)
 # 3. Variable importance using permutation method
 xgb_perm_imp <- perm_importance_xgb(model = xgb_fit, X = X, y = y, nrep = 10)
 
-# identify substrate-related rows
-substrate_rows <- grepl("substrate", xgb_perm_imp$Feature)
+# identify dummy-variable rows
+substrate_rows <- grepl("substrate", xgb_perm_imp$Feature, ignore.case = TRUE)
+survey_rows    <- grepl("Survey", xgb_perm_imp$Feature, ignore.case = TRUE)
 
-# aggregate substrate gain
+# aggregate importance
 substrate_gain <- sum(xgb_perm_imp$RelImportance[substrate_rows])
+survey_gain    <- sum(xgb_perm_imp$RelImportance[survey_rows])
 
-# keep non-substrate variables
-xgb_varimp_collapsed <- xgb_perm_imp[!substrate_rows, ]
+# keep all other variables
+xgb_varimp_collapsed <- xgb_perm_imp[!(substrate_rows | survey_rows), ]
 
-# add aggregated substrate row
+# add aggregated categorical variables
 xgb_varimp_collapsed <- rbind(
   xgb_varimp_collapsed,
   data.frame(
     Feature = "substrate",
     RelImportance = substrate_gain,
+    Importance = NA
+  ),
+  data.frame(
+    Feature = "Survey",
+    RelImportance = survey_gain,
     Importance = NA
   )
 )
@@ -914,7 +930,10 @@ xgb_varimp_collapsed <- rbind(
 xgb_varimp_bccm_surfgrass <- xgb_varimp_collapsed[
   order(-xgb_varimp_collapsed$RelImportance), ]
 
-save(xgb_varimp_bccm_surfgrass, file = "code/output_data/model_results/relimp_s_bccm_xgb.RData")
+save(xgb_varimp_bccm_surfgrass,
+     file = "code/output_data/model_results/relimp_s_bccm_xgb.RData")
+
+
 
 # 4. Predict onto your environmental dataframe
 X_pred <- model.matrix(~ . - 1, data = env)
@@ -947,15 +966,16 @@ for (i in 1:n_boot) {
     params = list(
       objective = "binary:logistic",
       eval_metric = "auc",
-      max_depth = 5,
-      eta = 0.05,
+      max_depth = 3,
+      eta = 0.01,
       gamma = 1,
       min_child_weight = 5,
-      subsample = 0.7,
-      colsample_bytree = 0.7
+      subsample = 0.9,
+      colsample_bytree = 0.7,
+      nthread = parallel::detectCores() - 1
     ),
     data = dtrain,
-    nrounds = 1500,
+    nrounds = 1000,
     verbose = 0
   )
   
@@ -1020,7 +1040,7 @@ raster_wcvi <- env_20m_all %>%
   filter(region == "West Coast Vancouver Island") %>%
   dplyr::select(X_m, Y_m, xgb_bccm_se)
 raster_wcvi <- rast(x = raster_wcvi %>% as.matrix, type = "xyz", crs = "EPSG:3005")
-writeRaster(raster_wcvi, file.path(outdir, paste0("surfgrass_predictions_wcvi_xgb_gbm_bccm.tif")), overwrite = TRUE)
+writeRaster(raster_wcvi, file.path(outdir, paste0("surfgrass_predictions_wcvi_se_xgb_bccm.tif")), overwrite = TRUE)
 
 raster_ncc <- env_20m_all %>%
   filter(region == "North Central Coast") %>%
@@ -1035,19 +1055,24 @@ raster_qcs <- rast(x = raster_qcs %>% as.matrix, type = "xyz", crs = "EPSG:3005"
 writeRaster(raster_qcs, file.path(outdir, paste0("surfgrass_predictions_qcs_se_xgb_bccm.tif")), overwrite = TRUE)
 
 
-
-
 #NEP model
-pred_vars = c( "depth_stnd", "rei_sqrt_stnd", "tidal_sqrt_stnd",
-               "substrate", "cul_eff_stnd", "airtempcv_stnd",
-               "rsdsmin_stnd", "prmean_stnd", "saltmean_nep_stnd",
-               "tempmean_nep_stnd", "surftempcv_nep_stnd")
+pred_vars = c("depth_stnd", "rei_sqrt_stnd", "substrate", "tidal_sqrt_stnd",
+              "airtempcv_stnd", "rsdsmin_stnd", "prmean_stnd",
+              "saltmean_nep_stnd", "tempmean_nep_stnd", "surftempcv_nep_stnd", "Survey")
 
-env<- env_20m_all %>% dplyr::select( depth_stnd, rei_sqrt_stnd, tidal_sqrt_stnd,
-                                     substrate, cul_eff_stnd, airtempcv_stnd,
-                                     rsdsmin_stnd, prmean_stnd, saltmean_nep_stnd,
-                                     tempmean_nep_stnd, surftempcv_nep_stnd)
-env$substrate <- as.factor(env$substrate)
+env<- env_20m_all %>% dplyr::select(depth_stnd, rei_sqrt_stnd, substrate, tidal_sqrt_stnd, airtempcv_stnd, rsdsmin_stnd, prmean_stnd, 
+                                    saltmean_nep_stnd, tempmean_nep_stnd, surftempcv_nep_stnd)
+
+env$substrate <- factor(
+  env$substrate,
+  levels = levels(dat2$substrate)
+)
+
+env$Survey <- factor(
+  "BHM",
+  levels = levels(dat2$Survey)
+)
+
 
 set.seed(123)
 # make a full gbm model without cv
@@ -1056,10 +1081,10 @@ gbm_fit <- gbm(
   data = dat2[, c("presence", pred_vars)],
   distribution = "bernoulli",
   n.trees = 5000,
-  interaction.depth = 2, #capture main effects, less risk of overfitting
-  shrinkage = 0.005, # Low values (0.001–0.01) → slower learning, usually better generalization, but requires more trees.
+  interaction.depth = 2, 
+  shrinkage = 0.005, 
   bag.fraction = 0.7,
-  n.minobsinnode = 10,
+  n.minobsinnode = 5,
   train.fraction = 1,
   verbose = FALSE
 )
@@ -1186,7 +1211,7 @@ xgb_fit <- xgb.train(
     objective = "binary:logistic",
     eval_metric = "auc",
     max_depth = 5,
-    eta = 0.05,
+    eta = 0.01,
     gamma = 1,
     min_child_weight = 5,
     subsample = 0.7,
@@ -1194,7 +1219,7 @@ xgb_fit <- xgb.train(
     nthread = parallel::detectCores() - 1
   ),
   data = dtrain,
-  nrounds = 1500,
+  nrounds = 1000,
   verbose = 0
 )
 
@@ -1204,24 +1229,32 @@ xgb_varimp <- xgb.importance(model = xgb_fit)
 # 3. Variable importance using permutation method
 xgb_perm_imp <- perm_importance_xgb(model = xgb_fit, X = X, y = y, nrep = 10)
 
-# identify substrate-related rows
-substrate_rows <- grepl("substrate", xgb_perm_imp$Feature)
+# identify dummy-variable rows
+substrate_rows <- grepl("substrate", xgb_perm_imp$Feature, ignore.case = TRUE)
+survey_rows    <- grepl("Survey", xgb_perm_imp$Feature, ignore.case = TRUE)
 
-# aggregate substrate gain
+# aggregate importance
 substrate_gain <- sum(xgb_perm_imp$RelImportance[substrate_rows])
+survey_gain    <- sum(xgb_perm_imp$RelImportance[survey_rows])
 
-# keep non-substrate variables
-xgb_varimp_collapsed <- xgb_perm_imp[!substrate_rows, ]
+# keep all other variables
+xgb_varimp_collapsed <- xgb_perm_imp[!(substrate_rows | survey_rows), ]
 
-# add aggregated substrate row
+# add aggregated categorical variables
 xgb_varimp_collapsed <- rbind(
   xgb_varimp_collapsed,
   data.frame(
     Feature = "substrate",
     RelImportance = substrate_gain,
     Importance = NA
+  ),
+  data.frame(
+    Feature = "Survey",
+    RelImportance = survey_gain,
+    Importance = NA
   )
 )
+
 
 xgb_varimp_nep_surfgrass <- xgb_varimp_collapsed[
   order(-xgb_varimp_collapsed$RelImportance), ]
@@ -1260,14 +1293,15 @@ for (i in 1:n_boot) {
       objective = "binary:logistic",
       eval_metric = "auc",
       max_depth = 5,
-      eta = 0.05,
+      eta = 0.01,
       gamma = 1,
       min_child_weight = 5,
       subsample = 0.7,
-      colsample_bytree = 0.7
+      colsample_bytree = 0.9,
+      nthread = parallel::detectCores() - 1
     ),
     data = dtrain,
-    nrounds = 1500,
+    nrounds = 500,
     verbose = 0
   )
   
@@ -1345,6 +1379,5 @@ raster_qcs <- env_20m_all %>%
   dplyr::select(X_m, Y_m, xgb_nep_se)
 raster_qcs <- rast(x = raster_qcs %>% as.matrix, type = "xyz", crs = "EPSG:3005")
 writeRaster(raster_qcs, file.path(outdir, paste0("surfgrass_predictions_qcs_se_xgb_nep.tif")), overwrite = TRUE)
-
 
 

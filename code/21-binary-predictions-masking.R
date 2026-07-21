@@ -58,24 +58,28 @@ crs(substrate_all) <- "EPSG:3005"
 
 
 # eelgrass
-load("./code/output_data/model_results/combined_metrics_eelgrass_4_validations.RData")
-# for eelgras XGBOOST nep is best model. tss threshold from cv is 0.031
+load("./code/output_data/model_results/final_metrics_eelgrass.RData")
+# for eelgras XGBOOST nep is best model. 
+xgb_eelgrass<- final_metrics_eelgrass %>% filter (model == "XGBoost_nep") %>% select (threshold_spatial, threshold_temporal, threshold_field)
+# do not want to make threshold based off independent because these are psudo absences
+
+
 
 # --- Load rasters ---
 eelgrass_20m <- terra::vrt(c("raster/eelgrass/xgb_nep/eelgrass_predictions_hg_xgb_nep.tif", "raster/eelgrass/xgb_nep/eelgrass_predictions_ncc_xgb_nep.tif", "raster/eelgrass/xgb_nep/eelgrass_predictions_qcs_xgb_nep.tif", "raster/eelgrass/xgb_nep/eelgrass_predictions_ss_xgb_nep.tif", "raster/eelgrass/xgb_nep/eelgrass_predictions_wcvi_xgb_nep.tif"), "eelgrass_xgb_nep.vrt", overwrite=T)   # values 0–1
-eelgrass_20m_glmm_spatial_nep <- terra::vrt(c("raster/eelgrass/nep_spatial/eelgrass_predictions_hg_nep_spatial.tif", "raster/eelgrass/nep_spatial/eelgrass_predictions_ncc_nep_spatial.tif", "raster/eelgrass/nep_spatial/eelgrass_predictions_qcs_nep_spatial.tif", "raster/eelgrass/nep_spatial/eelgrass_predictions_ss_nep_spatial.tif", "raster/eelgrass/nep_spatial/eelgrass_predictions_wcvi_nep_spatial.tif"), "eelgrass_nep_spatial.vrt", overwrite=T)   # values 0–1
+#eelgrass_20m_glmm_spatial_nep <- terra::vrt(c("raster/eelgrass/nep_spatial/eelgrass_predictions_hg_nep_spatial.tif", "raster/eelgrass/nep_spatial/eelgrass_predictions_ncc_nep_spatial.tif", "raster/eelgrass/nep_spatial/eelgrass_predictions_qcs_nep_spatial.tif", "raster/eelgrass/nep_spatial/eelgrass_predictions_ss_nep_spatial.tif", "raster/eelgrass/nep_spatial/eelgrass_predictions_wcvi_nep_spatial.tif"), "eelgrass_nep_spatial.vrt", overwrite=T)   # values 0–1
 
 
 
 # --- 1. Threshold eelgrass raster to binary (presence / absence) ---
 # define threshold (adjust as needed)
-thr <- 0.031
-thr1 <- 0.037
+thr<- mean(as.numeric(xgb_eelgrass[1, ]))
+
 
 eel_bin <- ifel(eelgrass_20m >= thr, 1, 0)
-eel_bin_nepspatial <- ifel(eelgrass_20m_glmm_spatial_nep >= thr1, 1, 0)
+#eel_bin_nepspatial <- ifel(eelgrass_20m_glmm_spatial_nep >= thr1, 1, 0)
 writeRaster(eel_bin, file.path("raster/eelgrass/eelgrass_predictions_xgb_nep_binary_notmasked.tif"), overwrite = TRUE)
-writeRaster(eel_bin_nepspatial, file.path("raster/eelgrass/eelgrass_predictions_nepspatial_binary_notmasked.tif"), overwrite = TRUE)
+#writeRaster(eel_bin_nepspatial, file.path("raster/eelgrass/eelgrass_predictions_nepspatial_binary_notmasked.tif"), overwrite = TRUE)
 
 
 # --- 4. Remove eelgrass presence where marsh, tidal flats, upland and beach is present ---
@@ -121,15 +125,15 @@ n1
 
 area_m2 <- n1 * 400
 area_m2
-# 583987600 m2
+# 695935600 m2
 
 area_km2 <- area_m2 / 1e6
 area_km2
-# 583.9876 km2
+# 695.9356 km2
 
 area_ha <- area_m2 / 10000
 area_ha
-# 58398.76 hectares
+# 69593.56 hectares
 
 writeRaster(eel_final_plus_mapped, file.path("raster/eelgrass/eelgrass_predictions.tif"), overwrite = TRUE)
 
@@ -137,22 +141,25 @@ writeRaster(eel_final_plus_mapped, file.path("raster/eelgrass/eelgrass_predictio
 
 
 # surfgrass
-load("./code/output_data/model_results/combined_metrics_surfgrass_4_validations.RData")
+load("./code/output_data/model_results/final_metrics_surfgrass.RData")
+xgb_surfgrass<- final_metrics_surfgrass %>% filter (model == "XGBoost_nep") %>% select (threshold_spatial, threshold_temporal, threshold_field)
+
 # for surfgrass bccm spatial is best model. tss threshold from cv is 0.014
 
 # --- Load rasters ---
-surfgrass_20m <- terra::vrt(c("raster/surfgrass/bccm_spatial/surfgrass_predictions_hg_bccm_spatial.tif", "raster/surfgrass/bccm_spatial/surfgrass_predictions_ncc_bccm_spatial.tif", "raster/surfgrass/bccm_spatial/surfgrass_predictions_qcs_bccm_spatial.tif", "raster/surfgrass/bccm_spatial/surfgrass_predictions_ss_bccm_spatial.tif", "raster/surfgrass/bccm_spatial/surfgrass_predictions_wcvi_bccm_spatial.tif"), "surfgrass_bccm_spatial.vrt", overwrite=T)   # values 0–1
-surfgrass_20m_glmm_nospatial_nep <- terra::vrt(c("raster/surfgrass/nep_nospatial/surfgrass_predictions_hg_nep_nospatial.tif", "raster/surfgrass/nep_nospatial/surfgrass_predictions_ncc_nep_nospatial.tif", "raster/surfgrass/nep_nospatial/surfgrass_predictions_qcs_nep_nospatial.tif", "raster/surfgrass/nep_nospatial/surfgrass_predictions_ss_nep_nospatial.tif", "raster/surfgrass/nep_nospatial/surfgrass_predictions_wcvi_nep_nospatial.tif"), "surfgrass_nep_nospatial.vrt", overwrite=T)   # values 0–1
+surfgrass_20m <- terra::vrt(c("raster/surfgrass/xgb_nep/surfgrass_predictions_hg_xgb_nep.tif", "raster/surfgrass/xgb_nep/surfgrass_predictions_ncc_xgb_nep.tif", "raster/surfgrass/xgb_nep/surfgrass_predictions_qcs_xgb_nep.tif", "raster/surfgrass/xgb_nep/surfgrass_predictions_ss_xgb_nep.tif", "raster/surfgrass/xgb_nep/surfgrass_predictions_wcvi_xgb_nep.tif"), "surfgrass_xgb_nep.vrt", overwrite=T)   # values 0–1
+#surfgrass_20m_glmm_nospatial_nep <- terra::vrt(c("raster/surfgrass/nep_nospatial/surfgrass_predictions_hg_nep_nospatial.tif", "raster/surfgrass/nep_nospatial/surfgrass_predictions_ncc_nep_nospatial.tif", "raster/surfgrass/nep_nospatial/surfgrass_predictions_qcs_nep_nospatial.tif", "raster/surfgrass/nep_nospatial/surfgrass_predictions_ss_nep_nospatial.tif", "raster/surfgrass/nep_nospatial/surfgrass_predictions_wcvi_nep_nospatial.tif"), "surfgrass_nep_nospatial.vrt", overwrite=T)   # values 0–1
 
 # --- 1. Threshold surfgrass raster to binary (presence / absence) ---
 # define threshold (adjust as needed)
-thr <- 0.014
-thr1 <- 0.014
+thr<- mean(as.numeric(xgb_surfgrass[1, ]))
+
+#thr1 <- 0.014
 
 surf_bin <- ifel(surfgrass_20m >= thr, 1, 0)
-surf_bin_nepnospatial <- ifel(surfgrass_20m_glmm_nospatial_nep >= thr1, 1, 0)
-writeRaster(surf_bin, file.path("raster/surfgrass/surfgrass_predictions_bccmspatial_binary_notmasked.tif"), overwrite = TRUE)
-writeRaster(surf_bin_nepnospatial, file.path("raster/surfgrass/surfgrass_predictions_nepnospatial_binary_notmasked.tif"), overwrite = TRUE)
+#surf_bin_nepnospatial <- ifel(surfgrass_20m_glmm_nospatial_nep >= thr1, 1, 0)
+writeRaster(surf_bin, file.path("raster/surfgrass/surfgrass_predictions_xgb_nep_binary_notmasked.tif"), overwrite = TRUE)
+#writeRaster(surf_bin_nepnospatial, file.path("raster/surfgrass/surfgrass_predictions_nepnospatial_binary_notmasked.tif"), overwrite = TRUE)
 
 
 # --- 4. Remove surfgrass presence where marsh, tidal flats, upland and beach is present ---
@@ -181,15 +188,15 @@ n1
 
 area_m2 <- n1 * 400
 area_m2
-# 1047827600 m2
+# 684958000 m2
 
 area_km2 <- area_m2 / 1e6
 area_km2
-# 1047.828 km2
+# 684.958 km2
 
 area_ha <- area_m2 / 10000
 area_ha
-# 104782.8
+# 68495.8
 
 writeRaster(surf_final, file.path("raster/surfgrass/surfgrass_predictions.tif"), overwrite = TRUE)
 
@@ -223,22 +230,6 @@ validation_sf <- validation_sf %>%
 validation_sf <- validation_sf %>%
   relocate(PH_freq, PH, ZM_freq, ZM, .after = PC_PH)
 
-# noticed error in database that have alerted to Sandie so remove this once it is changed
-validation_sf$PC_ZM[validation_sf$HKey == "125"] <- "51-75"
-validation_sf$PC_PH[validation_sf$HKey == "125"] <- "0"
-
-# here are some more errors that need to be addressed in database still
-validation_sf$PC_ZM[validation_sf$HKey == "160"] <- "0"
-validation_sf$PC_ZM[validation_sf$HKey == "536"] <- "0"
-validation_sf$PC_ZM[validation_sf$HKey == "585"] <- "0"
-validation_sf$PC_PH[validation_sf$HKey == "160"] <- "0"
-validation_sf$PC_PH[validation_sf$HKey == "536"] <- "0"
-validation_sf$PC_PH[validation_sf$HKey == "588"] <- "26-50"
-validation_sf$ZM[validation_sf$HKey == "35"] <- "0"
-validation_sf$ZM[validation_sf$HKey == "521"] <- "0"
-validation_sf$PH[validation_sf$HKey == "521"] <- "1"
-validation_sf$ZM[validation_sf$HKey == "545"] <- "0"
-validation_sf$PH[validation_sf$HKey == "545"] <- "1"
 
 # determine difference between observed and modelled environmental layers
 # if either observed or modelled layers were mixed these were always retained as we are just looking at predominant substrate and most sites are actually mixed in reality

@@ -35,8 +35,7 @@ boxed_theme <- theme_minimal(base_size = 13) +
     axis.title.y = element_text(margin = margin(r = 8))
   )
 
-load("code/output_data/model_results/metrics_eelgrass.RData")
-#load("~/PhD/Chapters/Chapter-1-BC-Seagrass-Distribution/bc-seagrass-sdm/code/output_data/model_results/combined_metrics_surfgrass.RData")
+
 
 # load sdm validation dataset
 load("code/output_data/field_validation/validation_dataset.RData")
@@ -85,6 +84,7 @@ summary(validation_sf)
 
 
 ##ZM Eelgrass
+load("code/output_data/model_results/metrics_eelgrass.RData")
 zm_metrics <- calc_field_metrics(
   data = validation_sf,
   obs_col = "ZM",
@@ -93,9 +93,7 @@ zm_metrics <- calc_field_metrics(
 
 # test with no high intertida, models do much better indicating we have overprediction into the intertidal in the sdms
 validation_sf_nointertidal <- validation_sf %>%
-  dplyr::filter(
-    Survey != "Intertidal" | bathy_mod > -1
-  )
+  dplyr::filter(bathy_mod > -1)
 
 zm_metrics_nointertidal <- calc_field_metrics(
   data = validation_sf_nointertidal,
@@ -138,21 +136,57 @@ save(final_metrics_eelgrass_nointertidal, file = "code/output_data/model_results
 
 
 
-
-
-
-
-
-
-
-#still need to update surfgrass
 #### PH surfgrass
+load("code/output_data/model_results/metrics_surfgrass.RData")
 
 ph_metrics <- calc_field_metrics(
-  data = field_validation,
+  data = validation_sf,
   obs_col = "PH",
-  model_cols = grep("^ph_.*_pred$", names(field_validation), value = TRUE)
+  model_cols = grep("^ph_.*_pred$", names(validation_sf), value = TRUE)
 )
+
+# test with no high intertida, models do much better indicating we have overprediction into the intertidal in the sdms
+validation_sf_nointertidal <- validation_sf %>%
+  dplyr::filter(bathy_mod > -1)
+
+ph_metrics_nointertidal <- calc_field_metrics(
+  data = validation_sf_nointertidal,
+  obs_col = "PH",
+  model_cols = grep("^ph_.*_pred$", names(validation_sf), value = TRUE)
+)
+
+surfgrass_field_metrics_summary <- ph_metrics %>%
+  mutate(model = recode(model,
+                        "ph_bccm_nospatial_pred" = "GLM_bccm",
+                        "ph_bccm_spatial_pred" = "GLMM_bccm",
+                        "ph_nep_nospatial_pred" = "GLM_nep",
+                        "ph_nep_spatial_pred" = "GLMM_nep",
+                        "ph_XGBOOST_nep_pred" = "XGBoost_nep",
+                        "ph_XGBOOST_bccm_pred" = "XGBoost_bccm",
+                        "ph_GBM_nep_pred" = "GBM_nep",
+                        "ph_GBM_bccm_pred" = "GBM_bccm"))%>%
+  select(model, auc, tjur, brier, logloss, sensitivity, specificity, tss, threshold) %>%
+  rename_with(~ paste0(., "_field"), -model)
+
+final_metrics_surfgrass <- full_join(combined_metrics_surfgrass, surfgrass_field_metrics_summary, by = "model")
+save(final_metrics_surfgrass, file = "code/output_data/model_results/final_metrics_surfgrass.RData")
+
+
+surfgrass_field_metrics_summary_nointertidal <- ph_metrics_nointertidal %>%
+  mutate(model = recode(model,
+                        "ph_bccm_nospatial_pred" = "GLM_bccm",
+                        "ph_bccm_spatial_pred" = "GLMM_bccm",
+                        "ph_nep_nospatial_pred" = "GLM_nep",
+                        "ph_nep_spatial_pred" = "GLMM_nep",
+                        "ph_XGBOOST_nep_pred" = "XGBoost_nep",
+                        "ph_XGBOOST_bccm_pred" = "XGBoost_bccm",
+                        "ph_GBM_nep_pred" = "GBM_nep",
+                        "ph_GBM_bccm_pred" = "GBM_bccm"))%>%
+  select(model, auc, tjur, brier, logloss, sensitivity, specificity, tss, threshold) %>%
+  rename_with(~ paste0(., "_field"), -model)
+
+final_metrics_surfgrass_nointertidal <- full_join(combined_metrics_surfgrass, surfgrass_field_metrics_summary_nointertidal, by = "model")
+save(final_metrics_surfgrass_nointertidal, file = "code/output_data/model_results/final_metrics_surfgrass_fieldnointertidal.RData")
 
 
 
