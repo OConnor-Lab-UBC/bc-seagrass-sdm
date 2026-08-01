@@ -76,7 +76,7 @@ for (yr in all_years) {
     template_rast = template_rast
     )
   # Store in list
-  eelgrass_rasters[[as.character(yr)]] <- r
+  #eelgrass_rasters[[as.character(yr)]] <- r
   
   # Save raster to file 
   writeRaster(r, filename = paste0("code/output_data/independent_validation/eelgrass_netforce_raster_", yr, ".tif"), 
@@ -134,11 +134,11 @@ writeRaster(presence_count, "code/output_data/independent_validation/BCeelgrass_
 netforce<- rast("code/output_data/independent_validation/BCeelgrass_netforce_2013_2023.tif")
 
 fraser<- vect("raw_data/MetroVan2020/2020_Eelgrass_MetroVanSEI.shp")
-fraser_proj <- project(fraser, netforce)
+fraser_proj <- project(fraser, template_rast)
 
 fraser_rast <- terra::rasterize(
   x = fraser_proj,
-  y = netforce,
+  y = template_rast,
   field = "Shape_Area",
   touches = TRUE
 )
@@ -149,7 +149,7 @@ fraser_rast <- ifel(!is.na(fraser_rast), 1, NA)
 combined <- merge(netforce, fraser_rast)
 plot(combined)
 
-writeRaster(combined, "code/output_data/independent_validation/BCeelgrass_netforce_2013_2023.tif", overwrite = TRUE)
+writeRaster(combined, "code/output_data/independent_validation/BCeelgrass_netforce_2013_2023test.tif", overwrite = TRUE)
 
 
 
@@ -177,6 +177,10 @@ r_pts1  <- rasterize(points_sg1, template_rast, field = 1, background = NA, touc
 r_pts2  <- rasterize(points_sg2, template_rast, field = 1, background = NA, touches = TRUE)
 r_pts3  <- rasterize(points_sg3, template_rast, field = 1, background = NA, touches = TRUE)
 
+global(r_poly == 1, "sum", na.rm = TRUE) # 91,387
+global(r_pts1 == 1, "sum", na.rm = TRUE) # 65
+global(r_pts2 == 1, "sum", na.rm = TRUE) # 26
+global(r_pts3 == 1, "sum", na.rm = TRUE) # 99
 
 # Combine them using cover()
 surfgrass_combined <- cover(r_pts1, r_poly)

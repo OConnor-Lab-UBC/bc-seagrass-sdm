@@ -26,6 +26,7 @@ library(grid)
 library(purrr)
 library(tibble)
 library(stringr)
+library(tidyterra)
 
 coastline_full <- st_read("raw_data/CHS_HWL2015_Coastline.gdb", layer = "Polygon_CHS_Pacific_HWL_2015_5028437_simple")
 coastline <- coastline_full %>%
@@ -379,7 +380,7 @@ validation_class <- validation_sf %>%
       PH == 1 ~ "Surfgrass",
       TRUE ~ "Neither"
     ),
-    panel = "Targeted validation sites\nby observed genus"
+    panel = "Targeted validation sites\nby observed taxa"
   ) %>%
   mutate(
     habitat = factor(
@@ -1324,6 +1325,9 @@ ggsave("figures/figure_relimp.png", plot = relimp, width = 8, height = 6, dpi = 
 load("~/PhD/Chapters/Chapter-1-BC-Seagrass-Distribution/bc-seagrass-sdm/code/output_data/model_results/final_metrics_eelgrass.RData")
 load("~/PhD/Chapters/Chapter-1-BC-Seagrass-Distribution/bc-seagrass-sdm/code/output_data/model_results/final_metrics_surfgrass.RData")
 
+
+#need to extract predictions from the 2013-2023 test data
+load("code/output_data/seagrass_model_inputs.RData")
 seagrass_data %>%
   count(Month)
 
@@ -1331,8 +1335,7 @@ seagrass_data %>%
   summarise(
     pct_may_sep = 100 * mean(Month %in% 5:9)
   )
-#need to extract predictions from the 2013-2023 test data
-load("code/output_data/seagrass_model_inputs.RData")
+
 seagrass_data <- seagrass_data %>% filter (Year >= 2013) 
 seagrass_data_sf <- sf::st_as_sf(seagrass_data, coords = c("X_m", "Y_m"), crs = 3005) 
 
@@ -1552,42 +1555,42 @@ training <- test_eel_pa_long %>%
   filter(model == best_model) %>%
   mutate(
     Dataset = "SDM building",
-    Algorithm = "Best"
+    Algorithm = "Highest performing"
   )
 
 training_worst <- test_eel_pa_long %>%
   filter(model == worst_model) %>%
   mutate(
     Dataset = "SDM building",
-    Algorithm = "Worst"
+    Algorithm = "Lowest performing"
   )
 
 independent <- indep_eel_pa_long %>%
   filter(model == best_model) %>%
   mutate(
     Dataset = "Independent",
-    Algorithm = "Best"
+    Algorithm = "Highest performing"
   )
 
 independent_worst <- indep_eel_pa_long %>%
   filter(model == worst_model) %>%
   mutate(
     Dataset = "Independent",
-    Algorithm = "Worst"
+    Algorithm = "Lowest performing"
   )
 
 field <- field_eelgrass_pa_long %>%
   filter(model == best_model) %>%
   mutate(
     Dataset = "Targeted",
-    Algorithm = "Best"
+    Algorithm = "Highest performing"
   )
 
 field_worst <- field_eelgrass_pa_long %>%
   filter(model == worst_model) %>%
   mutate(
     Dataset = "Targeted",
-    Algorithm = "Worst"
+    Algorithm = "Lowest performing"
   )
 
 thresholds <- final_metrics_eelgrass %>%
@@ -1605,7 +1608,7 @@ thresholds <- final_metrics_eelgrass %>%
     values_to = "threshold"
   ) %>%
   mutate(
-    Algorithm = ifelse(model == "XGBoost_nep", "Best", "Worst"),
+    Algorithm = ifelse(model == "XGBoost_nep", "Highest performing", "Lowest performing"),
     Dataset = case_when(
       Threshold_type %in% c("threshold_spatial",
                             "threshold_temporal") ~ "SDM building",
@@ -1649,7 +1652,7 @@ plot_dat <- plot_dat %>%
     ),
     Algorithm = factor(
       Algorithm,
-      levels = c("Best","Worst")
+      levels = c("Highest performing","Lowest performing")
     )
   )
 
@@ -1668,9 +1671,9 @@ n_labels <- bind_rows(
 ) %>%
   count(Dataset, Presence, Tidal_zone, name = "n") %>%
   mutate(
-    Algorithm = "Best",
+    Algorithm = "Highest performing",
     label = paste0("n = ", n),
-    y = 0.75
+    y = 0.74
   )
 
 n_labels <- n_labels %>%
@@ -1681,7 +1684,7 @@ n_labels <- n_labels %>%
     ),
     Algorithm = factor(
       Algorithm,
-      levels = c("Best", "Worst")
+      levels = c("Highest performing", "Lowest performing")
     )
   )
 
@@ -1719,12 +1722,11 @@ eelgrass <- ggplot(plot_dat,
       group = Tidal_zone,
       label = label
     ),
-    position = position_dodge(width = 0.75),
-    inherit.aes = FALSE,
+    position = position_dodge2(width = 0.75),
+    hjust = -0.08,
     angle = 30,
-    hjust = 0,
-    vjust = 0,
-    size = 2.5
+    size = 2.5,
+    inherit.aes = FALSE
   ) +
   
   scale_fill_manual(
@@ -1781,42 +1783,42 @@ eelgrass <- ggplot(plot_dat,
     filter(model == best_model_surf) %>%
     mutate(
       Dataset = "SDM building",
-      Algorithm = "Best"
+      Algorithm = "Highest performing"
     )
   
   training_worst_surf <- test_surf_pa_long %>%
     filter(model == worst_model_surf) %>%
     mutate(
       Dataset = "SDM building",
-      Algorithm = "Worst"
+      Algorithm = "Lowest performing"
     )
   
   independent_surf <- indep_surf_pa_long %>%
     filter(model == best_model_surf) %>%
     mutate(
       Dataset = "Independent",
-      Algorithm = "Best"
+      Algorithm = "Highest performing"
     )
   
   independent_worst_surf <- indep_surf_pa_long %>%
     filter(model == worst_model_surf) %>%
     mutate(
       Dataset = "Independent",
-      Algorithm = "Worst"
+      Algorithm = "Lowest performing"
     )
   
   field_surf <- field_surfgrass_pa_long %>%
     filter(model == best_model_surf) %>%
     mutate(
       Dataset = "Targeted",
-      Algorithm = "Best"
+      Algorithm = "Highest performing"
     )
   
   field_worst_surf <- field_surfgrass_pa_long %>%
     filter(model == worst_model_surf) %>%
     mutate(
       Dataset = "Targeted",
-      Algorithm = "Worst"
+      Algorithm = "Lowest performing"
     )
   
   thresholds_surf <- final_metrics_surfgrass %>%
@@ -1834,7 +1836,7 @@ eelgrass <- ggplot(plot_dat,
       values_to = "threshold"
     ) %>%
     mutate(
-      Algorithm = ifelse(model == "XGBoost_nep", "Best", "Worst"),
+      Algorithm = ifelse(model == "XGBoost_nep", "Highest performing", "Lowest performing"),
       Dataset = case_when(
         Threshold_type %in% c("threshold_spatial",
                               "threshold_temporal") ~ "SDM building",
@@ -1878,7 +1880,7 @@ eelgrass <- ggplot(plot_dat,
       ),
       Algorithm = factor(
         Algorithm,
-        levels = c("Best","Worst")
+        levels = c("Highest performing","Lowest performing")
       )
     )
   
@@ -1897,9 +1899,9 @@ eelgrass <- ggplot(plot_dat,
   ) %>%
     count(Dataset, Presence, Tidal_zone, name = "n") %>%
     mutate(
-      Algorithm = "Best",
+      Algorithm = "Highest performing",
       label = paste0("n = ", n),
-      y = 0.75
+      y = 0.74
     )
   
   n_labels_surf <- n_labels_surf %>%
@@ -1910,7 +1912,7 @@ eelgrass <- ggplot(plot_dat,
       ),
       Algorithm = factor(
         Algorithm,
-        levels = c("Best", "Worst")
+        levels = c("Highest performing", "Lowest performing")
       )
     )
   
@@ -1945,15 +1947,14 @@ eelgrass <- ggplot(plot_dat,
       aes(
         x = Presence,
         y = y,
-        group = Tidal_zone,
-        label = label
+        label = label,
+        group = Tidal_zone
       ),
-      position = position_dodge(width = 0.75),
-      inherit.aes = FALSE,
+      position = position_dodge2(width = 0.75),
+      hjust = -0.08,
       angle = 30,
-      hjust = 0,
-      vjust = 0,
-      size = 2.5
+      size = 2.5,
+      inherit.aes = FALSE
     ) +
     
     scale_fill_manual(
@@ -2010,14 +2011,14 @@ eelgrass <- ggplot(plot_dat,
   
  
   
-  occurence_plot <- eelgrass / surfgrass +
+  occurrence_plot <- eelgrass / surfgrass +
     plot_layout(
       heights = c(3, 3.5))
   
-      occurence_plot   
+  occurrence_plot   
  
   ggsave(
-    filename = "figures/occurence_plots.png",
+    filename = "figures/occurrence_plots.png",
     plot = occurence_plot,
     width = 180,
     height = 210,
@@ -2028,143 +2029,169 @@ eelgrass <- ggplot(plot_dat,
   
   
   
+
+ 
+  
+  
+  #Binary Prediction maps for eelgrass and surfgrass
+ 
+  eelgrass<- rast("raster/eelgrass/eelgrass_predictions.tif")
+  eelgrass_plot <- ifel(eelgrass == 1, 1, NA)
+  
+  
+  surfgrass<- rast("raster/surfgrass/surfgrass_predictions.tif")
+  surfgrass_plot <- ifel(surfgrass == 1, 1, NA)
+  
+  seagrass_map <- ggplot() +
+    geom_sf(
+      data = coastline,
+      fill = "grey92",
+      colour = "grey50",
+      linewidth = 0.25
+    ) +
+    
+    geom_spatraster(
+      data = eelgrass_plot,
+      maxcell = Inf
+    ) +
+    scale_fill_manual(values = c("1" = "#009E73"), guide = "none") +
+    
+    ggnewscale::new_scale_fill() +
+    
+    geom_spatraster(
+      data = surfgrass_plot,
+      maxcell = Inf
+    ) +
+    scale_fill_manual(values = c("1" = "#D55E00"), guide = "none") +
+    
+    coord_sf(
+      xlim = c(530000, 1228000),
+      ylim = c(366000, 1101000),
+      expand = FALSE
+    ) +
+    
+    theme_bw() +
+    theme(
+      panel.grid = element_blank(),
+      legend.position = "none"
+    )
+  
+  
+  eelgrass_poly <- as.polygons(eelgrass_plot, dissolve = TRUE)
+  surfgrass_poly <- as.polygons(surfgrass_plot, dissolve = TRUE)
+  
+  plot <- ggplot() +
+    geom_sf(
+      data = coastline,
+      fill = "grey65",
+      colour = "grey35",
+      linewidth = 0.1
+    ) +
+    geom_spatvector(
+      data = eelgrass_poly,
+      aes(fill = "Eelgrass"),
+      colour = "#00A676",
+      linewidth = 0.05
+    ) +
+    geom_spatvector(
+      data = surfgrass_poly,
+      aes(fill = "Surfgrass"),
+      colour = "#E66101",
+      linewidth = 0.05
+    ) +
+    scale_fill_manual(
+      name = NULL,
+      values = c(
+        "Eelgrass" = "#00A676",
+        "Surfgrass" = "#E66101"
+      )
+    ) +
+    coord_sf(
+      xlim = c(530000, 1228000),
+      ylim = c(366000, 1101000),
+      expand = FALSE
+    ) +
+    theme_bw() +
+    theme(
+      panel.background = element_rect(fill = "grey88", colour = NA),
+      panel.grid = element_blank(),
+      legend.position = c(0.97, 0.97),   # top right
+      legend.justification = c(1, 1),
+      legend.background = element_rect(fill = alpha("white", 0.8), colour = "grey50"),
+      legend.text = element_text(size = 9),
+      legend.key = element_blank()
+    )
+   
+plot 
+  
+ggsave(
+  filename = "figures/distribution.png",
+  plot = plot,
+  width = 180,
+  height = 210,
+  units = "mm",
+  dpi = 600,
+  bg = "white" )
+
+
+  eelgrass_pts_df <- as.data.frame(eelgrass, xy = TRUE, na.rm = TRUE) %>%
+    filter(eelgrass_xgb_nep == 1)
+  surfgrass_pts_df <- as.data.frame(surfgrass, xy = TRUE, na.rm = TRUE) %>%
+    filter(surfgrass_xgb_nep == 1)
+  
+  eelgrass_pts_df$Species <- "Eelgrass"
+  surfgrass_pts_df$Species <- "Surfgrass"
+  
+  pts_df <- bind_rows(eelgrass_pts_df, surfgrass_pts_df)
+  
+  seagrass_map <- ggplot() +
+    geom_sf(
+      data = coastline,
+      fill = "grey96",
+      colour = "grey60",
+      linewidth = 0.3
+    ) +
+    geom_point(
+      data = pts_df,
+      aes(x, y, colour = Species),
+      size = 0.005,
+      alpha = 0.7
+    ) +
+    scale_colour_manual(values = c(
+      Eelgrass = "#009E73",
+      Surfgrass = "#D55E00"
+    ))
+    coord_sf(
+      xlim = c(530000, 1228000),
+      ylim = c(366000, 1101000),
+      expand = FALSE
+    ) +
+    theme_bw() +
+    theme(
+      panel.grid = element_blank(),
+      strip.background = element_blank(),
+      strip.text = element_text(face = "bold"),
+      plot.title = element_text(face = "bold", hjust = 0.5),
+      legend.position = "none"
+    )
+  eelgrass_map
+  
+  
   
 
-
-
-
-
-
-# Plot
-# eelgrass_field <- ggplot(eelgrass_pa_long,
-#        aes(x = Presence,
-#            y = predicted_suitability,
-#            fill = Tidal_zone)) +
-#   
-#   geom_boxplot(
-#     aes(group = interaction(Presence, Tidal_zone)),
-#     position = position_dodge(width = 0.75),
-#     outlier.alpha = 0.3,
-#     width = 0.6
-#   ) +
-#   
-#   
-#   facet_wrap(~ model, ncol = 4) +
-#   
-#   geom_hline(
-#     data = threshold_df_eelgrass,
-#     aes(yintercept = threshold_spatial),
-#     linetype = "dashed",
-#     colour = "black",
-#     linewidth = 0.8,
-#     inherit.aes = FALSE
-#   ) +
-#   scale_fill_manual(
-#     name = "Tidal zone",
-#     values = c(
-#       "Subtidal" = "#0B5D5E",   # dark teal
-#       "Intertidal" = "#6EC6C4"  # light teal
-#     )
-#   ) +
-#   
-#   scale_y_continuous(limits = c(0, 1), expand = c(0, 0)) + 
-#   #coord_cartesian(ylim = c(0, 1))
-#   
-#   labs(
-#     title = "Eelgrass",
-#     x = NULL,
-#     y = "Relative probability of occurrence"
-#   ) +
-#   
-#   theme_bw() +
-#   theme(
-#     panel.grid = element_blank(),   # remove grid lines
-#     panel.background = element_rect(fill = "white"),
-#     plot.background = element_rect(fill = "white"),
-#     legend.position = "none",
-#     axis.text.x = element_text(size = 10),
-#     strip.text = element_text(face = "bold"),
-#     plot.title = element_text(hjust = 0, face = "bold"),
-#     panel.spacing = unit(0, "lines")  
-#   )
-# 
-# 
-# surfgrass_field <- ggplot(surfgrass_pa_long,
-#                           aes(x = Presence,
-#                               y = predicted_suitability,
-#                               fill = Tidal_zone)) +
-#   
-#   geom_boxplot(
-#     aes(group = interaction(Presence, Tidal_zone)),
-#     position = position_dodge(width = 0.75),
-#     outlier.alpha = 0.3,
-#     width = 0.6
-#   ) +
-#   
-#   facet_wrap(~ model, ncol = 4) +
-#   
-#   geom_hline(
-#     data = threshold_df_surfgrass,
-#     aes(yintercept = threshold_spatial),
-#     linetype = "dashed",
-#     colour = "black",
-#     linewidth = 0.8,
-#     inherit.aes = FALSE
-#   ) +
-#   
-#   scale_fill_manual(
-#     name = "Tidal zone",
-#     values = c(
-#       "Subtidal" = "#0B5D5E",   # dark teal
-#       "Intertidal" = "#6EC6C4"  # light teal
-#     )
-#   ) +
-#   
-#   scale_y_continuous(limits = c(0, 1), expand = c(0, 0)) + 
-#   #coord_cartesian(ylim = c(0, 1))
-#   
-#   labs(
-#     title = "Surfgrass",
-#     x = NULL,
-#     y = NULL
-#   ) +
-#   
-#   theme_bw() +
-#   theme(
-#     panel.grid = element_blank(),   # remove grid lines
-#     panel.background = element_rect(fill = "white"),
-#     plot.background = element_rect(fill = "white"),
-#     legend.position = "right",
-#     axis.text.x = element_text(size = 10),
-#     strip.text = element_text(face = "bold"),
-#     plot.title = element_text(hjust = 0, face = "bold"),
-#     panel.spacing = unit(0, "lines")  
-#   )
-# 
-#  field_val<-eelgrass_field + surfgrass_field
-# 
-#  ggsave(
-#    filename = "figures/field_validation.png",
-#    plot = field_val,
-#    width = 13,
-#    height = 12,
-#    dpi = 300,
-#    bg = "white"
-#  )
-# 
-#  
-#  
- 
- 
- 
- 
- 
- 
- 
- 
- 
- 
- 
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
  #make figures of environmental characteristics
 
  

@@ -58,3 +58,4 @@ myspecies_clean$lat <- as.double(myspecies_clean$decimalLatitude)
 data_sf <- sf::st_as_sf(myspecies_clean, coords = c("decimalLongitude", "decimalLatitude"), remove = FALSE, crs = sf::st_crs(4326)) %>% sf::st_transform(crs = sf::st_crs(3005))
 
 sf::st_write(data_sf, "raw_data/gbif/gbifextract.shp", overwrite = TRUE)
+
