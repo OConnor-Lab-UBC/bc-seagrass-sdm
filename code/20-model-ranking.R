@@ -321,6 +321,26 @@ model_leg_eelgrass <- cowplot::get_legend(
 metric_plot_eelgrass_noleg <- metric_plot_eelgrass +
   theme(legend.position = "none")
 
+eelgrass_tags <- data.frame(
+  Validation = factor(
+    c("Spatial", "Temporal", "Independent", "Targeted"),
+    levels = c("Spatial", "Temporal", "Independent", "Targeted")
+  ),
+  Metric = factor("AUC", levels = levels(plot_df_eelgrass$Metric)),
+  x = 0.02,
+  lab = c("A", "B", "C", "D")
+)
+
+metric_plot_eelgrass_noleg <- metric_plot_eelgrass_noleg +
+  geom_text(
+    data = eelgrass_tags,
+    aes(x = x, y = Metric, label = lab),
+    inherit.aes = FALSE,
+    hjust = 0,
+    vjust = 0.5,
+    fontface = "bold",
+    size = 5
+  )
 
 # Heat map
   heat_df_cat_eelgrass <- rank_table_pr_eelgrass %>%
@@ -365,6 +385,8 @@ metric_plot_eelgrass_noleg <- metric_plot_eelgrass +
   
   heat_leg_eelgrass <- cowplot::get_legend(heat_leg_plot_eelgrass)
   
+  
+  
   # Create heatmaps
   heat_plot_eelgrass <- as.ggplot(function() {
     pheatmap(
@@ -385,6 +407,16 @@ metric_plot_eelgrass_noleg <- metric_plot_eelgrass +
     )
   })
 
+  heat_plot_eelgrass <- cowplot::ggdraw(heat_plot_eelgrass) +
+    cowplot::draw_label(
+      "E",
+      x = 0.75,
+      y = 0.17,
+      hjust = 1,
+      vjust = 0,
+      fontface = "bold",
+      size = 14
+    )
 
   # Combine plot + heatmap
   combined_plot_eelgrass <- metric_plot_eelgrass_noleg + heat_plot_eelgrass +
@@ -659,6 +691,26 @@ metric_plot_eelgrass_noleg <- metric_plot_eelgrass +
   metric_plot_surfgrass_noleg <- metric_plot_surfgrass +
     theme(legend.position = "none")
   
+  surfgrass_tags <- data.frame(
+    Validation = factor(
+      c("Spatial", "Temporal", "Independent", "Targeted"),
+      levels = c("Spatial", "Temporal", "Independent", "Targeted")
+    ),
+    Metric = factor("AUC", levels = levels(plot_df_surfgrass$Metric)),
+    x = 0.02,
+    lab = c("F", "G", "H", "I")
+  )
+  
+  metric_plot_surfgrass_noleg <- metric_plot_surfgrass_noleg +
+    geom_text(
+      data = surfgrass_tags,
+      aes(x = x, y = Metric, label = lab),
+      inherit.aes = FALSE,
+      hjust = 0,
+      vjust = 0.5,
+      fontface = "bold",
+      size = 5
+    )
   
   # Also test if we make a score based on each of the 4 validaitons. 
   # Heat map
@@ -725,6 +777,18 @@ metric_plot_eelgrass_noleg <- metric_plot_eelgrass +
   })
   
   
+  
+  heat_plot_surfgrass <- cowplot::ggdraw(heat_plot_surfgrass) +
+    cowplot::draw_label(
+      "J",
+      x = 0.75,
+      y = 0.17,
+      hjust = 1,
+      vjust = 0,
+      fontface = "bold",
+      size = 14
+    )
+  
   # Combine plot + heatmap
   combined_plot_surfgrass <- metric_plot_surfgrass_noleg + heat_plot_surfgrass +
     plot_layout(
@@ -784,4 +848,3 @@ metric_plot_eelgrass_noleg <- metric_plot_eelgrass +
     dpi = 600,
     bg = "white"
   )
-  # For surfgrass  pick ???

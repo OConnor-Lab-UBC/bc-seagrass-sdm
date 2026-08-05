@@ -1071,10 +1071,63 @@ varImp_sdmTMB <- function(model, dat, preds, permute = 10) {
   )
 }
 
+get_oof_predictions <- function(cv_object, cv_list, response_col) {
+  
+  oof_pred <- rep(NA_real_, nrow(cv_object$data))
+  
+  for(i in seq_along(cv_object$models)) {
+    
+    test_idx <- cv_list[[i]]$test
+    
+    pred <- predict(
+      cv_object$models[[i]],
+      newdata = cv_object$data[test_idx, ]
+    )
+    
+    oof_pred[test_idx] <- plogis(pred$est)
+  }
+  
+  data.frame(
+    obs = cv_object$data[[response_col]],
+    pred = oof_pred
+  )
+}
+
+get_optimal_threshold <- function(actual, prob) {
+  
+  keep <- !is.na(actual) & !is.na(prob)
+  
+  actual <- actual[keep]
+  prob <- prob[keep]
+  
+  thresholds <- sort(unique(prob))
+  
+  best_tss <- -Inf
+  best_threshold <- NA_real_
+  
+  for(th in thresholds) {
+    
+    pred_class <- as.integer(prob >= th)
+    
+    sens <- sum(pred_class == 1 & actual == 1) /
+      sum(actual == 1)
+    
+    spec <- sum(pred_class == 0 & actual == 0) /
+      sum(actual == 0)
+    
+    tss <- sens + spec - 1
+    
+    if(tss > best_tss) {
+      best_tss <- tss
+      best_threshold <- th
+    }
+  }
+  
+  best_threshold
+}
 
 
-
-evalStats <- function(folds, m, CV, response_col) {
+evalStats <- function(folds, m, CV, response_col, fixed_threshold) {
   traintest.df <- list()
   
   # Helper: sensitivity, specificity, TSS from threshold
@@ -1116,8 +1169,7 @@ evalStats <- function(folds, m, CV, response_col) {
     pred_train <- plogis(predict(m$models[[i]])$est[train_idx])
     pred_test  <- plogis(predict(m$models[[i]])$est[test_idx])
     
-    # Calculate threshold from training data only
-    threshold <- get_optimal_threshold(obs_train, pred_train)
+    threshold <- fixed_threshold
     
     # Train classification metrics
     train_cls <- class_metrics(obs_train, pred_train, threshold)
@@ -1761,6 +1813,11 @@ nested_gbm_spatial <- function(
   }
   
   get_optimal_threshold <- function(actual, prob) {
+    keep <- !is.na(actual) & !is.na(prob)
+    
+    actual <- actual[keep]
+    prob <- prob[keep]
+    
     thresholds <- sort(unique(prob))
     
     if (length(thresholds) == 0) {
@@ -1811,7 +1868,8 @@ nested_gbm_spatial <- function(
     inner_scores <- list()
     
     for (g in seq_len(nrow(gbm_grid))) {
-      
+      oof_pred <- rep(NA_real_, nrow(train_outer))
+      oof_obs <- train_outer[[response]]
       pars <- gbm_grid[g, ]
       inner_res <- c()
       inner_best_trees <- c()
@@ -1857,6 +1915,10 @@ nested_gbm_spatial <- function(
           type = "response"
         )
         
+        valid_rows <- which(train_outer[[inner_col]] == ifold)
+        
+        oof_pred[valid_rows] <- pred
+        
         inner_res <- c(
           inner_res,
           calc_logloss(valid_inner[[response]], pred)
@@ -1868,13 +1930,19 @@ nested_gbm_spatial <- function(
         )
       }
       
+      oof_threshold <- get_optimal_threshold(
+        actual = oof_obs,
+        prob = oof_pred
+      )
+      
       inner_scores[[g]] <- data.frame(
         interaction.depth = pars$interaction.depth,
         shrinkage = pars$shrinkage,
         n.minobsinnode = pars$n.minobsinnode,
         mean_logloss = mean(inner_res, na.rm = TRUE),
         sd_logloss = sd(inner_res, na.rm = TRUE),
-        mean_trees = mean(inner_best_trees, na.rm = TRUE)
+        mean_trees = mean(inner_best_trees, na.rm = TRUE),
+        threshold = oof_threshold
       )
     }
     
@@ -1917,7 +1985,7 @@ nested_gbm_spatial <- function(
     obs_train <- train_outer[[response]]
     obs_test <- test_outer[[response]]
     
-    threshold <- get_optimal_threshold(obs_train, pred_train)
+    threshold <- best$threshold
     
     train_cls <- class_metrics(obs_train, pred_train, threshold)
     test_cls <- class_metrics(obs_test, pred_test, threshold)
@@ -2025,6 +2093,11 @@ nested_xgb_spatial <- function(
   }
   
   get_optimal_threshold <- function(actual, prob) {
+    keep <- !is.na(actual) & !is.na(prob)
+    
+    actual <- actual[keep]
+    prob <- prob[keep]
+    
     thresholds <- sort(unique(prob))
     
     if (length(thresholds) == 0) {
@@ -2075,7 +2148,8 @@ nested_xgb_spatial <- function(
     inner_scores <- list()
     
     for (g in seq_len(nrow(xgb_grid))) {
-      
+      oof_pred <- rep(NA_real_, nrow(train_outer))
+      oof_obs <- train_outer[[response]]
       pars <- xgb_grid[g, ]
       loglosses <- c()
       inner_folds <- sort(unique(train_outer[[inner_col]]))
@@ -2119,11 +2193,20 @@ nested_xgb_spatial <- function(
         
         pred <- predict(mod, X_valid)
         
+        valid_rows <- which(train_outer[[inner_col]] == ifold)
+        
+        oof_pred[valid_rows] <- pred
+        
         loglosses <- c(
           loglosses,
           calc_logloss(valid_inner[[response]], pred)
         )
       }
+      
+      oof_threshold <- get_optimal_threshold(
+        actual = oof_obs,
+        prob = oof_pred
+      )
       
       inner_scores[[g]] <- data.frame(
         eta = pars$eta,
@@ -2132,7 +2215,8 @@ nested_xgb_spatial <- function(
         colsample_bytree = pars$colsample_bytree,
         nrounds = pars$nrounds,
         mean_logloss = mean(loglosses, na.rm = TRUE),
-        sd_logloss = sd(loglosses, na.rm = TRUE)
+        sd_logloss = sd(loglosses, na.rm = TRUE),
+        threshold = oof_threshold
       )
     }
     
@@ -2176,7 +2260,7 @@ nested_xgb_spatial <- function(
     obs_train <- train_outer[[response]]
     obs_test <- test_outer[[response]]
     
-    threshold <- get_optimal_threshold(obs_train, pred_train)
+    threshold <- best$threshold
     
     train_cls <- class_metrics(obs_train, pred_train, threshold)
     test_cls <- class_metrics(obs_test, pred_test, threshold)
@@ -3063,4 +3147,138 @@ calc_field_metrics <- function(
     }
   )
   
+}
+
+make_atm_plot <- function(var_name,
+                          ylab,
+                          ylim = NULL,
+                          convert_kelvin = FALSE) {
+  
+  plot_df <- bind_rows(
+    env_long %>%
+      filter(variable == var_name) %>%
+      mutate(source = "Hindcast"),
+    
+    obs_long %>%
+      filter(variable == var_name) %>%
+      mutate(source = "Survey")
+  )
+  
+  if (convert_kelvin) {
+    plot_df <- plot_df %>%
+      mutate(value = value - 273.15)
+  }
+  
+  p <- ggplot(
+    plot_df,
+    aes(x = decade, y = value, fill = source)
+  ) +
+    geom_violin(
+      position = position_dodge(width = 0.8),
+      trim = TRUE,
+      alpha = 0.3
+    ) +
+    geom_boxplot(
+      width = 0.12,
+      position = position_dodge(width = 0.8),
+      outlier.shape = NA,
+      alpha = 0.8
+    ) +
+    scale_fill_manual(
+      values = c(
+        "Survey" = "#E69F00",
+        "Hindcast" = "#56B4E9"
+      )
+    ) +
+    labs(
+      x = NULL,
+      y = ylab,
+      fill = NULL
+    ) +
+    theme_bw() +
+    theme(
+      panel.grid = element_blank(),
+      panel.background = element_rect(fill = "white"),
+      plot.background = element_rect(fill = "white"),
+      axis.text.x = element_blank(),
+      axis.ticks.x = element_blank(),
+      panel.spacing = unit(0, "lines")
+    )
+  
+  if (!is.null(ylim)) {
+    p <- p + coord_cartesian(ylim = ylim)
+  }
+  
+  p
+}
+
+make_bccm_nep_plot <- function(bccm_var,
+                               nep_var,
+                               ylab,
+                               ylim = NULL) {
+  
+  plot_df <- bind_rows(
+    
+    env_long %>%
+      filter(variable %in% c(bccm_var, nep_var)) %>%
+      mutate(
+        source = case_when(
+          variable == bccm_var ~ "Hindcast BCCM",
+          variable == nep_var  ~ "Hindcast NEP36"
+        )
+      ),
+    
+    obs_long %>%
+      filter(variable %in% c(bccm_var, nep_var)) %>%
+      mutate(
+        source = case_when(
+          variable == bccm_var ~ "Survey BCCM",
+          variable == nep_var  ~ "Survey NEP36"
+        )
+      )
+  )
+  
+  p <- ggplot(
+    plot_df,
+    aes(x = decade, y = value, fill = source)
+  ) +
+    geom_violin(
+      position = position_dodge(width = 0.8),
+      trim = TRUE,
+      alpha = 0.3
+    ) +
+    geom_boxplot(
+      width = 0.12,
+      position = position_dodge(width = 0.8),
+      outlier.shape = NA,
+      alpha = 0.8
+    ) +
+    scale_fill_manual(
+      values = c(
+        "Hindcast BCCM" = "#56B4E9",
+        "Hindcast NEP36" = "#009E73",
+        "Survey BCCM" = "#E69F00",
+        "Survey NEP36" = "#CC79A7"
+      )
+    ) +
+    labs(
+      x = NULL,
+      y = ylab,
+      fill = NULL
+    ) +
+    theme_bw() +
+    theme(
+      panel.grid = element_blank(),
+      panel.background = element_rect(fill = "white"),
+      plot.background = element_rect(fill = "white"),
+      axis.text.x = element_blank(),
+      axis.ticks.x = element_blank(),
+      panel.spacing = unit(0, "lines")
+    )
+  
+  if (!is.null(ylim)) {
+    p <- p + coord_cartesian(ylim = ylim)
+  }
+  
+  p
 }

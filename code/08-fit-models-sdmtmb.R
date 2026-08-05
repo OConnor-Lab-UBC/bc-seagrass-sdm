@@ -143,9 +143,12 @@ m_e_1 <- sdmTMB_cv(formula = presence ~ s(depth_stnd, k = 4) + substrate + slope
                      saltcv_bccm_stnd + NH4_bccm_stnd + tempcv_bccm_stnd + #bccm variables
                      Survey,  #fixed effect
                    mesh = barrier_mesh, priors = sdmTMBpriors(b = normal(0, 1)), family = binomial(link = "logit"), spatial = FALSE, data = data, fold_ids = "fold")
+#out of fold predictions
+oof_bccm_nospatial <- get_oof_predictions(m_e_1, cv_list_eelgrass$cv, "presence")
+#threshold from oof predictions
+threshold_bccm_nospatial <- get_optimal_threshold(oof_bccm_nospatial$obs, oof_bccm_nospatial$pred)
 
-eval_cv_bccm_nospatial <- evalStats(folds = 1:numFolds,  m = m_e_1,  CV = cv_list_eelgrass$cv,  response_col = "presence")
-eval_cv_bccm_nospatial
+eval_cv_bccm_nospatial <- evalStats(folds = 1:numFolds, m = m_e_1, CV = cv_list_eelgrass$cv, response_col = "presence", fixed_threshold = threshold_bccm_nospatial)
 
 m_e_2 <- sdmTMB_cv(formula = presence ~ s(depth_stnd, k = 4) + substrate + slope_stnd + rei_stnd +  
                      airtempmin_stnd + rsdsmin_stnd + prmin_stnd +#chelsa variables
@@ -153,8 +156,13 @@ m_e_2 <- sdmTMB_cv(formula = presence ~ s(depth_stnd, k = 4) + substrate + slope
                      Survey,  #fixed effect
                    mesh = barrier_mesh, priors = sdmTMBpriors(b = normal(0, 1)), family = binomial(link = "logit"), spatial = TRUE, data = data, fold_ids = "fold")
 
-eval_cv_bccm_spatial <- evalStats(folds = 1:numFolds,  m = m_e_2,  CV = cv_list_eelgrass$cv,  response_col = "presence")
-eval_cv_bccm_spatial
+#out of fold predictions
+oof_bccm_spatial <- get_oof_predictions(m_e_2, cv_list_eelgrass$cv, "presence")
+#threshold from oof predictions
+threshold_bccm_spatial <- get_optimal_threshold(oof_bccm_spatial$obs, oof_bccm_spatial$pred)
+
+eval_cv_bccm_spatial <- evalStats(folds = 1:numFolds, m = m_e_2, CV = cv_list_eelgrass$cv, response_col = "presence", fixed_threshold = threshold_bccm_spatial)
+
 
 m_e_3 <- sdmTMB_cv(formula = presence ~ s(depth_stnd, k = 4) + substrate + slope_stnd + rei_stnd +  
                      airtempmin_stnd + rsdsmin_stnd + prmin_stnd +#chelsa variables
@@ -162,8 +170,12 @@ m_e_3 <- sdmTMB_cv(formula = presence ~ s(depth_stnd, k = 4) + substrate + slope
                      Survey,  #fixed effect
                    mesh = barrier_mesh, priors = sdmTMBpriors(b = normal(0, 1)), family = binomial(link = "logit"), spatial = FALSE, data = data, fold_ids = "fold")
 
-eval_cv_nep_nospatial <- evalStats(folds = 1:numFolds,  m = m_e_3,  CV = cv_list_eelgrass$cv,  response_col = "presence")
-eval_cv_nep_nospatial
+#out of fold predictions
+oof_nep_nospatial <- get_oof_predictions(m_e_3, cv_list_eelgrass$cv, "presence")
+#threshold from oof predictions
+threshold_nep_nospatial <- get_optimal_threshold(oof_nep_nospatial$obs, oof_nep_nospatial$pred)
+
+eval_cv_nep_nospatial <- evalStats(folds = 1:numFolds, m = m_e_3, CV = cv_list_eelgrass$cv, response_col = "presence", fixed_threshold = threshold_nep_nospatial)
 
 m_e_4 <- sdmTMB_cv(formula = presence ~ s(depth_stnd, k = 4) + substrate + slope_stnd + rei_stnd +  
                      airtempmin_stnd + rsdsmin_stnd + prmin_stnd +#chelsa variables
@@ -171,8 +183,13 @@ m_e_4 <- sdmTMB_cv(formula = presence ~ s(depth_stnd, k = 4) + substrate + slope
                      Survey,  #fixed effect
                    mesh = barrier_mesh, priors = sdmTMBpriors(b = normal(0, 1)), family = binomial(link = "logit"), spatial = TRUE, data = data, fold_ids = "fold")
 
-eval_cv_nep_spatial <- evalStats(folds = 1:numFolds,  m = m_e_4,  CV = cv_list_eelgrass$cv,  response_col = "presence")
-eval_cv_nep_spatial
+#out of fold predictions
+oof_nep_spatial <- get_oof_predictions(m_e_4, cv_list_eelgrass$cv, "presence")
+#threshold from oof predictions
+threshold_nep_spatial <- get_optimal_threshold(oof_nep_spatial$obs, oof_nep_spatial$pred)
+
+eval_cv_nep_spatial <- evalStats(folds = 1:numFolds, m = m_e_4, CV = cv_list_eelgrass$cv, response_col = "presence", fixed_threshold = threshold_nep_spatial)
+
 
 eval_cv_list <- list(eval_cv_bccm_nospatial, eval_cv_bccm_spatial, eval_cv_nep_nospatial, eval_cv_nep_spatial)
 save(eval_cv_list, file = "code/output_data/model_results/eelgrass_eval_cv.RData")
@@ -599,11 +616,6 @@ save(samps, mcmc_res, ret, r_ret, file = "code/output_data/model_results/residua
 
 
 
-
-
-# have not updated surfgrass models yet!!!
-
-
 #### Surfgrass model ####
 
 sp = "PH"
@@ -688,8 +700,13 @@ m_s_1 <- sdmTMB_cv(formula = presence ~ s(depth_stnd, k = 4) + rei_sqrt_stnd + s
                      saltmean_bccm_stnd + tempmean_bccm_stnd + surftempcv_bccm_stnd + #bccm variables
                      Survey,  #fixed effect
                     mesh = barrier_mesh, family = binomial(link = "logit"), priors = sdmTMBpriors(b = normal(0, 1)), spatial = FALSE, data = data, fold_ids = "fold")
-eval_cv_bccm_nospatial <- evalStats( folds=1:numFolds,m=m_s_1,CV=cv_list_seagrass$cv,  response_col = "presence")
-eval_cv_bccm_nospatial
+
+#out of fold predictions
+oof_bccm_nospatial <- get_oof_predictions(m_s_1, cv_list_seagrass$cv, "presence")
+#threshold from oof predictions
+threshold_bccm_nospatial <- get_optimal_threshold(oof_bccm_nospatial$obs, oof_bccm_nospatial$pred)
+
+eval_cv_bccm_nospatial <- evalStats(folds = 1:numFolds, m = m_s_1, CV = cv_list_seagrass$cv, response_col = "presence", fixed_threshold = threshold_bccm_nospatial)
 
 # bccm model with spatial
 m_s_2 <- sdmTMB_cv(formula = presence ~ s(depth_stnd, k = 4) + rei_sqrt_stnd + substrate + tidal_sqrt_stnd + 
@@ -697,8 +714,13 @@ m_s_2 <- sdmTMB_cv(formula = presence ~ s(depth_stnd, k = 4) + rei_sqrt_stnd + s
                      saltmean_bccm_stnd + tempmean_bccm_stnd + surftempcv_bccm_stnd + #bccm variables
                      Survey,  #fixed effect
                    mesh = barrier_mesh, family = binomial(link = "logit"), priors = sdmTMBpriors(b = normal(0, 1)), spatial = TRUE, data = data, fold_ids = "fold")
-eval_cv_bccm_spatial <- evalStats( folds=1:numFolds,m=m_s_2,CV=cv_list_seagrass$cv,  response_col = "presence")
-eval_cv_bccm_spatial
+#out of fold predictions
+oof_bccm_spatial <- get_oof_predictions(m_s_2, cv_list_seagrass$cv, "presence")
+#threshold from oof predictions
+threshold_bccm_spatial <- get_optimal_threshold(oof_bccm_spatial$obs, oof_bccm_spatial$pred)
+
+eval_cv_bccm_spatial <- evalStats(folds = 1:numFolds, m = m_s_2, CV = cv_list_seagrass$cv, response_col = "presence", fixed_threshold = threshold_bccm_spatial)
+
 
 # nep model no spatial
 m_s_3 <- sdmTMB_cv(formula = presence ~ s(depth_stnd, k = 4) + rei_sqrt_stnd + substrate + tidal_sqrt_stnd +  
@@ -706,8 +728,13 @@ m_s_3 <- sdmTMB_cv(formula = presence ~ s(depth_stnd, k = 4) + rei_sqrt_stnd + s
                      saltmean_nep_stnd + tempmean_nep_stnd + surftempcv_nep_stnd + #nep variables
                      Survey,  #fixed effect
                    mesh = barrier_mesh, family = binomial(link = "logit"), priors = sdmTMBpriors(b = normal(0, 1)), spatial = FALSE, data = data, fold_ids = "fold")
-eval_cv_nep_nospatial <- evalStats( folds=1:numFolds,m=m_s_3,CV=cv_list_seagrass$cv,  response_col = "presence")
-eval_cv_nep_nospatial
+#out of fold predictions
+oof_nep_nospatial <- get_oof_predictions(m_s_3, cv_list_seagrass$cv, "presence")
+#threshold from oof predictions
+threshold_nep_nospatial <- get_optimal_threshold(oof_nep_nospatial$obs, oof_nep_nospatial$pred)
+
+eval_cv_nep_nospatial <- evalStats(folds = 1:numFolds, m = m_s_3, CV = cv_list_seagrass$cv, response_col = "presence", fixed_threshold = threshold_nep_nospatial)
+
 
 # nep model spatial 
 m_s_4 <- sdmTMB_cv(formula = presence ~ s(depth_stnd, k = 4) + rei_sqrt_stnd + substrate + tidal_sqrt_stnd +  
@@ -715,8 +742,13 @@ m_s_4 <- sdmTMB_cv(formula = presence ~ s(depth_stnd, k = 4) + rei_sqrt_stnd + s
                      saltmean_nep_stnd + tempmean_nep_stnd + surftempcv_nep_stnd + #nep variables
                      Survey,  #fixed effect
                    mesh = barrier_mesh, family = binomial(link = "logit"), priors = sdmTMBpriors(b = normal(0, 1)), spatial = TRUE, data = data, fold_ids = "fold")
-eval_cv_nep_spatial <- evalStats( folds=1:numFolds,m=m_s_4,CV=cv_list_seagrass$cv,  response_col = "presence")
-eval_cv_nep_spatial
+#out of fold predictions
+oof_nep_spatial <- get_oof_predictions(m_s_4, cv_list_seagrass$cv, "presence")
+#threshold from oof predictions
+threshold_nep_spatial <- get_optimal_threshold(oof_nep_spatial$obs, oof_nep_spatial$pred)
+
+eval_cv_nep_spatial <- evalStats(folds = 1:numFolds, m = m_s_4, CV = cv_list_seagrass$cv, response_col = "presence", fixed_threshold = threshold_nep_spatial)
+
 
 # cv stats from all best models and save
 eval_cv_list_surfgrass <- list(eval_cv_bccm_nospatial, eval_cv_bccm_spatial, eval_cv_nep_nospatial, eval_cv_nep_spatial)
