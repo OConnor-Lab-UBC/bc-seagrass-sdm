@@ -3152,7 +3152,8 @@ calc_field_metrics <- function(
 make_atm_plot <- function(var_name,
                           ylab,
                           ylim = NULL,
-                          convert_kelvin = FALSE) {
+                          convert_kelvin = FALSE,
+                          show_x = FALSE) {
   
   plot_df <- bind_rows(
     env_long %>%
@@ -3200,8 +3201,8 @@ make_atm_plot <- function(var_name,
       panel.grid = element_blank(),
       panel.background = element_rect(fill = "white"),
       plot.background = element_rect(fill = "white"),
-      axis.text.x = element_blank(),
-      axis.ticks.x = element_blank(),
+      axis.text.x  = if (show_x) element_text() else element_blank(),
+      axis.ticks.x = if (show_x) element_line() else element_blank(),
       panel.spacing = unit(0, "lines")
     )
   
@@ -3215,7 +3216,8 @@ make_atm_plot <- function(var_name,
 make_bccm_nep_plot <- function(bccm_var,
                                nep_var,
                                ylab,
-                               ylim = NULL) {
+                               ylim = NULL,
+                               show_x = FALSE) {
   
   plot_df <- bind_rows(
     
@@ -3271,8 +3273,8 @@ make_bccm_nep_plot <- function(bccm_var,
       panel.grid = element_blank(),
       panel.background = element_rect(fill = "white"),
       plot.background = element_rect(fill = "white"),
-      axis.text.x = element_blank(),
-      axis.ticks.x = element_blank(),
+      axis.text.x  = if (show_x) element_text() else element_blank(),
+      axis.ticks.x = if (show_x) element_line() else element_blank(),
       panel.spacing = unit(0, "lines")
     )
   

@@ -2179,7 +2179,8 @@ hold <- terra::extract(x = tidal_index_all, y = env_20m_hg_sf)
  
  airtemp_cv <- make_atm_plot(
    "temp_air_cv",
-   "Air temperature CV"
+   "Air temperature CV",
+   show_x = TRUE
  )
  
  salt_mean <- make_bccm_nep_plot(
@@ -2212,7 +2213,8 @@ hold <- terra::extract(x = tidal_index_all, y = env_20m_hg_sf)
    "NH4_5m_mean_bccm",
    "NH4_5m_mean_nep36",
    expression("Ammonium (mmol m"^-3 * ")"),
-   ylim = c(0, 2.5)
+   ylim = c(0, 2.5),
+   show_x = TRUE
  )
  
  surfacetemp_cv <- make_bccm_nep_plot(
@@ -2245,7 +2247,7 @@ hold <- terra::extract(x = tidal_index_all, y = env_20m_hg_sf)
  )
  
 
- 
+
  
  
  # MESS figures
